@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+    <!-- ========================= 基本信息(必填) ========================= -->
+
+    <!-- TODO: 修改包名(必须与 CMakeLists.txt 中的 project() 一致) -->
+    <name>dm_controller</name>
+
+    <!-- TODO: 修改其他信息：版本号、包描述、维护者信息、许可证(MIT, BSD, Apache-2.0, GPL-3.0...) -->
+    <version>0.0.1</version>
+    <description>ROS2 package template</description>
+    <maintainer email="your.email@example.com">Your Name</maintainer>
+    <license>MIT</license>
+
+    <!-- ========================= 可选信息 ========================= -->
+
+    <!-- TODO: 可选，添加作者信息、项目网址 -->
+    <!-- <author email="author@example.com">Author Name</author> -->
+    <!-- <url type="website">https://github.com/username/repository</url> -->
+
+    <!-- ========================= 构建工具依赖(必需) ========================= -->
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <!-- ========================= 依赖包(按需添加) ========================= -->
+
+    <!-- TODO: 运行时和构建时都需要的依赖 -->
+    <!-- <depend>pkg_name</depend> -->
+    <depend>rclcpp</depend>
+    <depend>sensor_msgs</depend>
+    <depend>std_msgs</depend>
+    <depend>pinocchio</depend>
+    <depend>crocoddyl</depend>
+    <depend>Eigen3</depend>
+
+    <!-- TODO: 如定义了自定义消息/服务/动作，取消注释 -->
+    <!-- <build_depend>rosidl_default_generators</build_depend> -->
+    <!-- <exec_depend>rosidl_default_runtime</exec_depend> -->
+    <!-- <member_of_group>rosidl_interface_packages</member_of_group> -->
+
+    <!-- ========================= 测试依赖(可选) ========================= -->
+
+    <test_depend>ament_lint_auto</test_depend>
+    <test_depend>ament_lint_common</test_depend>
+
+    <!-- TODO: 可选，添加其他测试依赖 -->
+    <!-- <test_depend>ament_cmake_gtest</test_depend> -->
+
+    <!-- ========================= 导出配置 ========================= -->
+
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>
