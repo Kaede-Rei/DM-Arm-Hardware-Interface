@@ -32,24 +32,4 @@ colcon build --executor sequential \
 # 编译完记得添加 COLCON_IGNORE 文件
 ```
 
-## install Tesseract
-```bash
-# 安装系统构建工具和依赖
-sudo apt update
-sudo apt install python3-vcstool python3-colcon-common-extensions git
-# 克隆 Tesseract 仓库
-cd src
-git clone https://github.com/tesseract-robotics/tesseract_ros2.git -b humble
-vcs import < tesseract_ros2/dependencies.repos
-# 安装 Tesseract 依赖
-cd ..
-rosdep install --from-paths src -iry
-# 编译工作空间，使用串行构建器以避免卡崩
-colcon build --executor sequential \
-    --symlink-install --cmake-args \
-    -DTESSERACT_BUILD_FCL=OFF \
-    -DBUILD_RENDERING=OFF \
-    -DBUILD_STUDIO=OFF
-```
-
 ## run
