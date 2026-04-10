@@ -93,6 +93,7 @@ endforeach()
 set(PYTHON_SCRIPTS
     # scripts/tool.py
     # scripts/demo_node.py
+    scripts/test.py
 )
 
 if(PYTHON_SCRIPTS)

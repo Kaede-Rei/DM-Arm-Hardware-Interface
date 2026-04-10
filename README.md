@@ -9,6 +9,8 @@ sudo apt install ros-humble-pinocchio \
     libboost-python-dev \
     libeigen3-dev \
     ros-humble-eigenpy 
+# 降级 numpy 以兼容 Pinocchio 的 Python 接口
+pip install "numpy<2"
 # 安装可视化工具
 pip install meshcat
 # 克隆 TSID 源码
