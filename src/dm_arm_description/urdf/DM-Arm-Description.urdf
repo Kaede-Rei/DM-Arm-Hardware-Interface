@@ -189,6 +189,12 @@
         <axis xyz="1 0 0" />
         <limit lower="-3.141592653589793" upper="3.141592653589793" effort="20" velocity="5.4" />
     </joint>
+    <link name="link_tcp" />
+    <joint name="gripper_link_tcp" type="fixed">
+        <origin xyz="0.072 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+        <parent link="link6-7" />
+        <child link="link_tcp" />
+    </joint>
     <link name="finger_left">
         <inertial>
             <origin xyz="0.08 0.04 0" rpy="0 0 0" />
