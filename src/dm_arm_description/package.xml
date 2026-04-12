@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+    <!-- ========================= 基本信息(必填) ========================= -->
+    <!-- TODO: 包名必须与 CMakeLists.txt 中的 project() 完全一致 -->
+    <name>dm_arm_description</name>
+    <version>0.0.1</version>
+    <description>ROS2 ament_cmake feature package</description>
+    <maintainer email="kaerei@foxmail.com">Kaede Rei</maintainer>
+    <license>MIT</license>
+
+    <!-- ========================= 可选信息 ========================= -->
+    <!-- <author email="author@example.com">Author Name</author> -->
+    <!-- <url type="website">https://github.com/username/repository</url> -->
+    <!-- <url type="repository">https://github.com/username/repository</url> -->
+    <!-- <url type="bugtracker">https://github.com/username/repository/issues</url> -->
+
+    <!-- ========================= 构建工具依赖(必填) ========================= -->
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <!-- ========================= 常规依赖(按需添加) ========================= -->
+    <!-- TODO: 功能包的 ROS 依赖优先写在这里；如果依赖你自己的接口包，也写在这里 -->
+    <!-- <depend>rclcpp</depend> -->
+    <!-- <depend>rclpy</depend> -->
+    <!-- <depend>std_msgs</depend> -->
+    <!-- <depend>sensor_msgs</depend> -->
+    <!-- <depend>geometry_msgs</depend> -->
+    <!-- <depend>nav_msgs</depend> -->
+    <!-- <depend>tf2</depend> -->
+    <!-- <depend>tf2_ros</depend> -->
+    <!-- <depend>tf2_geometry_msgs</depend> -->
+    <!-- <depend>your_interfaces_pkg</depend> -->
+
+    <!-- TODO: 如果提供 launch 文件，通常需要这些 -->
+    <!-- <exec_depend>launch</exec_depend> -->
+    <!-- <exec_depend>launch_ros</exec_depend> -->
+
+    <!-- TODO: 如需 Python 运行时，可按需取消注释 -->
+    <!-- <exec_depend>python3</exec_depend> -->
+    <!-- <exec_depend>python3-numpy</exec_depend> -->
+
+    <!-- ========================= 测试依赖(可选) ========================= -->
+    <test_depend>ament_lint_auto</test_depend>
+    <test_depend>ament_lint_common</test_depend>
+    <!-- <test_depend>ament_cmake_gtest</test_depend> -->
+    <!-- <test_depend>ament_cmake_pytest</test_depend> -->
+
+    <!-- ========================= 导出配置 ========================= -->
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>
