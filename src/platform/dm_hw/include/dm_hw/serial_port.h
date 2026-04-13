@@ -26,55 +26,46 @@ public:
     }
 
     ssize_t send(const uint8_t* data, size_t len) {
-      // tcflush(fd_, TCIFLUSH);
+        // tcflush(fd_, TCIFLUSH);
         ssize_t ret = ::write(fd_, data, len);
         // tcdrain(fd_);
         return ret;
     }
 
     ssize_t recv(uint8_t* data, size_t len) {
-        FD_ZERO(&rSet_);
-        FD_SET(fd_, &rSet_);
+        fd_set rset;
+        FD_ZERO(&rset);
+        FD_SET(fd_, &rset);
+
+        timeval tv = timeout_;
         ssize_t recv_len = 0;
 
-        switch(select(fd_ + 1, &rSet_, NULL, NULL, &timeout_)) {
-            case -1: // error
-              // std::cout << "communication error" << std::endl;
-                break;
-            case 0: // timeout
-              // std::cout << "timeout" << std::endl;
-                break;
-            default:
-                recv_len = ::read(fd_, data, len);
-                break;
+        int ret = select(fd_ + 1, &rset, nullptr, nullptr, &tv);
+        if(ret > 0) {
+            recv_len = ::read(fd_, data, len);
         }
-
         return recv_len;
     }
 
-    void recv(uint8_t* data, uint8_t head, ssize_t len) {
-      // 存入队列
-        ssize_t recv_len = this->recv(recv_buf.data(), len);
-        for(int i = 0; i < recv_len; i++) {
+    bool recv_frame(uint8_t* data, uint8_t head, ssize_t len) {
+        ssize_t recv_len = recv(recv_buf.data(), len);
+        for(int i = 0; i < recv_len; ++i) {
             recv_queue.push(recv_buf[i]);
         }
 
-        // 查找帧头
         while(recv_queue.size() >= static_cast<size_t>(len)) {
             if(recv_queue.front() != head) {
                 recv_queue.pop();
                 continue;
             }
-            break;
-        }
 
-        if(recv_queue.size() < static_cast<size_t>(len)) return;
-
-        // 读取数据
-        for(int i = 0; i < len; i++) {
-            data[i] = recv_queue.front();
-            recv_queue.pop();
+            for(int i = 0; i < len; ++i) {
+                data[i] = recv_queue.front();
+                recv_queue.pop();
+            }
+            return true;
         }
+        return false;
     }
 
     void set_timeout(int timeout_ms) {
@@ -130,7 +121,6 @@ private:
     }
 
     int fd_;
-    fd_set rSet_;
     timeval timeout_;
 
     std::queue<uint8_t> recv_queue;

@@ -310,6 +310,13 @@ public:
         return has_param(key);
     }
 
+    void clear_param(int key) {
+        param_map.erase(key);
+    }
+
+    void clear_all_params() {
+        param_map.clear();
+    }
 };
 
 
@@ -401,10 +408,10 @@ public:
     void control_mit(Motor& motor, float kp, float kd, float q, float dq, float tau) {
         // 位置、速度和扭矩采用线性映射的关系将浮点型数据转换成有符号的定点数据
         static auto float_to_uint = [](float x, float xmin, float xmax, uint8_t bits) -> uint16_t {
-            float span = xmax - xmin;
-            float data_norm = (x - xmin) / span;
-            uint16_t data_uint = data_norm * ((1 << bits) - 1);
-            return data_uint;
+            x = std::clamp(x, xmin, xmax);
+            const float span = xmax - xmin;
+            const float data_norm = (x - xmin) / span;
+            return static_cast<uint16_t>(data_norm * ((1u << bits) - 1));
             };
         MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
@@ -554,7 +561,7 @@ public:
      * @brief 接收并解析电机 CAN 反馈数据。
      */
     void receive() {
-        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
+        if(!serial_->recv_frame(reinterpret_cast<uint8_t*>(&receive_data), 0xAA, sizeof(CanReceiveFrame))) return;
 
         if(receive_data.cmd == 0x11 && receive_data.frame_end == 0x55) // receive success
         {
@@ -617,7 +624,7 @@ public:
     }
 
     void receive_param() {
-        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
+        if(!serial_->recv_frame(reinterpret_cast<uint8_t*>(&receive_data), 0xAA, sizeof(CanReceiveFrame))) return;
 
         if(receive_data.cmd == 0x11 && receive_data.frame_end == 0x55) // receive success
         {
@@ -660,6 +667,7 @@ public:
      * @return 查询到的参数值；未查询到时返回 0。
      */
     float read_motor_param(Motor& motor, uint8_t reg_id) {
+        motor.clear_param(reg_id);
         uint32_t id = motor.get_slave_id();
         uint8_t can_low = id & 0xff;
         uint8_t can_high = (id >> 8) & 0xff;
@@ -689,8 +697,9 @@ public:
      * @param mode 控制模式，如 damiao::MIT_MODE。
      */
     bool switch_control_mode(Motor& motor, DmControlMode mode) {
+        constexpr uint8_t reg_id = CTRL_MODE;
+        motor.clear_param(reg_id);
         uint8_t write_data[4] = { (uint8_t)mode, 0x00, 0x00, 0x00 };
-        uint8_t reg_id = 10;
         write_motor_param(motor, reg_id, write_data);
         if(motors.find(motor.get_slave_id()) == motors.end()) {
             return false;
@@ -713,6 +722,7 @@ public:
      * @return 修改成功返回 true，否则返回 false。
      */
     bool change_motor_param(Motor& motor, uint8_t reg_id, float data) {
+        motor.clear_param(reg_id);
         if(is_in_ranges(reg_id)) {
             //居然传进来的是整型的范围 救一下
             uint32_t data_uint32 = float_to_uint32(data);
@@ -769,15 +779,6 @@ public:
      */
     static void change_motor_limit(Motor& motor, float p_max, float q_max, float t_max) {
         limit_param[motor.get_motor_type()] = { p_max, q_max, t_max };
-    }
-
-    /**
-     * @brief 修改电机位置上限参数 PMAX。
-     * @param motor 电机对象。
-     * @param p_max 位置上限。
-     */
-    static void change_motor_pmax(Motor& motor, float p_max) {
-        limit_param[motor.get_motor_type()].q_max = p_max;
     }
 
 private:
