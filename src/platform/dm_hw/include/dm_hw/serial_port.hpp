@@ -1,5 +1,5 @@
-#ifndef SERIAL_PORT_H
-#define SERIAL_PORT_H
+#ifndef SERIAL_PORT_HPP
+#define SERIAL_PORT_HPP
 
 #include <termios.h>
 #include <sys/select.h>

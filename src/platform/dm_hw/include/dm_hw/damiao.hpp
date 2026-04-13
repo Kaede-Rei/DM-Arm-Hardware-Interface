@@ -1,7 +1,7 @@
-#ifndef DAMIAO_H
-#define DAMIAO_H
+#ifndef DAMIAO_HPP
+#define DAMIAO_HPP
 
-#include "serial_port.h"
+#include "serial_port.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -172,7 +172,7 @@ static LimitParam limit_param[Num_Of_Motor] =
     {12.5, 45, 54 },    // DM8009
     {12.5,25,  200},    // DM10010L
     {12.5,20, 200},     // DM10010
-    {12.5,280,1},       // DMH3510
+    {12.5,28,1},        // DMH3510
     {12.5,45,10},       // DMH6215
     {12.5,45,10},      // DMG6220
     {12.5,10,12}        // DMJH11
