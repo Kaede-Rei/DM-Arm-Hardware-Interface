@@ -129,7 +129,7 @@ typedef struct {
     uint8_t frame_end; // 帧尾
 } CanReceiveFrame;
 
-typedef struct can_send_frame {
+typedef struct CanSendFrame {
     uint8_t frame_header[2] = { 0x55, 0xAA }; // 帧头
     uint8_t FrameLen = 0x1e; // 帧长
     uint8_t cmd = 0x03; // 命令 1：转发CAN数据帧 2：PC与设备握手，设备反馈OK 3: 非反馈CAN转发，不反馈发送状态
@@ -149,7 +149,7 @@ typedef struct can_send_frame {
         std::copy(send_data, send_data + 8, data);
     }
 
-} can_send_frame;
+} CanSendFrame;
 
 #pragma pack()
 
@@ -373,7 +373,7 @@ public:
         uint8_t can_high = (motor.get_slave_id() >> 8) & 0xff; //id high 8 bit
         std::array<uint8_t, 8> data_buf = { can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
     /**
@@ -436,7 +436,7 @@ public:
         data_buf[7] = tau_uint & 0xff;
 
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -456,7 +456,7 @@ public:
         memcpy(data_buf.data() + 4, &vel, sizeof(float));
         id += POS_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send(reinterpret_cast<uint8_t*>(&send_data), sizeof(can_send_frame));
+        serial_->send(reinterpret_cast<uint8_t*>(&send_data), sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -474,7 +474,7 @@ public:
         memcpy(data_buf.data(), &vel, sizeof(float));
         id = id + SPEED_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -496,7 +496,7 @@ public:
         memcpy(data_buf.data() + 6, &i, sizeof(uint16_t));
         id = id + POSI_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -517,7 +517,7 @@ public:
         memcpy(data_buf.data() + 4, &vel, sizeof(float));
         id += POS_CSP_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send(reinterpret_cast<uint8_t*>(&send_data), sizeof(can_send_frame));
+        serial_->send(reinterpret_cast<uint8_t*>(&send_data), sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -535,7 +535,7 @@ public:
         memcpy(data_buf.data(), &vel, sizeof(float));
         id = id + SPEED_CSP_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -553,7 +553,7 @@ public:
         memcpy(data_buf.data(), &tor, sizeof(float));
         id = id + TOR_CSP_MODE;
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         this->receive();
     }
 
@@ -673,7 +673,7 @@ public:
         uint8_t can_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x33, reg_id, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(0x7FF, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         for(uint8_t i = 0; i < MAX_RETRIES; i++) {
             usleep(RETRY_INTERVAL_US);
             receive_param();
@@ -766,7 +766,7 @@ public:
         uint8_t id_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ id_low, id_high, 0xAA, 0x01, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(0x7FF, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
         usleep(100000); // 100ms wait for save
     }
 
@@ -785,7 +785,7 @@ private:
     void control_cmd(MotorId id, uint8_t cmd) {
         std::array<uint8_t, 8> data_buf = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd };
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
     }
 
     void write_motor_param(Motor& motor, uint8_t reg_id, const uint8_t data[4]) {
@@ -798,7 +798,7 @@ private:
         data_buf[6] = data[2];
         data_buf[7] = data[3];
         send_data.modify(0x7FF, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
+        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
     }
 
     static bool is_in_ranges(int number) {
@@ -827,7 +827,7 @@ private:
 
     std::unordered_map<MotorId, Motor*> motors;
     SerialPort::SharedPtr serial_;  //serial port
-    can_send_frame send_data; //send data frame
+    CanSendFrame send_data; //send data frame
     CanReceiveFrame receive_data{};//receive data frame
 };
 
