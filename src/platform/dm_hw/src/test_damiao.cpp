@@ -1,18 +1,22 @@
 #include "dm_hw/damiao.h"
 #include "unistd.h"
 #include <cmath>
+#include <chrono>
 
 damiao::Motor M1(damiao::DMH3510, 0x01, 0x00);
 damiao::Motor M2(damiao::DM4310, 0x02, 0x00);
 std::shared_ptr<SerialPort> serial;
-damiao::Motor_Control dm(serial);
+damiao::MotorControl dm(serial);
 
 
 int main(int argc, char* argv[]) {
-    serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
-    dm = damiao::Motor_Control(serial);
+    (void)argc;
+    (void)argv;
 
-    dm.addMotor(&M1);
+    serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
+    dm = damiao::MotorControl(serial);
+
+    dm.add_motor(&M1);
     // dm.addMotor(&M2);
     dm.disable(M1);
     // dm.disable(M2);
@@ -38,7 +42,7 @@ int main(int argc, char* argv[]) {
       // std::cout<<"motor1 CTRL_MODE:"<<dm.read_motor_param(M1, damiao::CTRL_MODE)<<std::endl;
     dm.save_motor_param(M1);
     // dm.save_motor_param(M2);
-    // dm.enable(M1);
+    dm.enable(M1);
     // dm.enable(M2);
     sleep(1);
     while(1) {
@@ -46,10 +50,12 @@ int main(int argc, char* argv[]) {
         // dm.control_mit(M1, 30, 0.3, q*10, 0, 0);
         // dm.control_vel(M1, q * 100);
         // dm.control_pos_vel(M2, q*10,10);
+        (void)q;
+
         dm.refresh_motor_status(M1);
         dm.refresh_motor_status(M2);
         std::cout << "motor1--- POS:" << M1.get_position() << " VEL:" << M1.get_velocity() << " CUR:" << M1.get_tau() << std::endl;
-         // std::cout<<"motor2--- POS:"<<M2.get_position()<<" VEL:"<<M2.get_velocity()<<" CUR:"<<M2.get_tau()<<std::endl;
+        // std::cout<<"motor2--- POS:"<<M2.get_position()<<" VEL:"<<M2.get_velocity()<<" CUR:"<<M2.get_tau()<<std::endl;
         usleep(1000);
         // std::cout<<"motor1 pos:"<<M1.get_position()<<std::endl;
 

@@ -34,7 +34,7 @@ auto serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
 **MasterID不要设置为0x00**
 
 ```c++
-auto dm =damiao::Motor_Control(serial);
+auto dm =damiao::MotorControl(serial);
 damiao::Motor M1(damiao::DM4310,0x01, 0x11);
 damiao::Motor M2(damiao::DM4310,0x05, 0x15);
 ```

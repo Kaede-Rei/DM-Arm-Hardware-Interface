@@ -1,13 +1,15 @@
 #ifndef DAMIAO_H
 #define DAMIAO_H
 
-#include "SerialPort.h"
-#include <cmath>
-#include <utility>
-#include <unordered_map>
+#include "serial_port.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cmath>
+#include <cstring>
+#include <unordered_map>
+#include <utility>
+#include <iostream> // IWYU pragma: keep
 
 #define POS_MODE 0x100
 #define SPEED_MODE 0x200
@@ -17,11 +19,12 @@
 #define SPEED_CSP_MODE 0x500
 #define TOR_CSP_MODE 0x600
 
-#define max_retries 20
-#define retry_interval 50000
 namespace damiao {
 #pragma pack(1)
-#define MotorId uint32_t
+using MotorId = uint32_t;
+
+constexpr uint8_t MAX_RETRIES = 20;
+constexpr useconds_t RETRY_INTERVAL_US = 50000;
 
 /**
  * @brief Motor Type 电机类型
@@ -118,12 +121,12 @@ typedef struct {
     //     0x03: set baudrate fail 0x13: set baudrate success
     //     0xEE: communication error 此时格式段为错误码
     //     8: 超压 9: 欠压 A: 过流 B: MOS过温 C: 电机线圈过温 D: 通讯丢失 E: 过载
-    uint8_t canDataLen : 6; // 数据长度
+    uint8_t can_data_len : 6; // 数据长度
     uint8_t can_ide : 1; // 0: 标准帧 1: 扩展帧
-    uint8_t canRtr : 1; // 0: 数据帧 1: 远程帧
+    uint8_t can_rtr : 1; // 0: 数据帧 1: 远程帧
     uint32_t can_id; // 电机反馈的ID
-    uint8_t canData[8];
-    uint8_t frameEnd; // 帧尾
+    uint8_t can_data[8];
+    uint8_t frame_end; // 帧尾
 } CanReceiveFrame;
 
 typedef struct can_send_frame {
@@ -156,28 +159,27 @@ typedef struct {
     float tau_max;
 } LimitParam;
 
-//电机PMAX DQMAX TAUMAX参数
+// 电机 PMAX/DQMAX/TAUMAX 参数
 static LimitParam limit_param[Num_Of_Motor] =
 {
-    {12.5, 30, 10 }, // DM4310
-    {12.5, 50, 10 }, // DM4310_48V
-    {12.5, 8, 28 },  // DM4340
-    {12.5, 10, 28 }, // DM4340_48V
-    {12.5, 45, 20 }, // DM6006
+    {12.5, 30, 10 },    // DM4310
+    {12.5, 50, 10 },    // DM4310_48V
+    {12.5, 8, 28 },     // DM4340
+    {12.5, 10, 28 },    // DM4340_48V
+    {12.5, 45, 20 },    // DM6006
     {12.566, 20, 120 }, // DM6248P
-    {12.5, 45, 40 }, // DM8006
-    {12.5, 45, 54 }, // DM8009
-    {12.5,25,  200}, // DM10010L
-    {12.5,20, 200},  // DM10010
-    {12.5,280,1},    // DMH3510
-    {12.5,45,10},    // DMH6215
-    {12.5,45,10} ,    // DMG6220
-    {12.5,10,12}     // DMJH11
+    {12.5, 45, 40 },    // DM8006
+    {12.5, 45, 54 },    // DM8009
+    {12.5,25,  200},    // DM10010L
+    {12.5,20, 200},     // DM10010
+    {12.5,280,1},       // DMH3510
+    {12.5,45,10},       // DMH6215
+    {12.5,45,10},      // DMG6220
+    {12.5,10,12}        // DMJH11
 };
 
 class Motor {
 private:
-    /* data */
     MotorId master_id;
     MotorId slave_id;
     float state_q = 0;
@@ -197,6 +199,7 @@ private:
     };
 
     std::unordered_map<uint32_t, ValueType> param_map;
+
 public:
     /**
      * @brief Construct a new Motor object
@@ -223,37 +226,37 @@ public:
 
     DmMotorType get_motor_type() const { return this->motor_type; }
 
-    /*
+    /**
      * @brief get master id 获取主机ID
      * @return MasterID
      */
     MotorId get_master_id() const { return this->master_id; }
 
-    /*
+    /**
      * @brief get motor slave id(can id)  获取电机CAN ID
      * @return SlaveID
      */
     MotorId get_slave_id() const { return this->slave_id; }
 
-    /*
+    /**
      * @brief get motor position 获取电机位置
      * @return motor position 电机位置
      */
     float get_position() const { return this->state_q; }
 
-    /*
+    /**
      * @brief get motor velocity 获取电机速度
      * @return motor velocity 电机速度
      */
     float get_velocity() const { return this->state_dq; }
 
-    /*
+    /**
      * @brief get torque of the motor  获取电机实际输出扭矩
      * @return motor torque 电机实际输出扭矩
      */
     float get_tau() const { return this->state_tau; }
 
-    /*
+    /**
      * @brief get limit param 获取电机限制参数
      * @return limit_param 电机限制参数
      */
@@ -299,8 +302,12 @@ public:
         return 0;
     }
 
-    bool is_have_param(int key) const {
+    bool has_param(int key) const {
         return param_map.find(key) != param_map.end();
+    }
+
+    bool is_have_param(int key) const {
+        return has_param(key);
     }
 
 };
@@ -310,35 +317,34 @@ public:
  * @brief motor control class 电机控制类
  * 使用USB转CAN进行通信，linux做虚拟串口
  */
-class Motor_Control {
+class MotorControl {
 public:
 
-    /*
-    * @brief 定义电机控制对象
-    * @param serial 串口对象
-    * 默认串口为/dev/ttyACM0
-    */
-    Motor_Control(SerialPort::SharedPtr serial = nullptr) : serial_(std::move(serial)) {
+    /**
+     * @brief 构造电机控制对象。
+     * @param serial 串口对象，默认使用 /dev/ttyACM0。
+     */
+    MotorControl(SerialPort::SharedPtr serial = nullptr) : serial_(std::move(serial)) {
         if(serial_ == nullptr) {
-            //default serial port
+            // Default serial port.
             serial_ = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
         }
     }
 
-    ~Motor_Control()
+    ~MotorControl()
         = default;
 
-        /*
-        * @brief enable the motor 使能电机
-        * @param motor 电机对象
-        */
+    /**
+     * @brief 使能电机。
+     * @param motor 电机对象。
+     */
     void enable(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFC);
-        usleep(100000);//100ms
+        usleep(100000); // 100ms
         this->receive();
     }
 
-    /*
+    /**
      * @brief enable motor which is old version 使能达妙旧款电机固件 使用旧版本固件建议尽快升级成新版本
      * @param motor object 电机对象
      * @param mode 控制模式  damiao::MIT_MODE, damiao::POS_VEL_MODE, damiao::VEL_MODE, damiao::POS_FORCE_MODE
@@ -350,9 +356,9 @@ public:
         this->receive();
     }
 
-    /*
-     * @brief refresh motor status 刷新电机状态
-     * @param motor object 电机对象
+    /**
+     * @brief 刷新电机状态。
+     * @param motor 电机对象。
      */
     void refresh_motor_status(const Motor& motor) {
         uint32_t id = 0x7FF;
@@ -363,34 +369,36 @@ public:
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
         this->receive();
     }
-    /*
-    * @brief  disable the motor 失能电机
-    * @param  motor object 电机对象
-    */
+    /**
+     * @brief 失能电机。
+     * @param motor 电机对象。
+     */
     void disable(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFD);
         usleep(100000);
         this->receive();
     }
 
-    /*
-    * @brief set the now position as zero point 保存当前位置为电机零点
-    * @param motor object 电机对象
-    */
+    /**
+     * @brief 将当前位置设为零点。
+     * @param motor 电机对象。
+     */
     void set_zero_position(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFE);
         usleep(100000);
         this->receive();
     }
 
-    /* @description: MIT Control Mode MIT控制模式 具体描述请参考达妙手册
-     *@param kp: 比例系数
-     *@param kd: 微分系数
-     *@param q: position 位置
-     *@param dq: velocity 速度
-     *@param tau: torque 扭矩
-    */
-    void control_mit(Motor& DM_Motor, float kp, float kd, float q, float dq, float tau) {
+    /**
+     * @brief MIT 控制模式，具体参数定义请参考达妙手册。
+     * @param motor 电机对象。
+     * @param kp 比例系数。
+     * @param kd 微分系数。
+     * @param q 位置。
+     * @param dq 速度。
+     * @param tau 扭矩。
+     */
+    void control_mit(Motor& motor, float kp, float kd, float q, float dq, float tau) {
         // 位置、速度和扭矩采用线性映射的关系将浮点型数据转换成有符号的定点数据
         static auto float_to_uint = [](float x, float xmin, float xmax, uint8_t bits) -> uint16_t {
             float span = xmax - xmin;
@@ -398,9 +406,9 @@ public:
             uint16_t data_uint = data_norm * ((1 << bits) - 1);
             return data_uint;
             };
-        MotorId id = DM_Motor.get_slave_id();
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
-            throw std::runtime_error("Motor_Control id not found");
+            throw std::runtime_error("MotorControl id not found");
         }
         auto& m = motors[id];
         uint16_t kp_uint = float_to_uint(kp, 0, 500, 12);
@@ -425,16 +433,16 @@ public:
         this->receive();
     }
 
-    /*
-     * @description: Position Control Mode with velocity  位置速度控制模式
-     * @param pos: position 位置
-     * @param vel: velocity 速度
-     * @param DM_Motor: Motor object 电机对象
+    /**
+     * @brief 位置速度控制模式。
+     * @param motor 电机对象。
+     * @param pos 位置。
+     * @param vel 速度。
      */
-    void control_pos_vel(Motor& DM_Motor, float pos, float vel) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_pos_vel(Motor& motor, float pos, float vel) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
-            throw std::runtime_error("POS_VEL ERROR : Motor_Control id not found");
+            throw std::runtime_error("POS_VEL ERROR : MotorControl id not found");
         }
         std::array<uint8_t, 8> data_buf{};
         memcpy(data_buf.data(), &pos, sizeof(float));
@@ -445,13 +453,13 @@ public:
         this->receive();
     }
 
-    /*
-     * @description: velocity control mode 速度控制模式
-     * @param DM_Motor: motor object 电机对象
-     * @param vel: velocity 速度
+    /**
+     * @brief 速度控制模式。
+     * @param motor 电机对象。
+     * @param vel 速度。
      */
-    void control_vel(Motor& DM_Motor, float vel) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_vel(Motor& motor, float vel) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -463,17 +471,17 @@ public:
         this->receive();
     }
 
-    /*
-     * @description: Position control mode with torque  力位混合控制模式
-     * @param DM_Motor: motor object 电机对象
-     * @param pos: position 位置
-     * @param vel: velocity 速度 范围0-10000 具体参考达妙手册
-     * @param i: current 电流 范围0-10000具体参考达妙手册
+    /**
+     * @brief 力位混合控制模式。
+     * @param motor 电机对象。
+     * @param pos 位置。
+     * @param vel 速度（范围 0-10000，详见手册）。
+     * @param i 电流（范围 0-10000，详见手册）。
      */
-    void control_pos_force(Motor& DM_Motor, float pos, uint16_t vel, uint16_t i) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_pos_force(Motor& motor, float pos, uint16_t vel, uint16_t i) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
-            throw std::runtime_error("pos_force ERROR : Motor_Control id not found");
+            throw std::runtime_error("pos_force ERROR : MotorControl id not found");
         }
         std::array<uint8_t, 8> data_buf{};
         memcpy(data_buf.data(), &pos, sizeof(float));
@@ -486,16 +494,16 @@ public:
     }
 
 
-    /*
-     * @description: Position Control Mode with velocity  周期同步位置速度控制模式
-     * @param pos: position 位置
-     * @param vel: velocity 速度
-     * @param DM_Motor: Motor object 电机对象
+    /**
+     * @brief 周期同步位置速度控制模式。
+     * @param motor 电机对象。
+     * @param pos 位置。
+     * @param vel 速度。
      */
-    void control_pos_vel_csp(Motor& DM_Motor, float pos, float vel) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_pos_vel_csp(Motor& motor, float pos, float vel) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
-            throw std::runtime_error("POS_VEL_CSP ERROR : Motor_Control id not found");
+            throw std::runtime_error("POS_VEL_CSP ERROR : MotorControl id not found");
         }
         std::array<uint8_t, 8> data_buf{};
         memcpy(data_buf.data(), &pos, sizeof(float));
@@ -506,13 +514,13 @@ public:
         this->receive();
     }
 
-    /*
-     * @description: velocity control mode 周期同步速度控制模式
-     * @param DM_Motor: motor object 电机对象
-     * @param vel: velocity 速度
+    /**
+     * @brief 周期同步速度控制模式。
+     * @param motor 电机对象。
+     * @param vel 速度。
      */
-    void control_vel_csp(Motor& DM_Motor, float vel) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_vel_csp(Motor& motor, float vel) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -524,13 +532,13 @@ public:
         this->receive();
     }
 
-    /*
-     * @description: torque control mode 周期同步力矩控制模式
-     * @param DM_Motor: motor object 电机对象
-     * @param tor: torque 力矩
+    /**
+     * @brief 周期同步力矩控制模式。
+     * @param motor 电机对象。
+     * @param tor 力矩。
      */
-    void control_tor_csp(Motor& DM_Motor, float tor) {
-        MotorId id = DM_Motor.get_slave_id();
+    void control_tor_csp(Motor& motor, float tor) {
+        MotorId id = motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -542,13 +550,13 @@ public:
         this->receive();
     }
 
-    /*
-     * @description 函数库内部调用,用于解算电机can线返回的电机参数
+    /**
+     * @brief 接收并解析电机 CAN 反馈数据。
      */
     void receive() {
         serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
 
-        if(receive_data.cmd == 0x11 && receive_data.frameEnd == 0x55) // receive success
+        if(receive_data.cmd == 0x11 && receive_data.frame_end == 0x55) // receive success
         {
             static auto uint_to_float = [](uint16_t x, float xmin, float xmax, uint8_t bits) -> float {
                 float span = xmax - xmin;
@@ -557,7 +565,7 @@ public:
                 return data;
                 };
 
-            auto& data = receive_data.canData;
+            auto& data = receive_data.can_data;
 
             uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
             uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
@@ -577,11 +585,11 @@ public:
             }
             else //why the user set the masterid as 0x00 ???
             {
-                uint32_t slaveID = data[0] & 0x0f;
-                if(motors.find(slaveID) == motors.end()) {
+                uint32_t slave_id = data[0] & 0x0f;
+                if(motors.find(slave_id) == motors.end()) {
                     return;
                 }
-                auto m = motors[slaveID];
+                auto m = motors[slave_id];
                 LimitParam limit_param_receive = m->get_limit_param();
                 float receive_q = uint_to_float(q_uint, -limit_param_receive.q_max, limit_param_receive.q_max, 16);
                 float receive_dq = uint_to_float(dq_uint, -limit_param_receive.dq_max, limit_param_receive.dq_max, 12);
@@ -611,23 +619,23 @@ public:
     void receive_param() {
         serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
 
-        if(receive_data.cmd == 0x11 && receive_data.frameEnd == 0x55) // receive success
+        if(receive_data.cmd == 0x11 && receive_data.frame_end == 0x55) // receive success
         {
-            auto& data = receive_data.canData;
+            auto& data = receive_data.can_data;
             if(data[2] == 0x33 or data[2] == 0x55) {
-                uint32_t slaveID = (uint32_t(data[1]) << 8) | data[0];
-                uint8_t RID = data[3];
-                if(motors.find(slaveID) == motors.end()) {
+                uint32_t slave_id = (uint32_t(data[1]) << 8) | data[0];
+                uint8_t reg_id = data[3];
+                if(motors.find(slave_id) == motors.end()) {
                     //can not found motor id
                     return;
                 }
-                if(is_in_ranges(RID)) {
+                if(is_in_ranges(reg_id)) {
                     uint32_t data_uint32 = (uint32_t(data[7]) << 24) | (uint32_t(data[6]) << 16) | (uint32_t(data[5]) << 8) | data[4];
-                    motors[slaveID]->set_param(RID, data_uint32);
+                    motors[slave_id]->set_param(reg_id, data_uint32);
                 }
                 else {
                     float data_float = uint8_to_float(data + 4);
-                    motors[slaveID]->set_param(RID, data_float);
+                    motors[slave_id]->set_param(reg_id, data_float);
                 }
             }
             return;
@@ -635,38 +643,38 @@ public:
     }
 
     /**
-     * @brief add motor to class 添加电机
-     * @param DM_Motor : motor object 电机对象
+     * @brief 添加电机到控制器。
+     * @param motor 电机对象指针。
      */
-    void addMotor(Motor* DM_Motor) {
-        motors.insert({ DM_Motor->get_slave_id(), DM_Motor });
-        if(DM_Motor->get_master_id() != 0) {
-            motors.insert({ DM_Motor->get_master_id(), DM_Motor });
+    void add_motor(Motor* motor) {
+        motors.insert({ motor->get_slave_id(), motor });
+        if(motor->get_master_id() != 0) {
+            motors.insert({ motor->get_master_id(), motor });
         }
     }
 
-    /*
-     * @description: read motor register param 读取电机内部寄存器参数，具体寄存器列表请参考达妙的手册
-     * @param DM_Motor: motor object 电机对象
-     * @param RID: register id 寄存器ID  example: damiao::UV_Value
-     * @return: motor param 电机参数 如果没查询到返回的参数为0
+    /**
+     * @brief 读取电机寄存器参数。
+     * @param motor 电机对象。
+     * @param reg_id 寄存器 ID，例如 damiao::UV_Value。
+     * @return 查询到的参数值；未查询到时返回 0。
      */
-    float read_motor_param(Motor& DM_Motor, uint8_t RID) {
-        uint32_t id = DM_Motor.get_slave_id();
+    float read_motor_param(Motor& motor, uint8_t reg_id) {
+        uint32_t id = motor.get_slave_id();
         uint8_t can_low = id & 0xff;
         uint8_t can_high = (id >> 8) & 0xff;
-        std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x33, RID, 0x00, 0x00, 0x00, 0x00 };
+        std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x33, reg_id, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(0x7FF, data_buf.data());
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
-        for(uint8_t i = 0; i < max_retries; i++) {
-            usleep(retry_interval);
+        for(uint8_t i = 0; i < MAX_RETRIES; i++) {
+            usleep(RETRY_INTERVAL_US);
             receive_param();
-            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
-                if(is_in_ranges(RID)) {
-                    return float(motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID));
+            if(motors[motor.get_slave_id()]->has_param(reg_id)) {
+                if(is_in_ranges(reg_id)) {
+                    return float(motors[motor.get_slave_id()]->get_param_as_uint32(reg_id));
                 }
                 else {
-                    return motors[DM_Motor.get_slave_id()]->get_param_as_float(RID);
+                    return motors[motor.get_slave_id()]->get_param_as_float(reg_id);
                 }
             }
         }
@@ -675,61 +683,61 @@ public:
     }
 
 
-    /*
-     * @description: switch control mode 切换电机控制模式
-     * @param DM_Motor: motor object 电机对象
-     * @param mode: control mode 控制模式 like:damiao::MIT_MODE, damiao::POS_VEL_MODE, damiao::VEL_MODE, damiao::POS_FORCE_MODE
+    /**
+     * @brief 切换电机控制模式。
+     * @param motor 电机对象。
+     * @param mode 控制模式，如 damiao::MIT_MODE。
      */
-    bool switch_control_mode(Motor& DM_Motor, DmControlMode mode) {
+    bool switch_control_mode(Motor& motor, DmControlMode mode) {
         uint8_t write_data[4] = { (uint8_t)mode, 0x00, 0x00, 0x00 };
-        uint8_t RID = 10;
-        write_motor_param(DM_Motor, RID, write_data);
-        if(motors.find(DM_Motor.get_slave_id()) == motors.end()) {
+        uint8_t reg_id = 10;
+        write_motor_param(motor, reg_id, write_data);
+        if(motors.find(motor.get_slave_id()) == motors.end()) {
             return false;
         }
-        for(uint8_t i = 0; i < max_retries; i++) {
-            usleep(retry_interval);
+        for(uint8_t i = 0; i < MAX_RETRIES; i++) {
+            usleep(RETRY_INTERVAL_US);
             receive_param();
-            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
-                return motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID) == mode;
+            if(motors[motor.get_slave_id()]->has_param(reg_id)) {
+                return motors[motor.get_slave_id()]->get_param_as_uint32(reg_id) == mode;
             }
         }
         return false;
     }
 
-    /*
-     * @description: change motor param 修改电机内部寄存器参数 具体寄存器列表请参考达妙手册
-     * @param DM_Motor: motor object 电机对象
-     * @param RID: register id 寄存器ID
-     * @param data: param data 参数数据,大部分数据是float类型，其中如果是uint32类型的数据也可以直接输入整型的就行，函数内部有处理
-     * @return: bool true or false  是否修改成功
+    /**
+     * @brief 修改电机寄存器参数。
+     * @param motor 电机对象。
+     * @param reg_id 寄存器 ID。
+     * @param data 参数值。
+     * @return 修改成功返回 true，否则返回 false。
      */
-    bool change_motor_param(Motor& DM_Motor, uint8_t RID, float data) {
-        if(is_in_ranges(RID)) {
+    bool change_motor_param(Motor& motor, uint8_t reg_id, float data) {
+        if(is_in_ranges(reg_id)) {
             //居然传进来的是整型的范围 救一下
             uint32_t data_uint32 = float_to_uint32(data);
             uint8_t* data_uint8;
             data_uint8 = (uint8_t*)&data_uint32;
-            write_motor_param(DM_Motor, RID, data_uint8);
+            write_motor_param(motor, reg_id, data_uint8);
         }
         else {
             //is float
             uint8_t* data_uint8;
             data_uint8 = (uint8_t*)&data;
-            write_motor_param(DM_Motor, RID, data_uint8);
+            write_motor_param(motor, reg_id, data_uint8);
         }
-        if(motors.find(DM_Motor.get_slave_id()) == motors.end()) {
+        if(motors.find(motor.get_slave_id()) == motors.end()) {
             return false;
         }
-        for(uint8_t i = 0; i < max_retries; i++) {
-            usleep(retry_interval);
+        for(uint8_t i = 0; i < MAX_RETRIES; i++) {
+            usleep(RETRY_INTERVAL_US);
             receive_param();
-            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
-                if(is_in_ranges(RID)) {
-                    return motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID) == float_to_uint32(data);
+            if(motors[motor.get_slave_id()]->has_param(reg_id)) {
+                if(is_in_ranges(reg_id)) {
+                    return motors[motor.get_slave_id()]->get_param_as_uint32(reg_id) == float_to_uint32(data);
                 }
                 else {
-                    return fabsf(motors[DM_Motor.get_slave_id()]->get_param_as_float(RID) - data) < 0.1f;
+                    return fabsf(motors[motor.get_slave_id()]->get_param_as_float(reg_id) - data) < 0.1f;
                 }
             }
         }
@@ -737,40 +745,39 @@ public:
     }
 
 
-    /*
-     * @description: save all param to motor flash 保存电机的所有参数到flash里面
-     * @param DM_Motor: motor object 电机对象
-     * 电机默认参数不会写到flash里面，需要进行写操作
+    /**
+     * @brief 将电机参数保存到 Flash。
+     * @param motor 电机对象。
      */
-    void save_motor_param(Motor& DM_Motor) {
-        disable(DM_Motor);
-        uint32_t id = DM_Motor.get_slave_id();
+    void save_motor_param(Motor& motor) {
+        disable(motor);
+        uint32_t id = motor.get_slave_id();
         uint8_t id_low = id & 0xff;
         uint8_t id_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ id_low, id_high, 0xAA, 0x01, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(0x7FF, data_buf.data());
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
-        usleep(100000);//100ms wait for save
+        usleep(100000); // 100ms wait for save
     }
 
-    /*
-     * @description: change motor limit param 修改电机限制参数，这个修改的不是电机内部的寄存器参数，而是电机的限制参数
-     * @param DM_Motor: motor object 电机对象
-     * @param P_MAX: position max 位置最大值
-     * @param q_max: velocity max 速度最大值
-     * @param T_MAX: torque max 扭矩最大值
+    /**
+     * @brief 修改电机限制参数（非寄存器参数）。
+     * @param motor 电机对象。
+     * @param p_max 位置上限。
+     * @param q_max 速度上限。
+     * @param t_max 扭矩上限。
      */
-    static void change_motor_limit(Motor& DM_Motor, float P_MAX, float q_max, float T_MAX) {
-        limit_param[DM_Motor.get_motor_type()] = { P_MAX,q_max,T_MAX };
+    static void change_motor_limit(Motor& motor, float p_max, float q_max, float t_max) {
+        limit_param[motor.get_motor_type()] = { p_max, q_max, t_max };
     }
 
-    /*
-     * @description: change motor PMAX 修改电机的最大PMAX
-     * @param DM_Motor: motor object 电机对象
-     * @param P_MAX: position max 位置最大值
+    /**
+     * @brief 修改电机位置上限参数 PMAX。
+     * @param motor 电机对象。
+     * @param p_max 位置上限。
      */
-    static void change_motor_pmax(Motor& DM_Motor, float P_MAX) {
-        limit_param[DM_Motor.get_motor_type()].q_max = P_MAX;
+    static void change_motor_pmax(Motor& motor, float p_max) {
+        limit_param[motor.get_motor_type()].q_max = p_max;
     }
 
 private:
@@ -780,11 +787,11 @@ private:
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
     }
 
-    void write_motor_param(Motor& DM_Motor, uint8_t RID, const uint8_t data[4]) {
-        uint32_t id = DM_Motor.get_slave_id();
+    void write_motor_param(Motor& motor, uint8_t reg_id, const uint8_t data[4]) {
+        uint32_t id = motor.get_slave_id();
         uint8_t can_low = id & 0xff;
         uint8_t can_high = (id >> 8) & 0xff;
-        std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x55, RID, 0x00, 0x00, 0x00, 0x00 };
+        std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x55, reg_id, 0x00, 0x00, 0x00, 0x00 };
         data_buf[4] = data[0];
         data_buf[5] = data[1];
         data_buf[6] = data[2];

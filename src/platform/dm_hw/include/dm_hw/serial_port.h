@@ -9,17 +9,8 @@
 #include <sys/ioctl.h>
 #include <linux/serial.h>
 #include <unistd.h>
-#include <iostream>
 #include <memory>
-#include <chrono>
 #include <queue>
-
-void print_data(const uint8_t* data, uint8_t len) {
-    for(int i = 0; i < len; i++) {
-        printf("%02x ", data[i]);
-    }
-    printf("\n");
-}
 
 class SerialPort {
 public:
@@ -27,7 +18,7 @@ public:
 
     SerialPort(std::string port, speed_t baudrate, int timeout_ms = 2) {
         set_timeout(timeout_ms);
-        Init(port, baudrate);
+        init(port, baudrate);
     }
 
     ~SerialPort() {
@@ -69,7 +60,7 @@ public:
         }
 
         // 查找帧头
-        while(recv_queue.size() >= len) {
+        while(recv_queue.size() >= static_cast<size_t>(len)) {
             if(recv_queue.front() != head) {
                 recv_queue.pop();
                 continue;
@@ -77,7 +68,7 @@ public:
             break;
         }
 
-        if(recv_queue.size() < len) return;
+        if(recv_queue.size() < static_cast<size_t>(len)) return;
 
         // 读取数据
         for(int i = 0; i < len; i++) {
@@ -92,19 +83,22 @@ public:
     }
 
 private:
-    void Init(std::string port, speed_t baudrate) {
+    void init(std::string port, speed_t baudrate) {
         int ret;
-        // Open serial port
+
         fd_ = open(port.c_str(), O_RDWR | O_NOCTTY);
         if(fd_ < 0) {
             printf("Open serial port %s failed\n", port.c_str());
             exit(-1);
         }
 
-        // Set attributes
         struct termios option;
         memset(&option, 0, sizeof(option));
+
         ret = tcgetattr(fd_, &option);
+        if(ret != 0) {
+            perror("tcgetattr");
+        }
 
         option.c_oflag = 0;
         option.c_lflag = 0;
@@ -114,17 +108,25 @@ private:
         cfsetospeed(&option, baudrate);
 
         option.c_cflag &= ~CSIZE;
-        option.c_cflag |= CS8; // 8
-        option.c_cflag &= ~PARENB; // no parity
-        option.c_iflag &= ~INPCK; // no parity
-        option.c_cflag &= ~CSTOPB; // 1 stop bit
+        option.c_cflag |= CS8;
+        option.c_cflag &= ~PARENB;
+        option.c_iflag &= ~INPCK;
+        option.c_cflag &= ~CSTOPB;
+        option.c_cflag |= (CLOCAL | CREAD);
 
         option.c_cc[VTIME] = 0;
         option.c_cc[VMIN] = 0;
         option.c_lflag |= CBAUDEX;
 
         ret = tcflush(fd_, TCIFLUSH);
+        if(ret != 0) {
+            perror("tcflush");
+        }
+
         ret = tcsetattr(fd_, TCSANOW, &option);
+        if(ret != 0) {
+            perror("tcsetattr");
+        }
     }
 
     int fd_;
