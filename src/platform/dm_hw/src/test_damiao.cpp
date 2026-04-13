@@ -17,11 +17,11 @@ int main(int argc, char* argv[]) {
     dm.disable(M1);
     // dm.disable(M2);
     sleep(1);
-    if(dm.switchControlMode(M1, damiao::VEL_MODE))
+    if(dm.switch_control_mode(M1, damiao::VEL_MODE))
         std::cout << "Switch to VEL_MODE Success" << std::endl;
-      // if(dm.switchControlMode(M1, damiao::MIT_MODE))
+      // if(dm.switch_control_mode(M1, damiao::MIT_MODE))
       //   std::cout << "Switch to MIT Success" << std::endl;
-      // if(dm.switchControlMode(M2, damiao::POS_VEL_MODE))
+      // if(dm.switch_control_mode(M2, damiao::POS_VEL_MODE))
       //   std::cout << "Switch to POS_VEL_MODE Success" << std::endl;
       // std::cout<<"motor1 PMAX:"<<dm.read_motor_param(M1, damiao::PMAX)<<std::endl;
       // std::cout<<"motor2 UV_Value:"<<dm.read_motor_param(M1, damiao::UV_Value)<<std::endl;
@@ -44,14 +44,14 @@ int main(int argc, char* argv[]) {
     while(1) {
         float q = sin(std::chrono::system_clock::now().time_since_epoch().count() / 1e9);
         // dm.control_mit(M1, 30, 0.3, q*10, 0, 0);
-        // dm.control_vel(M1, q*100);
+        // dm.control_vel(M1, q * 100);
         // dm.control_pos_vel(M2, q*10,10);
         dm.refresh_motor_status(M1);
         dm.refresh_motor_status(M2);
-        std::cout << "motor1--- POS:" << M1.Get_Position() << " VEL:" << M1.Get_Velocity() << " CUR:" << M1.Get_tau() << std::endl;
-         // std::cout<<"motor2--- POS:"<<M2.Get_Position()<<" VEL:"<<M2.Get_Velocity()<<" CUR:"<<M2.Get_tau()<<std::endl;
+        std::cout << "motor1--- POS:" << M1.get_position() << " VEL:" << M1.get_velocity() << " CUR:" << M1.get_tau() << std::endl;
+         // std::cout<<"motor2--- POS:"<<M2.get_position()<<" VEL:"<<M2.get_velocity()<<" CUR:"<<M2.get_tau()<<std::endl;
         usleep(1000);
-        // std::cout<<"motor1 pos:"<<M1.Get_Position()<<std::endl;
+        // std::cout<<"motor1 pos:"<<M1.get_position()<<std::endl;
 
     }
 

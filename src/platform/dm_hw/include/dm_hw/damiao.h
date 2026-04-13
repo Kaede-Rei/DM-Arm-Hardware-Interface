@@ -4,13 +4,10 @@
 #include "SerialPort.h"
 #include <cmath>
 #include <utility>
-#include <vector>
 #include <unordered_map>
 #include <array>
-#include <variant>
 #include <cstdint>
 #include <cmath>
-
 
 #define POS_MODE 0x100
 #define SPEED_MODE 0x200
@@ -24,12 +21,12 @@
 #define retry_interval 50000
 namespace damiao {
 #pragma pack(1)
-#define Motor_id uint32_t
+#define MotorId uint32_t
 
-    /*!
-     * @brief Motor Type 电机类型
-     */
-enum DM_Motor_Type {
+/**
+ * @brief Motor Type 电机类型
+ */
+enum DmMotorType {
     DM4310,
     DM4310_48V,
     DM4340,
@@ -47,10 +44,11 @@ enum DM_Motor_Type {
     Num_Of_Motor
 };
 
-/*
+/**
  * @brief 电机控制模式
+ * @note 这是改控制模式对应的编码
  */
-enum Control_Mode {//这是改控制模式对应的编码
+enum DmControlMode {
     MIT_MODE = 1,
     POS_VEL_MODE = 2,
     VEL_MODE = 3,
@@ -61,10 +59,10 @@ enum Control_Mode {//这是改控制模式对应的编码
     TORQUE_CSP_MODE = 7,
 };
 
-/*
+/**
  * @brief 寄存器列表 具体参考达妙手册
  */
-enum DM_REG {
+enum DmReg {
     UV_Value = 0,
     KT_Value = 1,
     OT_Value = 2,
@@ -113,38 +111,38 @@ enum DM_REG {
 };
 
 typedef struct {
-    uint8_t FrameHeader;
-    uint8_t CMD;// 命令 0x00: 心跳
+    uint8_t frame_header;
+    uint8_t cmd;// 命令 0x00: 心跳
     //     0x01: receive fail 0x11: receive success
     //     0x02: send fail 0x12: send success
     //     0x03: set baudrate fail 0x13: set baudrate success
     //     0xEE: communication error 此时格式段为错误码
     //     8: 超压 9: 欠压 A: 过流 B: MOS过温 C: 电机线圈过温 D: 通讯丢失 E: 过载
     uint8_t canDataLen : 6; // 数据长度
-    uint8_t canIde : 1; // 0: 标准帧 1: 扩展帧
+    uint8_t can_ide : 1; // 0: 标准帧 1: 扩展帧
     uint8_t canRtr : 1; // 0: 数据帧 1: 远程帧
-    uint32_t canId; // 电机反馈的ID
+    uint32_t can_id; // 电机反馈的ID
     uint8_t canData[8];
     uint8_t frameEnd; // 帧尾
-} CAN_Receive_Frame;
+} CanReceiveFrame;
 
 typedef struct can_send_frame {
-    uint8_t FrameHeader[2] = { 0x55, 0xAA }; // 帧头
+    uint8_t frame_header[2] = { 0x55, 0xAA }; // 帧头
     uint8_t FrameLen = 0x1e; // 帧长
-    uint8_t CMD = 0x03; // 命令 1：转发CAN数据帧 2：PC与设备握手，设备反馈OK 3: 非反馈CAN转发，不反馈发送状态
-    uint32_t sendTimes = 1; // 发送次数
-    uint32_t timeInterval = 10; // 时间间隔
-    uint8_t IDType = 0; // ID类型 0：标准帧 1：扩展帧
-    uint32_t canId = 0x01; // CAN ID 使用电机ID作为CAN ID
-    uint8_t frameType = 0; // 帧类型 0： 数据帧 1：远程帧
+    uint8_t cmd = 0x03; // 命令 1：转发CAN数据帧 2：PC与设备握手，设备反馈OK 3: 非反馈CAN转发，不反馈发送状态
+    uint32_t send_times = 1; // 发送次数
+    uint32_t time_interval = 10; // 时间间隔
+    uint8_t id_type = 0; // ID类型 0：标准帧 1：扩展帧
+    uint32_t can_id = 0x01; // CAN ID 使用电机ID作为CAN ID
+    uint8_t frame_type = 0; // 帧类型 0： 数据帧 1：远程帧
     uint8_t len = 0x08; // len
-    uint8_t idAcc = 0;
-    uint8_t dataAcc = 0;
+    uint8_t id_acc = 0;
+    uint8_t data_acc = 0;
     uint8_t data[8] = { 0 };
     uint8_t crc = 0; // 未解析，任意值
 
-    void modify(const Motor_id id, const uint8_t* send_data) {
-        canId = id;
+    void modify(const MotorId id, const uint8_t* send_data) {
+        can_id = id;
         std::copy(send_data, send_data + 8, data);
     }
 
@@ -153,49 +151,49 @@ typedef struct can_send_frame {
 #pragma pack()
 
 typedef struct {
-    float Q_MAX;
-    float DQ_MAX;
-    float TAU_MAX;
-}Limit_param;
+    float q_max;
+    float dq_max;
+    float tau_max;
+} LimitParam;
 
 //电机PMAX DQMAX TAUMAX参数
-Limit_param limit_param[Num_Of_Motor] =
+static LimitParam limit_param[Num_Of_Motor] =
 {
-        {12.5, 30, 10 }, // DM4310
-        {12.5, 50, 10 }, // DM4310_48V
-        {12.5, 8, 28 },  // DM4340
-        {12.5, 10, 28 }, // DM4340_48V
-        {12.5, 45, 20 }, // DM6006
-        {12.566, 20, 120 }, // DM6248P
-        {12.5, 45, 40 }, // DM8006
-        {12.5, 45, 54 }, // DM8009
-        {12.5,25,  200}, // DM10010L
-        {12.5,20, 200},  // DM10010
-        {12.5,280,1},    // DMH3510
-        {12.5,45,10},    // DMH6215
-        {12.5,45,10} ,    // DMG6220
-        {12.5,10,12}     // DMJH11
+    {12.5, 30, 10 }, // DM4310
+    {12.5, 50, 10 }, // DM4310_48V
+    {12.5, 8, 28 },  // DM4340
+    {12.5, 10, 28 }, // DM4340_48V
+    {12.5, 45, 20 }, // DM6006
+    {12.566, 20, 120 }, // DM6248P
+    {12.5, 45, 40 }, // DM8006
+    {12.5, 45, 54 }, // DM8009
+    {12.5,25,  200}, // DM10010L
+    {12.5,20, 200},  // DM10010
+    {12.5,280,1},    // DMH3510
+    {12.5,45,10},    // DMH6215
+    {12.5,45,10} ,    // DMG6220
+    {12.5,10,12}     // DMJH11
 };
 
 class Motor {
 private:
     /* data */
-    Motor_id Master_id;
-    Motor_id Slave_id;
+    MotorId master_id;
+    MotorId slave_id;
     float state_q = 0;
     float state_dq = 0;
     float state_tau = 0;
-    Limit_param limit_param{};
-    DM_Motor_Type Motor_Type;
+    LimitParam limit_param{};
+    DmMotorType motor_type;
 
     union ValueUnion {
-        float floatValue;
-        uint32_t uint32Value;
+        float float_value;
+        uint32_t uint32_value;
     };
 
     struct ValueType {
         ValueUnion value;
-        bool isFloat;
+        bool is_float;
     };
 
     std::unordered_map<uint32_t, ValueType> param_map;
@@ -203,17 +201,17 @@ public:
     /**
      * @brief Construct a new Motor object
      *
-     * @param Motor_Type 电机类型
-     * @param Slave_id canId 从机ID即电机ID
-     * @param Master_id 主机ID建议主机ID不要都设为0x00
+     * @param motor_type 电机类型
+     * @param slave_id can_id 从机ID即电机ID
+     * @param master_id 主机ID建议主机ID不要都设为0x00
      *
      */
-    Motor(DM_Motor_Type Motor_Type, Motor_id Slave_id, Motor_id Master_id)
-        : Master_id(Master_id), Slave_id(Slave_id), Motor_Type(Motor_Type) {
-        this->limit_param = damiao::limit_param[Motor_Type];
+    Motor(DmMotorType motor_type, MotorId slave_id, MotorId master_id)
+        : master_id(master_id), slave_id(slave_id), motor_type(motor_type) {
+        this->limit_param = damiao::limit_param[motor_type];
     }
 
-    Motor() : Master_id(0x01), Slave_id(0x11), Motor_Type(DM4310) {
+    Motor() : master_id(0x01), slave_id(0x11), motor_type(DM4310) {
         this->limit_param = damiao::limit_param[DM4310];
     }
 
@@ -223,63 +221,63 @@ public:
         this->state_tau = tau;
     }
 
-    DM_Motor_Type GetMotorType() const { return this->Motor_Type; }
+    DmMotorType get_motor_type() const { return this->motor_type; }
 
     /*
      * @brief get master id 获取主机ID
      * @return MasterID
      */
-    Motor_id GetMasterId() const { return this->Master_id; }
+    MotorId get_master_id() const { return this->master_id; }
 
     /*
      * @brief get motor slave id(can id)  获取电机CAN ID
      * @return SlaveID
      */
-    Motor_id GetSlaveId() const { return this->Slave_id; }
+    MotorId get_slave_id() const { return this->slave_id; }
 
     /*
      * @brief get motor position 获取电机位置
      * @return motor position 电机位置
      */
-    float Get_Position() const { return this->state_q; }
+    float get_position() const { return this->state_q; }
 
     /*
      * @brief get motor velocity 获取电机速度
      * @return motor velocity 电机速度
      */
-    float Get_Velocity() const { return this->state_dq; }
+    float get_velocity() const { return this->state_dq; }
 
     /*
      * @brief get torque of the motor  获取电机实际输出扭矩
      * @return motor torque 电机实际输出扭矩
      */
-    float Get_tau() const { return this->state_tau; }
+    float get_tau() const { return this->state_tau; }
 
     /*
      * @brief get limit param 获取电机限制参数
      * @return limit_param 电机限制参数
      */
-    Limit_param get_limit_param() { return limit_param; }
+    LimitParam get_limit_param() { return limit_param; }
 
     void set_param(int key, float value) {
         ValueType v{};
-        v.value.floatValue = value;
-        v.isFloat = true;
+        v.value.float_value = value;
+        v.is_float = true;
         param_map[key] = v;
     }
 
     void set_param(int key, uint32_t value) {
         ValueType v{};
-        v.value.uint32Value = value;
-        v.isFloat = false;
+        v.value.uint32_value = value;
+        v.is_float = false;
         param_map[key] = v;
     }
 
     float get_param_as_float(int key) const {
         auto it = param_map.find(key);
         if(it != param_map.end()) {
-            if(it->second.isFloat) {
-                return it->second.value.floatValue;
+            if(it->second.is_float) {
+                return it->second.value.float_value;
             }
             else {
                 return 0;
@@ -291,8 +289,8 @@ public:
     uint32_t get_param_as_uint32(int key) const {
         auto it = param_map.find(key);
         if(it != param_map.end()) {
-            if(!it->second.isFloat) {
-                return it->second.value.uint32Value;
+            if(!it->second.is_float) {
+                return it->second.value.uint32_value;
             }
             else {
                 return 0;
@@ -310,7 +308,6 @@ public:
 
 /**
  * @brief motor control class 电机控制类
- *
  * 使用USB转CAN进行通信，linux做虚拟串口
  */
 class Motor_Control {
@@ -336,7 +333,7 @@ public:
         * @param motor 电机对象
         */
     void enable(const Motor& motor) {
-        control_cmd(motor.GetSlaveId(), 0xFC);
+        control_cmd(motor.get_slave_id(), 0xFC);
         usleep(100000);//100ms
         this->receive();
     }
@@ -346,8 +343,8 @@ public:
      * @param motor object 电机对象
      * @param mode 控制模式  damiao::MIT_MODE, damiao::POS_VEL_MODE, damiao::VEL_MODE, damiao::POS_FORCE_MODE
      */
-    void enable_old(const Motor& motor, Control_Mode mode) {
-        uint32_t id = ((mode - 1) << 2) + motor.GetSlaveId();
+    void enable_old(const Motor& motor, DmControlMode mode) {
+        uint32_t id = ((mode - 1) << 2) + motor.get_slave_id();
         control_cmd(id, 0xFC);
         usleep(100000);
         this->receive();
@@ -359,8 +356,8 @@ public:
      */
     void refresh_motor_status(const Motor& motor) {
         uint32_t id = 0x7FF;
-        uint8_t can_low = motor.GetSlaveId() & 0xff; // id low 8 bit
-        uint8_t can_high = (motor.GetSlaveId() >> 8) & 0xff; //id high 8 bit
+        uint8_t can_low = motor.get_slave_id() & 0xff; // id low 8 bit
+        uint8_t can_high = (motor.get_slave_id() >> 8) & 0xff; //id high 8 bit
         std::array<uint8_t, 8> data_buf = { can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(id, data_buf.data());
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
@@ -371,7 +368,7 @@ public:
     * @param  motor object 电机对象
     */
     void disable(const Motor& motor) {
-        control_cmd(motor.GetSlaveId(), 0xFD);
+        control_cmd(motor.get_slave_id(), 0xFD);
         usleep(100000);
         this->receive();
     }
@@ -381,7 +378,7 @@ public:
     * @param motor object 电机对象
     */
     void set_zero_position(const Motor& motor) {
-        control_cmd(motor.GetSlaveId(), 0xFE);
+        control_cmd(motor.get_slave_id(), 0xFE);
         usleep(100000);
         this->receive();
     }
@@ -401,17 +398,17 @@ public:
             uint16_t data_uint = data_norm * ((1 << bits) - 1);
             return data_uint;
             };
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("Motor_Control id not found");
         }
         auto& m = motors[id];
         uint16_t kp_uint = float_to_uint(kp, 0, 500, 12);
         uint16_t kd_uint = float_to_uint(kd, 0, 5, 12);
-        Limit_param limit_param_cmd = m->get_limit_param();
-        uint16_t q_uint = float_to_uint(q, -limit_param_cmd.Q_MAX, limit_param_cmd.Q_MAX, 16);
-        uint16_t dq_uint = float_to_uint(dq, -limit_param_cmd.DQ_MAX, limit_param_cmd.DQ_MAX, 12);
-        uint16_t tau_uint = float_to_uint(tau, -limit_param_cmd.TAU_MAX, limit_param_cmd.TAU_MAX, 12);
+        LimitParam limit_param_cmd = m->get_limit_param();
+        uint16_t q_uint = float_to_uint(q, -limit_param_cmd.q_max, limit_param_cmd.q_max, 16);
+        uint16_t dq_uint = float_to_uint(dq, -limit_param_cmd.dq_max, limit_param_cmd.dq_max, 12);
+        uint16_t tau_uint = float_to_uint(tau, -limit_param_cmd.tau_max, limit_param_cmd.tau_max, 12);
 
         std::array<uint8_t, 8> data_buf{};
         data_buf[0] = (q_uint >> 8) & 0xff;
@@ -435,7 +432,7 @@ public:
      * @param DM_Motor: Motor object 电机对象
      */
     void control_pos_vel(Motor& DM_Motor, float pos, float vel) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("POS_VEL ERROR : Motor_Control id not found");
         }
@@ -454,7 +451,7 @@ public:
      * @param vel: velocity 速度
      */
     void control_vel(Motor& DM_Motor, float vel) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -474,7 +471,7 @@ public:
      * @param i: current 电流 范围0-10000具体参考达妙手册
      */
     void control_pos_force(Motor& DM_Motor, float pos, uint16_t vel, uint16_t i) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("pos_force ERROR : Motor_Control id not found");
         }
@@ -496,7 +493,7 @@ public:
      * @param DM_Motor: Motor object 电机对象
      */
     void control_pos_vel_csp(Motor& DM_Motor, float pos, float vel) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("POS_VEL_CSP ERROR : Motor_Control id not found");
         }
@@ -515,7 +512,7 @@ public:
      * @param vel: velocity 速度
      */
     void control_vel_csp(Motor& DM_Motor, float vel) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -533,7 +530,7 @@ public:
      * @param tor: torque 力矩
      */
     void control_tor_csp(Motor& DM_Motor, float tor) {
-        Motor_id id = DM_Motor.GetSlaveId();
+        MotorId id = DM_Motor.get_slave_id();
         if(motors.find(id) == motors.end()) {
             throw std::runtime_error("VEL ERROR : id not found");
         }
@@ -549,9 +546,9 @@ public:
      * @description 函数库内部调用,用于解算电机can线返回的电机参数
      */
     void receive() {
-        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CAN_Receive_Frame));
+        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
 
-        if(receive_data.CMD == 0x11 && receive_data.frameEnd == 0x55) // receive success
+        if(receive_data.cmd == 0x11 && receive_data.frameEnd == 0x55) // receive success
         {
             static auto uint_to_float = [](uint16_t x, float xmin, float xmax, uint8_t bits) -> float {
                 float span = xmax - xmin;
@@ -565,17 +562,17 @@ public:
             uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
             uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
             uint16_t tau_uint = (uint16_t(data[4] & 0xf) << 8) | data[5];
-            if(receive_data.canId != 0x00)   //make sure the motor id is not 0x00
+            if(receive_data.can_id != 0x00)   //make sure the motor id is not 0x00
             {
-                if(motors.find(receive_data.canId) == motors.end()) {
+                if(motors.find(receive_data.can_id) == motors.end()) {
                     return;
                 }
 
-                auto m = motors[receive_data.canId];
-                Limit_param limit_param_receive = m->get_limit_param();
-                float receive_q = uint_to_float(q_uint, -limit_param_receive.Q_MAX, limit_param_receive.Q_MAX, 16);
-                float receive_dq = uint_to_float(dq_uint, -limit_param_receive.DQ_MAX, limit_param_receive.DQ_MAX, 12);
-                float receive_tau = uint_to_float(tau_uint, -limit_param_receive.TAU_MAX, limit_param_receive.TAU_MAX, 12);
+                auto m = motors[receive_data.can_id];
+                LimitParam limit_param_receive = m->get_limit_param();
+                float receive_q = uint_to_float(q_uint, -limit_param_receive.q_max, limit_param_receive.q_max, 16);
+                float receive_dq = uint_to_float(dq_uint, -limit_param_receive.dq_max, limit_param_receive.dq_max, 12);
+                float receive_tau = uint_to_float(tau_uint, -limit_param_receive.tau_max, limit_param_receive.tau_max, 12);
                 m->receive_data(receive_q, receive_dq, receive_tau);
             }
             else //why the user set the masterid as 0x00 ???
@@ -585,36 +582,36 @@ public:
                     return;
                 }
                 auto m = motors[slaveID];
-                Limit_param limit_param_receive = m->get_limit_param();
-                float receive_q = uint_to_float(q_uint, -limit_param_receive.Q_MAX, limit_param_receive.Q_MAX, 16);
-                float receive_dq = uint_to_float(dq_uint, -limit_param_receive.DQ_MAX, limit_param_receive.DQ_MAX, 12);
-                float receive_tau = uint_to_float(tau_uint, -limit_param_receive.TAU_MAX, limit_param_receive.TAU_MAX, 12);
+                LimitParam limit_param_receive = m->get_limit_param();
+                float receive_q = uint_to_float(q_uint, -limit_param_receive.q_max, limit_param_receive.q_max, 16);
+                float receive_dq = uint_to_float(dq_uint, -limit_param_receive.dq_max, limit_param_receive.dq_max, 12);
+                float receive_tau = uint_to_float(tau_uint, -limit_param_receive.tau_max, limit_param_receive.tau_max, 12);
                 m->receive_data(receive_q, receive_dq, receive_tau);
             }
             return;
         }
-        else if(receive_data.CMD == 0x01) // receive fail
+        else if(receive_data.cmd == 0x01) // receive fail
         {
             /* code */
         }
-        else if(receive_data.CMD == 0x02) // send fail
+        else if(receive_data.cmd == 0x02) // send fail
         {
             /* code */
         }
-        else if(receive_data.CMD == 0x03) // send success
+        else if(receive_data.cmd == 0x03) // send success
         {
-            /* code */
+                /* code */
         }
-        else if(receive_data.CMD == 0xEE) // communication error
+        else if(receive_data.cmd == 0xEE) // communication error
         {
             /* code */
         }
     }
 
     void receive_param() {
-        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CAN_Receive_Frame));
+        serial_->recv((uint8_t*)&receive_data, 0xAA, sizeof(CanReceiveFrame));
 
-        if(receive_data.CMD == 0x11 && receive_data.frameEnd == 0x55) // receive success
+        if(receive_data.cmd == 0x11 && receive_data.frameEnd == 0x55) // receive success
         {
             auto& data = receive_data.canData;
             if(data[2] == 0x33 or data[2] == 0x55) {
@@ -642,9 +639,9 @@ public:
      * @param DM_Motor : motor object 电机对象
      */
     void addMotor(Motor* DM_Motor) {
-        motors.insert({ DM_Motor->GetSlaveId(), DM_Motor });
-        if(DM_Motor->GetMasterId() != 0) {
-            motors.insert({ DM_Motor->GetMasterId(), DM_Motor });
+        motors.insert({ DM_Motor->get_slave_id(), DM_Motor });
+        if(DM_Motor->get_master_id() != 0) {
+            motors.insert({ DM_Motor->get_master_id(), DM_Motor });
         }
     }
 
@@ -655,7 +652,7 @@ public:
      * @return: motor param 电机参数 如果没查询到返回的参数为0
      */
     float read_motor_param(Motor& DM_Motor, uint8_t RID) {
-        uint32_t id = DM_Motor.GetSlaveId();
+        uint32_t id = DM_Motor.get_slave_id();
         uint8_t can_low = id & 0xff;
         uint8_t can_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x33, RID, 0x00, 0x00, 0x00, 0x00 };
@@ -664,12 +661,12 @@ public:
         for(uint8_t i = 0; i < max_retries; i++) {
             usleep(retry_interval);
             receive_param();
-            if(motors[DM_Motor.GetSlaveId()]->is_have_param(RID)) {
+            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
                 if(is_in_ranges(RID)) {
-                    return float(motors[DM_Motor.GetSlaveId()]->get_param_as_uint32(RID));
+                    return float(motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID));
                 }
                 else {
-                    return motors[DM_Motor.GetSlaveId()]->get_param_as_float(RID);
+                    return motors[DM_Motor.get_slave_id()]->get_param_as_float(RID);
                 }
             }
         }
@@ -683,18 +680,18 @@ public:
      * @param DM_Motor: motor object 电机对象
      * @param mode: control mode 控制模式 like:damiao::MIT_MODE, damiao::POS_VEL_MODE, damiao::VEL_MODE, damiao::POS_FORCE_MODE
      */
-    bool switchControlMode(Motor& DM_Motor, Control_Mode mode) {
+    bool switch_control_mode(Motor& DM_Motor, DmControlMode mode) {
         uint8_t write_data[4] = { (uint8_t)mode, 0x00, 0x00, 0x00 };
         uint8_t RID = 10;
         write_motor_param(DM_Motor, RID, write_data);
-        if(motors.find(DM_Motor.GetSlaveId()) == motors.end()) {
+        if(motors.find(DM_Motor.get_slave_id()) == motors.end()) {
             return false;
         }
         for(uint8_t i = 0; i < max_retries; i++) {
             usleep(retry_interval);
             receive_param();
-            if(motors[DM_Motor.GetSlaveId()]->is_have_param(RID)) {
-                return motors[DM_Motor.GetSlaveId()]->get_param_as_uint32(RID) == mode;
+            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
+                return motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID) == mode;
             }
         }
         return false;
@@ -721,18 +718,18 @@ public:
             data_uint8 = (uint8_t*)&data;
             write_motor_param(DM_Motor, RID, data_uint8);
         }
-        if(motors.find(DM_Motor.GetSlaveId()) == motors.end()) {
+        if(motors.find(DM_Motor.get_slave_id()) == motors.end()) {
             return false;
         }
         for(uint8_t i = 0; i < max_retries; i++) {
             usleep(retry_interval);
             receive_param();
-            if(motors[DM_Motor.GetSlaveId()]->is_have_param(RID)) {
+            if(motors[DM_Motor.get_slave_id()]->is_have_param(RID)) {
                 if(is_in_ranges(RID)) {
-                    return motors[DM_Motor.GetSlaveId()]->get_param_as_uint32(RID) == float_to_uint32(data);
+                    return motors[DM_Motor.get_slave_id()]->get_param_as_uint32(RID) == float_to_uint32(data);
                 }
                 else {
-                    return fabsf(motors[DM_Motor.GetSlaveId()]->get_param_as_float(RID) - data) < 0.1f;
+                    return fabsf(motors[DM_Motor.get_slave_id()]->get_param_as_float(RID) - data) < 0.1f;
                 }
             }
         }
@@ -747,7 +744,7 @@ public:
      */
     void save_motor_param(Motor& DM_Motor) {
         disable(DM_Motor);
-        uint32_t id = DM_Motor.GetSlaveId();
+        uint32_t id = DM_Motor.get_slave_id();
         uint8_t id_low = id & 0xff;
         uint8_t id_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ id_low, id_high, 0xAA, 0x01, 0x00, 0x00, 0x00, 0x00 };
@@ -760,11 +757,11 @@ public:
      * @description: change motor limit param 修改电机限制参数，这个修改的不是电机内部的寄存器参数，而是电机的限制参数
      * @param DM_Motor: motor object 电机对象
      * @param P_MAX: position max 位置最大值
-     * @param Q_MAX: velocity max 速度最大值
+     * @param q_max: velocity max 速度最大值
      * @param T_MAX: torque max 扭矩最大值
      */
-    static void changeMotorLimit(Motor& DM_Motor, float P_MAX, float Q_MAX, float T_MAX) {
-        limit_param[DM_Motor.GetMotorType()] = { P_MAX,Q_MAX,T_MAX };
+    static void change_motor_limit(Motor& DM_Motor, float P_MAX, float q_max, float T_MAX) {
+        limit_param[DM_Motor.get_motor_type()] = { P_MAX,q_max,T_MAX };
     }
 
     /*
@@ -772,19 +769,19 @@ public:
      * @param DM_Motor: motor object 电机对象
      * @param P_MAX: position max 位置最大值
      */
-    static void changeMotorPMAX(Motor& DM_Motor, float P_MAX) {
-        limit_param[DM_Motor.GetMotorType()].Q_MAX = P_MAX;
+    static void change_motor_pmax(Motor& DM_Motor, float P_MAX) {
+        limit_param[DM_Motor.get_motor_type()].q_max = P_MAX;
     }
 
 private:
-    void control_cmd(Motor_id id, uint8_t cmd) {
+    void control_cmd(MotorId id, uint8_t cmd) {
         std::array<uint8_t, 8> data_buf = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd };
         send_data.modify(id, data_buf.data());
         serial_->send((uint8_t*)&send_data, sizeof(can_send_frame));
     }
 
     void write_motor_param(Motor& DM_Motor, uint8_t RID, const uint8_t data[4]) {
-        uint32_t id = DM_Motor.GetSlaveId();
+        uint32_t id = DM_Motor.get_slave_id();
         uint8_t can_low = id & 0xff;
         uint8_t can_high = (id >> 8) & 0xff;
         std::array<uint8_t, 8> data_buf{ can_low, can_high, 0x55, RID, 0x00, 0x00, 0x00, 0x00 };
@@ -820,10 +817,10 @@ private:
         return result;
     }
 
-    std::unordered_map<Motor_id, Motor*> motors;
+    std::unordered_map<MotorId, Motor*> motors;
     SerialPort::SharedPtr serial_;  //serial port
     can_send_frame send_data; //send data frame
-    CAN_Receive_Frame receive_data{};//receive data frame
+    CanReceiveFrame receive_data{};//receive data frame
 };
 
 };

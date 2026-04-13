@@ -23,7 +23,7 @@
 auto serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
 ```
 
-​	然后要定义相关的电机控制对象和电机对象。其中电机对象中第一个参数是电机类型需要进行选择，第二个参数是电机的SlaveID即CANID即电机控制的ID，**第三个参数是MasterID即主机ID，主机ID不要设为0x00，建议设置为CANID基础上＋0x10，例如下面的0x11.**
+​	然后要定义相关的电机控制对象和电机对象。其中电机对象中第一个参数是电机类型需要进行选择，第二个参数是电机的SlaveID即can_id即电机控制的ID，**第三个参数是MasterID即主机ID，主机ID不要设为0x00，建议设置为can_id基础上＋0x10，例如下面的0x11.**
 
 **MasterID和SlaveID需要在达妙上位机进行设置！！如果出现问题请先检查MasterID是否不和SlaveID冲突，并且不为0x00**
 
@@ -90,8 +90,8 @@ dm.disable(M2);
 ```c++
 dm.refresh_motor_status(M1);
 dm.refresh_motor_status(M2);
-std::cout<<"motor1--- POS:"<<M1.Get_Position()<<" VEL:"<<M1.Get_Velocity()<<" CUR:"<<M1.Get_tau()<<std::endl;
-std::cout<<"motor2--- POS:"<<M2.Get_Position()<<" VEL:"<<M2.Get_Velocity()<<" CUR:"<<M2.Get_tau()<<std::endl;
+std::cout<<"motor1--- POS:"<<M1.get_position()<<" VEL:"<<M1.get_velocity()<<" CUR:"<<M1.get_tau()<<std::endl;
+std::cout<<"motor2--- POS:"<<M2.get_position()<<" VEL:"<<M2.get_velocity()<<" CUR:"<<M2.get_tau()<<std::endl;
 ```
 
 通过**refresh_motor_status**这个函数可以获得当前电机的状态，并保存到对应的电机。
@@ -142,9 +142,9 @@ dm.control_pos_force(M1,5,500, 1000);
 **达妙电机是一发一收模式，只有发送指令电机才会返回当前状态，电机才会更新**
 
 ```c++
-float pos = M1.Get_Position();  //获得电机位置
-float vel = M1.Get_Velocity();  //获得电机速度
-float tau = M1.Get_tau();       //获得电机力矩
+float pos = M1.get_position();  //获得电机位置
+float vel = M1.get_velocity();  //获得电机速度
+float tau = M1.get_tau();       //获得电机力矩
 ```
 
 ### 6.电机内部参数更改
@@ -156,9 +156,9 @@ float tau = M1.Get_tau();       //获得电机力矩
 通过下面的函数可以对电机的控制模式进行修改。支持MIT,POS_VEL,VEL,Torque_Pos。四种控制模式在线修改。下面是修改的demo。并且代码会有返回值，如果是True那么说明设置成功了，如果不是也不一定没修改成功hhhh。**请注意这里模式修改只是当前有效，掉电后这个模式还是修改前的**
 
 ```c++
-if(dm.switchControlMode(M1, damiao::MIT_MODE))
+if(dm.switch_control_mode(M1, damiao::MIT_MODE))
    std::cout << "Switch to MIT Success" << std::endl;
-if(dm.switchControlMode(M2, damiao::POS_VEL_MODE))
+if(dm.switch_control_mode(M2, damiao::POS_VEL_MODE))
    std::cout << "Switch to POS_VEL_MODE Success" << std::endl;
 ```
 
@@ -175,7 +175,7 @@ dm.save_motor_param(M2);
 
 #### 6.3 读取内部寄存器参数
 
-​	内部寄存器有很多参数都是可以通过can线读取，具体参数列表请看达妙的手册。其中可以读的参数都已经在DM_Reg这个枚举类里面了。可以通过read_motor_param进行读取
+​	内部寄存器有很多参数都是可以通过can线读取，具体参数列表请看达妙的手册。其中可以读的参数都已经在DmReg这个枚举类里面了。可以通过read_motor_param进行读取
 
 ```c++
 std::cout<<"motor1 PMAX:"<<dm.read_motor_param(M1, damiao::PMAX)<<std::endl;

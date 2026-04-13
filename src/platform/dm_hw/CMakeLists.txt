@@ -71,6 +71,7 @@ endif()
 # TODO: 在此列表中添加所有 C++ 节点名称(不带 .cpp 后缀)
 set(NODES
     # node_name
+    test_damiao
 )
 
 foreach(node IN LISTS NODES)
