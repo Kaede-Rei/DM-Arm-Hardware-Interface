@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 
 # ========================= 项目配置(必填) ========================= #
 # TODO: 修改项目名称，必须与 package.xml 中的 <name> 一致
-project(dm_controller)
+project(dm_ros_control)
 
 # ========================= 基本配置 ========================= #
 if(NOT CMAKE_C_STANDARD)
@@ -23,10 +23,9 @@ endif()
 # TODO: 在此列表中添加所有 ROS 依赖；如果依赖你自己的接口包，也写在这里
 set(DEPENDENCIES
     rclcpp
-    sensor_msgs
-    std_msgs
-    pinocchio
-    tl
+    rclcpp_lifecycle
+    hardware_interface
+    pluginlib
     dm_hw
 )
 
@@ -47,6 +46,7 @@ endforeach()
 set(LIB_NAME ${PROJECT_NAME}_lib)
 set(LIB_SOURCES
     # src/library.cpp
+    src/dm_hardware_interface.cpp
 )
 
 if(LIB_SOURCES)
@@ -62,11 +62,12 @@ if(LIB_SOURCES)
     # target_link_libraries(${LIB_NAME} Eigen3::Eigen)
 endif()
 
+pluginlib_export_plugin_description_file(hardware_interface dm_ros_control_plugins.xml)
+
 # ========================= 节点配置(按需修改) ========================= #
 # TODO: 在此列表中添加所有 C++ 节点名称(不带 .cpp 后缀)
 set(NODES
     # node_name
-    test1
 )
 
 foreach(node IN LISTS NODES)
@@ -96,7 +97,6 @@ endforeach()
 set(PYTHON_SCRIPTS
     # scripts/tool.py
     # scripts/demo_node.py
-    scripts/test.py
 )
 
 if(PYTHON_SCRIPTS)

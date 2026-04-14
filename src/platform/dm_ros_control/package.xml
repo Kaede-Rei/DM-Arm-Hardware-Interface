@@ -3,7 +3,7 @@
 <package format="3">
     <!-- ========================= 基本信息(必填) ========================= -->
     <!-- TODO: 包名必须与 CMakeLists.txt 中的 project() 完全一致 -->
-    <name>dm_controller</name>
+    <name>dm_ros_control</name>
     <version>0.0.1</version>
     <description>ROS2 ament_cmake feature package</description>
     <maintainer email="kaerei@foxmail.com">Kaede Rei</maintainer>
@@ -21,12 +21,13 @@
     <!-- ========================= 常规依赖(按需添加) ========================= -->
     <!-- TODO: 功能包的 ROS 依赖优先写在这里；如果依赖你自己的接口包，也写在这里 -->
     <depend>rclcpp</depend>
-    <depend>sensor_msgs</depend>
-    <depend>std_msgs</depend>
-    <depend>pinocchio</depend>
-    <depend>crocoddyl</depend>
-    <depend>Eigen3</depend>
-    <depend>tl</depend>
+    <depend>rclcpp_lifecycle</depend>
+    <depend>hardware_interface</depend>
+    <depend>pluginlib</depend>
+    <depend>controller_manager</depend>
+    <depend>joint_state_broadcaster</depend>
+    <depend>joint_trajectory_controller</depend>
+    <depend>xacro</depend>
     <depend>dm_hw</depend>
 
     <!-- TODO: 如果提供 launch 文件，通常需要这些 -->
