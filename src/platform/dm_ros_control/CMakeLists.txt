@@ -26,6 +26,7 @@ set(DEPENDENCIES
     rclcpp_lifecycle
     hardware_interface
     pluginlib
+    controller_manager
     dm_hw
 )
 

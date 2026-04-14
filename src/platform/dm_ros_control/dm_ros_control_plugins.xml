@@ -1,0 +1,5 @@
+<library path="dm_ros_control">
+    <class name="dm_ros_control/DmHardwareInterface" type="dm_ros_control::DmHardwareInterface" base_class_type="hardware_interface::SystemInterface">
+        <description>Damiao ros2_control hardware interface plugin</description>
+    </class>
+</library>
