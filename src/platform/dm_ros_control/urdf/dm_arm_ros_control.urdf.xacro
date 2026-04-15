@@ -12,6 +12,8 @@
     <xacro:arg name="refresh_state_in_read" default="true"/>
     <xacro:arg name="startup_read_cycles" default="5"/>
 
+    <xacro:include filename="$(find dm_arm_description)/urdf/DM-Arm-Description.urdf" />
+
     <ros2_control name="DmArmSystem" type="system">
         <hardware>
             <xacro:if value="$(arg use_fake_hardware)">

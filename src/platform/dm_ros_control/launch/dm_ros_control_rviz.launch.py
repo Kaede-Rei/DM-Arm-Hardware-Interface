@@ -81,6 +81,17 @@ def generate_launch_description():
         output="screen",
     )
 
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="screen",
+        arguments=[
+            "-d",
+            PathJoinSubstitution([pkg_share, "config", "view_robot.rviz"]),
+        ],
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument("use_fake_hardware", default_value="false"),
@@ -97,5 +108,6 @@ def generate_launch_description():
             control_node,
             jsb,
             arm,
+            rviz,
         ]
     )
