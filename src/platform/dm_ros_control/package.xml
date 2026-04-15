@@ -25,6 +25,9 @@
     <depend>hardware_interface</depend>
     <depend>pluginlib</depend>
     <depend>controller_manager</depend>
+
+    <depend>pinocchio</depend>
+
     <depend>dm_hw</depend>
 
     <!-- TODO: 如果提供 launch 文件，通常需要这些 -->

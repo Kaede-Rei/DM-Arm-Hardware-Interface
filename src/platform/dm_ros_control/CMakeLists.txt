@@ -27,6 +27,8 @@ set(DEPENDENCIES
     hardware_interface
     pluginlib
     controller_manager
+    pinocchio
+
     dm_hw
 )
 
@@ -41,6 +43,7 @@ endforeach()
 # TODO: 如需第三方库，在这里手动添加
 # 例如：find_package(Eigen3 REQUIRED)
 # 例如：find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 # ========================= 共享库配置(可选) ========================= #
 # TODO: 若无公共库，保持 LIB_SOURCES 为空即可
@@ -48,6 +51,7 @@ set(LIB_NAME ${PROJECT_NAME}_lib)
 set(LIB_SOURCES
     # src/library.cpp
     src/dm_hardware_interface.cpp
+    src/pinocchio_dynamics_model.cpp
 )
 
 if(LIB_SOURCES)
@@ -60,7 +64,7 @@ if(LIB_SOURCES)
     ament_target_dependencies(${LIB_NAME} ${DEPENDENCIES})
 
     # TODO: 如需链接第三方库，在这里补充
-    # target_link_libraries(${LIB_NAME} Eigen3::Eigen)
+    target_link_libraries(${LIB_NAME} Eigen3::Eigen)
 endif()
 
 pluginlib_export_plugin_description_file(hardware_interface dm_ros_control_plugins.xml)
