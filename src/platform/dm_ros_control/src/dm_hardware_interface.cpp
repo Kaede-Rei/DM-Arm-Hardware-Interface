@@ -143,6 +143,21 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
 CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
+    for(size_t i = 0; i < _motors_.size(); ++i) {
+        if(_control_modes_[i] == ControlMode::MIT) {
+            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(0.0f), static_cast<float>(_max_velocity_), 0.0f);
+        }
+        else if(_control_modes_[i] == ControlMode::POS_VEL) {
+            _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(_max_velocity_));
+        }
+        else {
+            RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
+            return CallbackReturn::ERROR;
+        }
+    }
+
+    rclcpp::sleep_for(std::chrono::seconds(5));
+
     for(auto& motor : _motors_) {
         _motor_controller_->disable(*motor);
     }
@@ -242,7 +257,6 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
             _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor), 0.0f);
         }
         else if(_control_modes_[i] == ControlMode::POS_VEL) {
-            // _motor_controller_->control_pos_vel_csp(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor));
             _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor));
         }
         else {
