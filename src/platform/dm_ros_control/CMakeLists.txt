@@ -47,7 +47,7 @@ find_package(Eigen3 REQUIRED)
 
 # ========================= 共享库配置(可选) ========================= #
 # TODO: 若无公共库，保持 LIB_SOURCES 为空即可
-set(LIB_NAME ${PROJECT_NAME}_lib)
+set(LIB_NAME ${PROJECT_NAME})
 set(LIB_SOURCES
     # src/library.cpp
     src/dm_hardware_interface.cpp

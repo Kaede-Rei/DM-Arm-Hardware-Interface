@@ -42,6 +42,7 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     const auto n = info.joints.size();
     _joint_names_.resize(n);
     _motor_ids_.resize(n);
+    _motor_types_.resize(n);
     _joint_to_motor_scale_.resize(n);
     _control_modes_.resize(n);
 
@@ -261,7 +262,18 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
  * @return speed_t 对应的速度值
  */
 speed_t DmHardwareInterface::baudrate_to_speed_t(int baudrate) const {
-    return static_cast<speed_t>(baudrate);
+    switch(baudrate) {
+        case 9600: return B9600;
+        case 19200: return B19200;
+        case 38400: return B38400;
+        case 57600: return B57600;
+        case 115200: return B115200;
+        case 230400: return B230400;
+        case 460800: return B460800;
+        case 921600: return B921600;
+        default:
+            throw std::runtime_error("Unsupported baudrate: " + std::to_string(baudrate));
+    }
 }
 
 }
