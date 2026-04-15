@@ -9,6 +9,11 @@ namespace dm_ros_control {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
+/**
+ * @brief 控制模式枚举
+ * @param MIT MIT 模式
+ * @param POS_VEL 位置+速度模式
+ */
 enum class ControlMode {
     MIT,
     POS_VEL
@@ -16,6 +21,9 @@ enum class ControlMode {
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
+/**
+ * @brief DmHardwareInterface 类，继承自 hardware_interface::SystemInterface，用于实现与达妙电机的通信和控制
+ */
 class DmHardwareInterface : public hardware_interface::SystemInterface {
 public:
     using CallbackReturn = hardware_interface::CallbackReturn;

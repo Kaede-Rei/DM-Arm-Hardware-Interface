@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="dm_arm">
+
+    <xacro:arg name="use_fake_hardware" default="false"/>
+    <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+    <xacro:arg name="baudrate" default="921600"/>
+    <xacro:arg name="kp" default="30.0"/>
+    <xacro:arg name="kd" default="1.0"/>
+    <xacro:arg name="max_position_change" default="0.5"/>
+    <xacro:arg name="max_velocity" default="3.0"/>
+    <xacro:arg name="enable_write" default="true"/>
+    <xacro:arg name="refresh_state_in_read" default="true"/>
+    <xacro:arg name="startup_read_cycles" default="5"/>
+
+    <ros2_control name="DmArmSystem" type="system">
+        <hardware>
+            <xacro:if value="$(arg use_fake_hardware)">
+                <plugin>mock_components/GenericSystem</plugin>
+            </xacro:if>
+
+            <xacro:unless value="$(arg use_fake_hardware)">
+                <plugin>dm_ros_control/DmHardwareInterface</plugin>
+                <param name="serial_port">$(arg serial_port)</param>
+                <param name="baudrate">$(arg baudrate)</param>
+                <param name="control_frequency">500.0</param>
+                <param name="kp">$(arg kp)</param>
+                <param name="kd">$(arg kd)</param>
+                <param name="max_position_change">$(arg max_position_change)</param>
+                <param name="max_velocity">$(arg max_velocity)</param>
+                <param name="enable_write">$(arg enable_write)</param>
+                <param name="refresh_state_in_read">$(arg refresh_state_in_read)</param>
+                <param name="startup_read_cycles">$(arg startup_read_cycles)</param>
+            </xacro:unless>
+        </hardware>
+
+        <joint name="joint1">
+            <param name="motor_id">1</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">mit</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="joint2">
+            <param name="motor_id">2</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="joint3">
+            <param name="motor_id">3</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="joint4">
+            <param name="motor_id">4</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="joint5">
+            <param name="motor_id">5</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="joint6">
+            <param name="motor_id">6</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">1.0</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="gripper_left">
+            <param name="motor_id">7</param>
+            <param name="motor_type">10</param>
+            <param name="control_mode">pos_vel</param>
+            <param name="joint_to_motor_scale">118.55066617319976</param>
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+    </ros2_control>
+</robot>

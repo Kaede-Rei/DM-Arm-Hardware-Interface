@@ -21,6 +21,11 @@ using CallbackReturn = hardware_interface::CallbackReturn;
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
+/**
+ * @brief 初始化硬件接口
+ * @param info 硬件信息
+ * @return CallbackReturn
+ */
 CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareInfo& info) {
     if(hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS) return CallbackReturn::ERROR;
 
@@ -65,6 +70,11 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     return CallbackReturn::SUCCESS;
 }
 
+/**
+ * @brief 配置硬件接口，建立与电机的通信
+ * @param previous_state 上一个生命周期状态
+ * @return CallbackReturn
+ */
 CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
@@ -82,6 +92,11 @@ CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& 
     return CallbackReturn::SUCCESS;
 }
 
+/**
+ * @brief 激活硬件接口，使能电机并切换到指定控制模式
+ * @param previous_state 上一个生命周期状态
+ * @return CallbackReturn
+ */
 CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
@@ -119,6 +134,11 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
     return CallbackReturn::SUCCESS;
 }
 
+/**
+ * @brief 停用硬件接口，禁用电机
+ * @param previous_state 上一个生命周期状态
+ * @return CallbackReturn
+ */
 CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
@@ -129,6 +149,11 @@ CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State&
     return CallbackReturn::SUCCESS;
 }
 
+/**
+ * @brief 清理硬件接口，释放资源
+ * @param previous_state 上一个生命周期状态
+ * @return CallbackReturn
+ */
 CallbackReturn DmHardwareInterface::on_cleanup(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
@@ -139,6 +164,10 @@ CallbackReturn DmHardwareInterface::on_cleanup(const rclcpp_lifecycle::State& pr
     return CallbackReturn::SUCCESS;
 }
 
+/**
+ * @brief 导出状态接口，提供位置和速度状态
+ * @return 状态接口列表
+ */
 std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_state_interfaces() {
     std::vector<hardware_interface::StateInterface> state_interfaces;
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
@@ -148,6 +177,10 @@ std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_stat
     return state_interfaces;
 }
 
+/**
+ * @brief 导出命令接口，提供位置命令
+ * @return 命令接口列表
+ */
 std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_command_interfaces() {
     std::vector<hardware_interface::CommandInterface> command_interfaces;
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
@@ -156,6 +189,12 @@ std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_co
     return command_interfaces;
 }
 
+/**
+ * @brief 读取电机状态，更新位置和速度
+ * @param time 当前时间
+ * @param period 周期时间
+ * @return return_type
+ */
 hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& time, const rclcpp::Duration& period) {
     (void)time;
     (void)period;
@@ -170,6 +209,12 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     return hardware_interface::return_type::OK;
 }
 
+/**
+ * @brief 写入命令到电机，根据控制模式计算目标位置和速度
+ * @param time 当前时间
+ * @param period 周期时间
+ * @return return_type
+ */
 hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& time, const rclcpp::Duration& period) {
     (void)time;
 
@@ -210,7 +255,14 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
 // ! ========================= 私 有 函 数 实 现 ========================= ! //
 
-
+/**
+ * @brief 将波特率转换为 speed_t 类型
+ * @param baudrate 波特率
+ * @return speed_t 对应的速度值
+ */
+speed_t DmHardwareInterface::baudrate_to_speed_t(int baudrate) const {
+    return static_cast<speed_t>(baudrate);
+}
 
 }
 
