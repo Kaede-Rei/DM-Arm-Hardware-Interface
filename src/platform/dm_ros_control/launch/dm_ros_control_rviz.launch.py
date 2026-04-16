@@ -20,6 +20,10 @@ def generate_launch_description():
     refresh_state_in_read = LaunchConfiguration("refresh_state_in_read")
     startup_read_cycles = LaunchConfiguration("startup_read_cycles")
 
+    enable_dynamics = LaunchConfiguration("enable_dynamics")
+    enable_gravity_feedforward = LaunchConfiguration("enable_gravity_feedforward")
+    enable_nonlinear_feedforward = LaunchConfiguration("enable_nonlinear_feedforward")
+
     robot_description_content = Command(
         [
             "xacro ",
@@ -44,6 +48,12 @@ def generate_launch_description():
             refresh_state_in_read,
             " startup_read_cycles:=",
             startup_read_cycles,
+            " enable_dynamics:=",
+            enable_dynamics,
+            " enable_gravity_feedforward:=",
+            enable_gravity_feedforward,
+            " enable_nonlinear_feedforward:=",
+            enable_nonlinear_feedforward,
         ]
     )
 
@@ -97,13 +107,18 @@ def generate_launch_description():
             DeclareLaunchArgument("use_fake_hardware", default_value="false"),
             DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0"),
             DeclareLaunchArgument("baudrate", default_value="921600"),
-            DeclareLaunchArgument("kp", default_value="30.0"),
+            DeclareLaunchArgument("kp", default_value="54.0"),
             DeclareLaunchArgument("kd", default_value="1.0"),
             DeclareLaunchArgument("max_position_change", default_value="0.5"),
             DeclareLaunchArgument("max_velocity", default_value="3.0"),
             DeclareLaunchArgument("enable_write", default_value="true"),
             DeclareLaunchArgument("refresh_state_in_read", default_value="true"),
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
+            DeclareLaunchArgument("enable_dynamics", default_value="true"),
+            DeclareLaunchArgument("enable_gravity_feedforward", default_value="true"),
+            DeclareLaunchArgument(
+                "enable_nonlinear_feedforward", default_value="false"
+            ),
             rsp,
             control_node,
             jsb,
