@@ -1,5 +1,4 @@
-#ifndef DAMIAO_HPP
-#define DAMIAO_HPP
+#pragma once
 
 #include "serial_port.hpp"
 #include <algorithm>
@@ -832,5 +831,3 @@ private:
 };
 
 };
-
-#endif

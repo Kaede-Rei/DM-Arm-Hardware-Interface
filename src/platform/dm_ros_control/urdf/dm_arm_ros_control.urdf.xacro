@@ -12,6 +12,11 @@
     <xacro:arg name="refresh_state_in_read" default="true"/>
     <xacro:arg name="startup_read_cycles" default="5"/>
 
+    <xacro:arg name="enable_dynamics" default="true"/>
+    <xacro:arg name="enable_gravity_feedforward" default="true"/>
+    <xacro:arg name="enable_nonlinear_feedforward" default="false"/>
+    <xacro:arg name="urdf_path" default="$(find dm_arm_description)/urdf/DM-Arm-Description.urdf"/>
+
     <xacro:include filename="$(find dm_arm_description)/urdf/DM-Arm-Description.urdf" />
 
     <ros2_control name="DmArmSystem" type="system">
@@ -32,6 +37,11 @@
                 <param name="enable_write">$(arg enable_write)</param>
                 <param name="refresh_state_in_read">$(arg refresh_state_in_read)</param>
                 <param name="startup_read_cycles">$(arg startup_read_cycles)</param>
+
+                <param name="enable_dynamics">$(arg enable_dynamics)</param>
+                <param name="enable_gravity_feedforward">$(arg enable_gravity_feedforward)</param>
+                <param name="enable_nonlinear_feedforward">$(arg enable_nonlinear_feedforward)</param>
+                <param name="urdf_path">$(arg urdf_path)</param>
             </xacro:unless>
         </hardware>
 

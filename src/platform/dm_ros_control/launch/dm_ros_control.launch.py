@@ -20,6 +20,10 @@ def generate_launch_description():
     refresh_state_in_read = LaunchConfiguration("refresh_state_in_read")
     startup_read_cycles = LaunchConfiguration("startup_read_cycles")
 
+    enable_dynamics = LaunchConfiguration("enable_dynamics")
+    enable_gravity_feedforward = LaunchConfiguration("enable_gravity_feedforward")
+    enable_nonlinear_feedforward = LaunchConfiguration("enable_nonlinear_feedforward")
+
     robot_description_content = Command(
         [
             "xacro ",
@@ -44,6 +48,12 @@ def generate_launch_description():
             refresh_state_in_read,
             " startup_read_cycles:=",
             startup_read_cycles,
+            " enable_dynamics:=",
+            enable_dynamics,
+            " enable_gravity_feedforward:=",
+            enable_gravity_feedforward,
+            " enable_nonlinear_feedforward:=",
+            enable_nonlinear_feedforward,
         ]
     )
 
@@ -93,6 +103,11 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_write", default_value="true"),
             DeclareLaunchArgument("refresh_state_in_read", default_value="true"),
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
+            DeclareLaunchArgument("enable_dynamics", default_value="true"),
+            DeclareLaunchArgument("enable_gravity_feedforward", default_value="true"),
+            DeclareLaunchArgument(
+                "enable_nonlinear_feedforward", default_value="false"
+            ),
             rsp,
             control_node,
             jsb,

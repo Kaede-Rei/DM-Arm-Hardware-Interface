@@ -2,8 +2,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "hardware_interface/types/hardware_interface_type_values.hpp"
-#include "pluginlib/class_list_macros.hpp"
+#include <hardware_interface/types/hardware_interface_type_values.hpp>
+#include <pluginlib/class_list_macros.hpp>
 
 namespace dm_ros_control {
 
@@ -68,6 +68,14 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
         }
     }
 
+    _enable_dynamics_ = info.hardware_parameters.at("enable_dynamics") == "true";
+    _enable_gravity_feedforward_ = info.hardware_parameters.at("enable_gravity_feedforward") == "true";
+    _enable_nonlinear_feedforward_ = info.hardware_parameters.at("enable_nonlinear_feedforward") == "true";
+    _urdf_path_ = info.hardware_parameters.at("urdf_path");
+
+    _gravity_feedforward_.assign(info.joints.size(), 0.0);
+    _nonlinear_feedforward_.assign(info.joints.size(), 0.0);
+
     return CallbackReturn::SUCCESS;
 }
 
@@ -89,6 +97,8 @@ CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& 
         _motor_controller_->add_motor(motor.get());
         _motors_.push_back(motor);
     }
+
+    if(_enable_dynamics_) _dynamics_model_ = std::make_shared<PinocchioDynamicsModel>(_urdf_path_, _joint_names_);
 
     return CallbackReturn::SUCCESS;
 }
@@ -222,6 +232,12 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
         _hw_velocities_[i] = _motors_[i]->get_velocity() / scale;
     }
 
+    if(_enable_dynamics_ && _dynamics_model_) {
+        _dynamics_model_->update(_hw_positions_, _hw_velocities_);
+        _gravity_feedforward_ = _dynamics_model_->get_gravity_std();
+        _nonlinear_feedforward_ = _dynamics_model_->get_nonlinear_effects_std();
+    }
+
     return hardware_interface::return_type::OK;
 }
 
@@ -236,6 +252,7 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
     if(!_enable_write_) return hardware_interface::return_type::OK;
     const double dt = period.seconds();
+    double tau_feedforward = 0.0;
 
     for(size_t i = 0; i < _motors_.size(); ++i) {
         const double scale = _joint_to_motor_scale_[i];
@@ -254,7 +271,11 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
         target_vel_motor = std::clamp(target_vel_motor, -_max_velocity_, _max_velocity_);
 
         if(_control_modes_[i] == ControlMode::MIT) {
-            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor), 0.0f);
+            if(_enable_dynamics_) {
+                if(_enable_nonlinear_feedforward_) tau_feedforward = _nonlinear_feedforward_[i];
+                else if(_enable_gravity_feedforward_) tau_feedforward = _gravity_feedforward_[i];
+            }
+            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor), static_cast<float>(tau_feedforward));
         }
         else if(_control_modes_[i] == ControlMode::POS_VEL) {
             _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor));

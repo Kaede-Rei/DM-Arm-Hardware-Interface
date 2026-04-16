@@ -1,8 +1,8 @@
-#ifndef _dm_hardware_interface_hpp_
-#define _dm_hardware_interface_hpp_
+#pragma once
 
 #include <hardware_interface/system_interface.hpp>
 
+#include "dm_ros_control/pinocchio_dynamics_model.hpp"
 #include "dm_hw/damiao.hpp"
 
 namespace dm_ros_control {
@@ -67,6 +67,15 @@ private:
     std::vector<double> _hw_velocities_;
     std::vector<double> _hw_commands_;
     std::vector<double> _hw_commands_prev_;
+
+    bool _enable_dynamics_{ false };
+    bool _enable_gravity_feedforward_{ true };
+    bool _enable_nonlinear_feedforward_{ true };
+
+    std::string _urdf_path_;
+    std::shared_ptr<PinocchioDynamicsModel> _dynamics_model_;
+    std::vector<double> _gravity_feedforward_;
+    std::vector<double> _nonlinear_feedforward_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //
@@ -74,5 +83,3 @@ private:
 
 
 }
-
-#endif

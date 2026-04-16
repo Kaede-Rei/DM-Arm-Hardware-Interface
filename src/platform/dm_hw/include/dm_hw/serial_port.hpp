@@ -1,5 +1,4 @@
-#ifndef SERIAL_PORT_HPP
-#define SERIAL_PORT_HPP
+#pragma once
 
 #include <termios.h>
 #include <sys/select.h>
@@ -126,5 +125,3 @@ private:
     std::queue<uint8_t> recv_queue;
     std::array<uint8_t, 1024> recv_buf;
 };
-
-#endif // SERIAL_PORT_H
