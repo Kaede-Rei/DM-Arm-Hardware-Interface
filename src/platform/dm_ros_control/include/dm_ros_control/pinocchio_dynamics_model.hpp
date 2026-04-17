@@ -26,6 +26,8 @@ private:
     pinocchio::Model _model_;
     std::shared_ptr<pinocchio::Data> _data_;
     std::vector<std::string> _joint_names_;
+    std::vector<int> _q_indices_;
+    std::vector<int> _v_indices_;
 
     Eigen::VectorXd _q_;
     Eigen::VectorXd _dq_;

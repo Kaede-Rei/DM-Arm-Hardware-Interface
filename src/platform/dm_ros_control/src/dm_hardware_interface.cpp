@@ -153,29 +153,7 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
 CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    // double tau_feedforward = 0.0;
-
     for(size_t i = 0; i < _motors_.size(); ++i) {
-        // const double scale = _joint_to_motor_scale_[i];
-        // const double pos_motor = _hw_positions_[i] * scale;
-        // double target_vel_motor = 0.0f - pos_motor / 2.0f;
-        // target_vel_motor = std::clamp(target_vel_motor, -_max_velocity_, _max_velocity_);
-
-        // if(_control_modes_[i] == ControlMode::MIT) {
-        //     if(_enable_dynamics_) {
-        //         if(_enable_nonlinear_feedforward_) tau_feedforward = _nonlinear_feedforward_[i];
-        //         else if(_enable_gravity_feedforward_) tau_feedforward = _gravity_feedforward_[i];
-        //     }
-        //     _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(0.0f), static_cast<float>(target_vel_motor), static_cast<float>(tau_feedforward));
-        // }
-        // else if(_control_modes_[i] == ControlMode::POS_VEL) {
-        //     _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(target_vel_motor));
-        // }
-        // else {
-        //     RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
-        //     return CallbackReturn::ERROR;
-        // }
-
         _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::POS_VEL_MODE);
         _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(1.0f));
     }
@@ -248,9 +226,12 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     }
 
     if(_enable_dynamics_ && _dynamics_model_) {
-        _dynamics_model_->update(_hw_positions_, _hw_velocities_);
-        _gravity_feedforward_ = _dynamics_model_->get_gravity_std();
-        _nonlinear_feedforward_ = _dynamics_model_->get_nonlinear_effects_std();
+        const bool ok = _dynamics_model_->update(_hw_positions_, _hw_velocities_);
+        if(ok) {
+            _gravity_feedforward_ = _dynamics_model_->get_gravity_std();
+            _nonlinear_feedforward_ = _dynamics_model_->get_nonlinear_effects_std();
+        }
+        else RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics model with current joint states.");
     }
 
     return hardware_interface::return_type::OK;

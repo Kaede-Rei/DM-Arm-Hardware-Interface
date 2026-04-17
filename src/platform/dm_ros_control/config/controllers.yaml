@@ -27,5 +27,5 @@ arm_controller:
       - position
       - velocity
 
-    interpolate_from_desired_state: true
+    interpolate_from_desired_state: false
     allow_partial_joints_goal: false

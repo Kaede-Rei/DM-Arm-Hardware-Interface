@@ -14,8 +14,6 @@ def generate_launch_description():
     baudrate = LaunchConfiguration("baudrate")
     kp = LaunchConfiguration("kp")
     kd = LaunchConfiguration("kd")
-    max_position_change = LaunchConfiguration("max_position_change")
-    max_velocity = LaunchConfiguration("max_velocity")
     enable_write = LaunchConfiguration("enable_write")
     refresh_state_in_read = LaunchConfiguration("refresh_state_in_read")
     startup_read_cycles = LaunchConfiguration("startup_read_cycles")
@@ -109,8 +107,8 @@ def generate_launch_description():
             DeclareLaunchArgument("use_fake_hardware", default_value="false"),
             DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0"),
             DeclareLaunchArgument("baudrate", default_value="921600"),
-            DeclareLaunchArgument("kp", default_value="54.0"),
-            DeclareLaunchArgument("kd", default_value="1.0"),
+            DeclareLaunchArgument("kp", default_value="10.0"),
+            DeclareLaunchArgument("kd", default_value="0.2"),
             DeclareLaunchArgument("enable_write", default_value="true"),
             DeclareLaunchArgument("refresh_state_in_read", default_value="false"),
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
