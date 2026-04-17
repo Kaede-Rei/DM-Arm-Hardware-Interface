@@ -47,7 +47,7 @@ private:
     int _baudrate_{ 921600 };
     double _kp_{ 5.0 };
     double _kd_{ 0.2 };
-    double _max_position_change_{ 0.05 };
+    double _max_position_change_{ 0.005 };
     double _max_velocity_{ 1.0 };
     bool _enable_write_{ true };
     bool _refresh_state_in_read_{ true };

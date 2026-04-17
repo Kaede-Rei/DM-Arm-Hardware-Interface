@@ -6,8 +6,8 @@
     <xacro:arg name="baudrate" default="921600"/>
     <xacro:arg name="kp" default="54.0"/>
     <xacro:arg name="kd" default="1.0"/>
-    <xacro:arg name="max_position_change" default="0.5"/>
-    <xacro:arg name="max_velocity" default="3.0"/>
+    <xacro:arg name="max_position_change" default="0.005"/>
+    <xacro:arg name="max_velocity" default="1.0"/>
     <xacro:arg name="enable_write" default="true"/>
     <xacro:arg name="refresh_state_in_read" default="false"/>
     <xacro:arg name="startup_read_cycles" default="5"/>
