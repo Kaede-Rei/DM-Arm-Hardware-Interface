@@ -65,8 +65,9 @@ private:
 
     std::vector<double> _hw_positions_;
     std::vector<double> _hw_velocities_;
-    std::vector<double> _hw_commands_;
-    std::vector<double> _hw_commands_prev_;
+    std::vector<double> _hw_commands_pos_;
+    std::vector<double> _hw_commands_pos_prev_;
+    std::vector<double> _hw_commands_vel_;
 
     bool _enable_dynamics_{ false };
     bool _enable_gravity_feedforward_{ true };

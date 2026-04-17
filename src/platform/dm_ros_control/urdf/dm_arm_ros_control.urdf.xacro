@@ -51,6 +51,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -61,6 +62,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -71,6 +73,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -81,6 +84,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -91,6 +95,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -101,6 +106,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -111,6 +117,7 @@
             <param name="control_mode">MIT</param>
             <param name="joint_to_motor_scale">118.55066617319976</param>
             <command_interface name="position"/>
+            <command_interface name="velocity"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>

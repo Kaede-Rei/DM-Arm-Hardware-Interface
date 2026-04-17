@@ -6,7 +6,7 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     arm_controller:
-      type: position_controllers/JointGroupPositionController
+      type: joint_trajectory_controller/JointTrajectoryController
 
 arm_controller:
   ros__parameters:
@@ -21,9 +21,11 @@ arm_controller:
 
     command_interfaces:
       - position
+      - velocity
 
     state_interfaces:
       - position
       - velocity
 
     interpolate_from_desired_state: true
+    allow_partial_joints_goal: false

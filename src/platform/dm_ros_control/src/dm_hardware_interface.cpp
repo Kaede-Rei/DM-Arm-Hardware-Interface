@@ -48,8 +48,9 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 
     _hw_positions_.assign(n, 0.0);
     _hw_velocities_.assign(n, 0.0);
-    _hw_commands_.assign(n, 0.0);
-    _hw_commands_prev_.assign(n, 0.0);
+    _hw_commands_pos_.assign(n, 0.0);
+    _hw_commands_pos_prev_.assign(n, 0.0);
+    _hw_commands_vel_.assign(n, 0.0);
 
     for(size_t i = 0; i < n; ++i) {
         const auto& joint = info.joints[i];
@@ -138,8 +139,9 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
         _hw_positions_[i] = sum_pos[i] / static_cast<double>(_startup_read_cycles_);
         _hw_velocities_[i] = 0.0;
-        _hw_commands_[i] = _hw_positions_[i];
-        _hw_commands_prev_[i] = _hw_positions_[i];
+        _hw_commands_pos_[i] = _hw_positions_[i];
+        _hw_commands_pos_prev_[i] = _hw_positions_[i];
+        _hw_commands_vel_[i] = _hw_velocities_[i];
     }
 
     return CallbackReturn::SUCCESS;
@@ -175,6 +177,7 @@ CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State&
         //     RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
         //     return CallbackReturn::ERROR;
         // }
+
         _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::POS_VEL_MODE);
         _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(_max_velocity_));
     }
@@ -223,7 +226,8 @@ std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_stat
 std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_command_interfaces() {
     std::vector<hardware_interface::CommandInterface> command_interfaces;
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_POSITION, &_hw_commands_[i]);
+        command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_POSITION, &_hw_commands_pos_[i]);
+        command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_VELOCITY, &_hw_commands_vel_[i]);
     }
     return command_interfaces;
 }
@@ -262,42 +266,40 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
  */
 hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& time, const rclcpp::Duration& period) {
     (void)time;
+    (void)period;
 
     if(!_enable_write_) return hardware_interface::return_type::OK;
-    const double dt = period.seconds();
-    double tau_feedforward = 0.0;
 
     for(size_t i = 0; i < _motors_.size(); ++i) {
         const double scale = _joint_to_motor_scale_[i];
 
-        double cmd_joint = _hw_commands_[i];
-        double prev_cmd_joint = _hw_commands_prev_[i];
-        double delta_joint = cmd_joint - prev_cmd_joint;
+        double cmd_joint = _hw_commands_pos_[i];
+        double cmd_vel_joint = _hw_commands_vel_[i];
 
-        delta_joint = std::clamp(delta_joint, -_max_position_change_, _max_position_change_);
-        cmd_joint = prev_cmd_joint + delta_joint;
+        double delta_joint = cmd_joint - _hw_commands_pos_prev_[i];
+        cmd_joint = _hw_commands_pos_prev_[i] + delta_joint;
 
         const double cmd_motor = cmd_joint * scale;
-        const double prev_cmd_motor = _hw_commands_prev_[i] * scale;
+        const double cmd_vel_motor = cmd_vel_joint * scale;
 
-        double target_vel_motor = (dt > 1e-6) ? (cmd_motor - prev_cmd_motor) / dt : 0.0;
-        target_vel_motor = std::clamp(target_vel_motor, -_max_velocity_, _max_velocity_);
+        double tau_feedforward = 0.0;
+        if(_enable_dynamics_) {
+            if(_enable_nonlinear_feedforward_) tau_feedforward = _nonlinear_feedforward_[i];
+            else if(_enable_gravity_feedforward_) tau_feedforward = _gravity_feedforward_[i];
+        }
 
         if(_control_modes_[i] == ControlMode::MIT) {
-            if(_enable_dynamics_) {
-                if(_enable_nonlinear_feedforward_) tau_feedforward = _nonlinear_feedforward_[i];
-                else if(_enable_gravity_feedforward_) tau_feedforward = _gravity_feedforward_[i];
-            }
-            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor), static_cast<float>(tau_feedforward));
+            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_feedforward));
         }
         else if(_control_modes_[i] == ControlMode::POS_VEL) {
-            _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(target_vel_motor));
+            _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));
         }
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
             return hardware_interface::return_type::ERROR;
         }
-        _hw_commands_prev_[i] = cmd_joint;
+
+        _hw_commands_pos_prev_[i] = cmd_joint;
     }
 
     return hardware_interface::return_type::OK;
