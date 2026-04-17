@@ -33,8 +33,6 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     _baudrate_ = std::stoi(info.hardware_parameters.at("baudrate"));
     _kp_ = std::stod(info.hardware_parameters.at("kp"));
     _kd_ = std::stod(info.hardware_parameters.at("kd"));
-    _max_position_change_ = std::stod(info.hardware_parameters.at("max_position_change"));
-    _max_velocity_ = std::stod(info.hardware_parameters.at("max_velocity"));
     _enable_write_ = info.hardware_parameters.at("enable_write") == "true";
     _refresh_state_in_read_ = info.hardware_parameters.at("refresh_state_in_read") == "true";
     _startup_read_cycles_ = std::stoi(info.hardware_parameters.at("startup_read_cycles"));
@@ -179,7 +177,7 @@ CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State&
         // }
 
         _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::POS_VEL_MODE);
-        _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(_max_velocity_));
+        _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(1.0f));
     }
 
     rclcpp::sleep_for(std::chrono::seconds(5));

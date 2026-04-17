@@ -6,8 +6,6 @@
     <xacro:arg name="baudrate" default="921600"/>
     <xacro:arg name="kp" default="54.0"/>
     <xacro:arg name="kd" default="1.0"/>
-    <xacro:arg name="max_position_change" default="0.005"/>
-    <xacro:arg name="max_velocity" default="1.0"/>
     <xacro:arg name="enable_write" default="true"/>
     <xacro:arg name="refresh_state_in_read" default="false"/>
     <xacro:arg name="startup_read_cycles" default="5"/>
@@ -32,8 +30,6 @@
                 <param name="control_frequency">200.0</param>
                 <param name="kp">$(arg kp)</param>
                 <param name="kd">$(arg kd)</param>
-                <param name="max_position_change">$(arg max_position_change)</param>
-                <param name="max_velocity">$(arg max_velocity)</param>
                 <param name="enable_write">$(arg enable_write)</param>
                 <param name="refresh_state_in_read">$(arg refresh_state_in_read)</param>
                 <param name="startup_read_cycles">$(arg startup_read_cycles)</param>
