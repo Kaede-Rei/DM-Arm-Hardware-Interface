@@ -105,13 +105,25 @@ bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vec
     }
 
     pinocchio::computeGeneralizedGravity(_model_, *_data_, _q_);
-    _g_ = _data_->g;
+    for(size_t i = 0; i < _joint_names_.size(); ++i) {
+        if(_v_indices_[i] < 0) return false;
+        _g_[i] = _data_->g[_v_indices_[i]];
+    }
 
     pinocchio::nonLinearEffects(_model_, *_data_, _q_, _dq_);
-    _nle_ = _data_->nle;
+    for(size_t i = 0; i < _joint_names_.size(); ++i) {
+        if(_v_indices_[i] < 0) return false;
+        _nle_[i] = _data_->nle[_v_indices_[i]];
+    }
 
     pinocchio::crba(_model_, *_data_, _q_);
-    _m_q_ = _data_->M;
+    for(size_t i = 0; i < _joint_names_.size(); ++i) {
+        if(_v_indices_[i] < 0) return false;
+        for(size_t j = 0; j < _joint_names_.size(); ++j) {
+            if(_v_indices_[j] < 0) return false;
+            _m_q_(i, j) = _data_->M(_v_indices_[i], _v_indices_[j]);
+        }
+    }
 
     return true;
 }

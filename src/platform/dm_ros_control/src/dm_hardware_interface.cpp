@@ -255,13 +255,11 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
         double cmd_joint = _hw_commands_pos_[i];
         double cmd_vel_joint = _hw_commands_vel_[i];
 
-        double delta_joint = cmd_joint - _hw_commands_pos_prev_[i];
-        cmd_joint = _hw_commands_pos_prev_[i] + delta_joint;
-
         const double cmd_motor = cmd_joint * scale;
         const double cmd_vel_motor = cmd_vel_joint * scale;
 
         double tau_feedforward = 0.0;
+
         if(_enable_dynamics_) {
             if(_enable_nonlinear_feedforward_) tau_feedforward = _nonlinear_feedforward_[i];
             else if(_enable_gravity_feedforward_) tau_feedforward = _gravity_feedforward_[i];

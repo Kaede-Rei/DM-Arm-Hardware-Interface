@@ -108,7 +108,7 @@ def generate_launch_description():
             DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0"),
             DeclareLaunchArgument("baudrate", default_value="921600"),
             DeclareLaunchArgument("kp", default_value="10.0"),
-            DeclareLaunchArgument("kd", default_value="0.2"),
+            DeclareLaunchArgument("kd", default_value="0.1"),
             DeclareLaunchArgument("enable_write", default_value="true"),
             DeclareLaunchArgument("refresh_state_in_read", default_value="false"),
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
