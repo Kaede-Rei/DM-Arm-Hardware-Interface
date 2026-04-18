@@ -22,6 +22,7 @@ endif()
 # ========================= 依赖配置(按需修改) ========================= #
 # TODO: 在此列表中添加所有 ROS 依赖；如果依赖你自己的接口包，也写在这里
 set(DEPENDENCIES
+    ament_index_cpp
     rclcpp
     rclcpp_lifecycle
     hardware_interface
@@ -44,6 +45,7 @@ endforeach()
 # 例如：find_package(Eigen3 REQUIRED)
 # 例如：find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 # ========================= 共享库配置(可选) ========================= #
 # TODO: 若无公共库，保持 LIB_SOURCES 为空即可
@@ -64,7 +66,7 @@ if(LIB_SOURCES)
     ament_target_dependencies(${LIB_NAME} ${DEPENDENCIES})
 
     # TODO: 如需链接第三方库，在这里补充
-    target_link_libraries(${LIB_NAME} Eigen3::Eigen)
+    target_link_libraries(${LIB_NAME} Eigen3::Eigen yaml-cpp)
 endif()
 
 pluginlib_export_plugin_description_file(hardware_interface dm_ros_control_plugins.xml)

@@ -1,6 +1,11 @@
 #include "dm_ros_control/dm_hardware_interface.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <yaml-cpp/yaml.h>
+
+#include <filesystem>
+#include <stdexcept>
 
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>
@@ -31,8 +36,6 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 
     _serial_port_ = info.hardware_parameters.at("serial_port");
     _baudrate_ = std::stoi(info.hardware_parameters.at("baudrate"));
-    _kp_ = std::stod(info.hardware_parameters.at("kp"));
-    _kd_ = std::stod(info.hardware_parameters.at("kd"));
     _enable_write_ = info.hardware_parameters.at("enable_write") == "true";
     _refresh_state_in_read_ = info.hardware_parameters.at("refresh_state_in_read") == "true";
     _startup_read_cycles_ = std::stoi(info.hardware_parameters.at("startup_read_cycles"));
@@ -43,6 +46,8 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     _motor_types_.resize(n);
     _joint_to_motor_scale_.resize(n);
     _control_modes_.resize(n);
+    _joint_kp_.assign(n, 0.0);
+    _joint_kd_.assign(n, 0.0);
 
     _hw_positions_.assign(n, 0.0);
     _hw_velocities_.assign(n, 0.0);
@@ -74,6 +79,11 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 
     _gravity_feedforward_.assign(info.joints.size(), 0.0);
     _nonlinear_feedforward_.assign(info.joints.size(), 0.0);
+
+    if(!load_pd_gains_from_yaml()) {
+        RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+            "Failed to load pd_config.yaml, fallback to zero gains for all joints.");
+    }
 
     return CallbackReturn::SUCCESS;
 }
@@ -266,7 +276,7 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
         }
 
         if(_control_modes_[i] == ControlMode::MIT) {
-            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_kp_), static_cast<float>(_kd_), static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_feedforward));
+            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_joint_kp_[i]), static_cast<float>(_joint_kd_[i]), static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_feedforward));
         }
         else if(_control_modes_[i] == ControlMode::POS_VEL) {
             _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));
@@ -302,6 +312,48 @@ speed_t DmHardwareInterface::baudrate_to_speed_t(int baudrate) const {
         default:
             throw std::runtime_error("Unsupported baudrate: " + std::to_string(baudrate));
     }
+}
+
+bool DmHardwareInterface::load_pd_gains_from_yaml() {
+    try {
+        const auto package_share = ament_index_cpp::get_package_share_directory("dm_ros_control");
+        const auto config_path = std::filesystem::path(package_share) / "config" / "pd_config.yaml";
+
+        if(!std::filesystem::exists(config_path)) {
+            RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+                "PD config file not found: %s", config_path.c_str());
+            return false;
+        }
+
+        const YAML::Node root = YAML::LoadFile(config_path.string());
+        const YAML::Node joint_pd = root["joint_pd"];
+        if(!joint_pd || !joint_pd.IsMap()) {
+            RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+                "Invalid pd_config.yaml: 'joint_pd' section is missing or not a map.");
+            return false;
+        }
+
+        for(size_t i = 0; i < _joint_names_.size(); ++i) {
+            const auto& joint_name = _joint_names_[i];
+            const YAML::Node gains = joint_pd[joint_name];
+            if(!gains || !gains.IsMap()) {
+                RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+                    "No PD config for joint '%s', fallback to kp=%.3f kd=%.3f.",
+                    joint_name.c_str(), _joint_kp_[i], _joint_kd_[i]);
+                continue;
+            }
+
+            if(gains["kp"]) _joint_kp_[i] = gains["kp"].as<double>();
+            if(gains["kd"]) _joint_kd_[i] = gains["kd"].as<double>();
+        }
+    }
+    catch(const std::exception& e) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"),
+            "Exception while loading pd_config.yaml: %s", e.what());
+        return false;
+    }
+
+    return true;
 }
 
 }

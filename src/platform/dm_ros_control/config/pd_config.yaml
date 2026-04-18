@@ -1,0 +1,22 @@
+joint_pd:
+  joint1:
+    kp: 10.0
+    kd: 0.02
+  joint2:
+    kp: 10.0
+    kd: 0.02
+  joint3:
+    kp: 10.0
+    kd: 0.02
+  joint4:
+    kp: 10.0
+    kd: 0.02
+  joint5:
+    kp: 10.0
+    kd: 0.02
+  joint6:
+    kp: 10.0
+    kd: 0.02
+  gripper_left:
+    kp: 10.0
+    kd: 0.02

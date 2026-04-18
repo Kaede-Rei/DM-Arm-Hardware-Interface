@@ -42,11 +42,10 @@ public:
 
 private:
     speed_t baudrate_to_speed_t(int baudrate) const;
+    bool load_pd_gains_from_yaml();
 
     std::string _serial_port_{ "/dev/ttyACM0" };
     int _baudrate_{ 921600 };
-    double _kp_{ 5.0 };
-    double _kd_{ 0.2 };
     bool _enable_write_{ true };
     bool _refresh_state_in_read_{ true };
     int _startup_read_cycles_{ 5 };
@@ -60,6 +59,8 @@ private:
     std::vector<damiao::DmMotorType> _motor_types_;
     std::vector<double> _joint_to_motor_scale_;
     std::vector<ControlMode> _control_modes_;
+    std::vector<double> _joint_kp_;
+    std::vector<double> _joint_kd_;
 
     std::vector<double> _hw_positions_;
     std::vector<double> _hw_velocities_;

@@ -20,11 +20,13 @@
 
     <!-- ========================= 常规依赖(按需添加) ========================= -->
     <!-- TODO: 功能包的 ROS 依赖优先写在这里；如果依赖你自己的接口包，也写在这里 -->
+    <depend>ament_index_cpp</depend>
     <depend>rclcpp</depend>
     <depend>rclcpp_lifecycle</depend>
     <depend>hardware_interface</depend>
     <depend>pluginlib</depend>
     <depend>controller_manager</depend>
+    <depend>yaml-cpp</depend>
 
     <depend>pinocchio</depend>
 
