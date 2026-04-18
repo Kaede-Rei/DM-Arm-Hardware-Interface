@@ -1,32 +1,11 @@
-# Arm Frame Test
+# DM-Arm-Hardware-Interface 工作区
 
-## install Pinocchio & TSID
-```bash
-sudo apt update
-# 安装 Pinocchio 和 碰撞检测库 FCL
-sudo apt install ros-humble-pinocchio \
-    ros-humble-hpp-fcl \
-    libboost-python-dev \
-    libeigen3-dev \
-    ros-humble-eigenpy 
-# 安装可视化工具
-pip install meshcat
-# 克隆 TSID 源码
-cd src
-git clone --recursive https://github.com/stack-of-tasks/tsid.git
-cd ..
-rosdep install --from-paths src -iry
-# 扩大 Swap 空间以避免编译过程中内存不足导致的卡崩
-sudo swapoff /swapfile
-sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-free -h
-# 编译工作空间，启用 Python 接口和 FCL 支持，使用串行构建器以避免卡崩
-colcon build --executor sequential \
-    --symlink-install --cmake-args \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_PYTHON_INTERFACE=ON \
-    -DPINOCCHIO_USE_HPP_FCL=ON
-```
+本仓库为 ROS 2 机械臂硬件接口相关工作区，包含设备驱动、控制接口、描述文件及配套服务模块。
+
+## 致谢
+
+本工作区在开发与实现过程中参考或使用了以下开源项目，特此感谢：
+
+- [TartanLlama/expected](https://github.com/TartanLlama/expected)
+- [TartanLlama/optional](https://github.com/TartanLlama/optional)
+- [robot-learning-co/trlc-dk1](https://github.com/robot-learning-co/trlc-dk1)

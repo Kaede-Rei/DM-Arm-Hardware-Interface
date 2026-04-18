@@ -50,9 +50,7 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
 
     for(pinocchio::JointIndex jid = 1; jid < full_model.joints.size(); ++jid) {
         const std::string& joint_name = full_model.names[jid];
-        if(controlled_joint_set.find(joint_name) == controlled_joint_set.end()) {
-            joints_to_lock.push_back(jid);
-        }
+        if(controlled_joint_set.find(joint_name) == controlled_joint_set.end()) joints_to_lock.push_back(jid);
     }
 
     const Eigen::VectorXd q_ref = pinocchio::neutral(full_model);
@@ -62,9 +60,7 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
     if(_model_.nq != static_cast<int>(_joint_names_.size()) || _model_.nv != static_cast<int>(_joint_names_.size())) {
         std::ostringstream oss;
         oss << "PinocchioDynamicsModel: reduced model dimension mismatch. "
-            << "Expected nq=nv=" << _joint_names_.size()
-            << ", but got nq=" << _model_.nq
-            << ", nv=" << _model_.nv << ".";
+            << "Expected nq=nv=" << _joint_names_.size() << ", but got nq=" << _model_.nq << ", nv=" << _model_.nv << ".";
         throw std::runtime_error(oss.str());
     }
 
@@ -81,9 +77,7 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
 
         if(_model_.nqs[jid] != 1 || _model_.nvs[jid] != 1) {
             std::ostringstream oss;
-            oss << "PinocchioDynamicsModel: joint [" << _joint_names_[i]
-                << "] is not 1-DoF in reduced model (nq=" << _model_.nqs[jid]
-                << ", nv=" << _model_.nvs[jid] << ").";
+            oss << "PinocchioDynamicsModel: joint [" << _joint_names_[i] << "] is not 1-DoF in reduced model (nq=" << _model_.nqs[jid] << ", nv=" << _model_.nvs[jid] << ").";
             throw std::runtime_error(oss.str());
         }
 
