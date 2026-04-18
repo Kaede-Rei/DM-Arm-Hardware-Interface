@@ -128,7 +128,7 @@ DmHardwareInterface (ros2_control plugin)
 - 关节与连杆层级
 - 末端执行器相关几何与碰撞表达
 
-该包本身不承担控制逻辑，而是作为整个工作区的统一模型真源。
+该包本身不承担控制逻辑，而是作为整个工作区的统一模型真源
 
 ### 3. `dm_ros_control`：ROS 2 硬件接口主包
 
@@ -422,7 +422,7 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
 - RViz 2
 - `joint_state_publisher_gui`
 
-适合模型检查、联调与演示。
+适合模型检查、联调与演示
 
 ---
 
@@ -540,14 +540,14 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
 
 ### `kp` 的作用
 
-`kp` 决定位置误差对应的“虚拟刚度”。
+`kp` 决定位置误差对应的“虚拟刚度”
 
 - 数值大：更硬，更不容易被外力推离目标位姿
 - 数值小：更软，更容易产生被动跟随感
 
 ### `kd` 的作用
 
-`kd` 决定速度误差对应的“虚拟阻尼”。
+`kd` 决定速度误差对应的“虚拟阻尼”
 
 - 数值大：回位更稳，但会更黏、更迟缓
 - 数值小：更灵活，但更容易发飘或回弹
@@ -645,7 +645,7 @@ groups $USER
 sudo usermod -aG dialout $USER
 ```
 
-重新登录后生效。
+重新登录后生效
 
 ### 3. 机械臂可以动，但响应迟缓或发软
 
