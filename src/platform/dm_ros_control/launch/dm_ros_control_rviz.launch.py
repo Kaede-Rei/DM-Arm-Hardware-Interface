@@ -90,12 +90,6 @@ def generate_launch_description():
         ],
     )
 
-    joint_publisher_gui = Node(
-        package="joint_state_publisher_gui",
-        executable="joint_state_publisher_gui",
-        name="joint_state_publisher_gui",
-    )
-
     return LaunchDescription(
         [
             DeclareLaunchArgument("use_fake_hardware", default_value="false"),
@@ -114,6 +108,5 @@ def generate_launch_description():
             jsb,
             arm,
             rviz,
-            joint_publisher_gui,
         ]
     )

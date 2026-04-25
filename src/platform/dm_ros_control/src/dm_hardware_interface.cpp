@@ -257,8 +257,12 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     if(_enable_dynamics_ && _dynamics_model_) {
         const bool ok = _dynamics_model_->update(_hw_positions_, _hw_velocities_);
         if(ok) {
-            _gravity_feedforward_ = _dynamics_model_->get_gravity_std();
-            _nonlinear_feedforward_ = _dynamics_model_->get_nonlinear_effects_std();
+            const auto gravity_feedforward = _dynamics_model_->get_gravity_std();
+            const auto nonlinear_feedforward = _dynamics_model_->get_nonlinear_effects_std();
+            for(size_t i = 0; i < _joint_names_.size(); ++i) {
+                _gravity_feedforward_[i] = gravity_feedforward[i];
+                _nonlinear_feedforward_[i] = nonlinear_feedforward[i];
+            }
             dynamics_observation_valid = true;
         }
         else RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics model with current joint states.");
@@ -269,7 +273,7 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
             if(_enable_nonlinear_feedforward_) _active_feedforward_[i] = _nonlinear_feedforward_[i];
             else if(_enable_gravity_feedforward_) _active_feedforward_[i] = _gravity_feedforward_[i];
             else _active_feedforward_[i] = 0.0;
-            _external_efforts_[i] = _hw_efforts_[i] - _nonlinear_feedforward_[i];
+            _external_efforts_[i] = _hw_efforts_[i] - _active_feedforward_[i];
         }
         else {
             _gravity_feedforward_[i] = 0.0;
