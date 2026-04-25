@@ -10,7 +10,7 @@ from rclpy.node import Node
 from rosidl_runtime_py.utilities import get_message
 
 try:
-    from python_qt_binding.QtCore import QTimer, Qt
+    from python_qt_binding.QtCore import QSize, QTimer, Qt
     from python_qt_binding.QtGui import QColor, QPainter, QPen
     from python_qt_binding.QtWidgets import (
         QApplication,
@@ -24,12 +24,13 @@ try:
         QListWidgetItem,
         QMainWindow,
         QPushButton,
+        QSizePolicy,
         QSplitter,
         QVBoxLayout,
         QWidget,
     )
 except ImportError:
-    from PyQt5.QtCore import QTimer, Qt
+    from PyQt5.QtCore import QSize, QTimer, Qt
     from PyQt5.QtGui import QColor, QPainter, QPen
     from PyQt5.QtWidgets import (
         QApplication,
@@ -43,6 +44,7 @@ except ImportError:
         QListWidgetItem,
         QMainWindow,
         QPushButton,
+        QSizePolicy,
         QSplitter,
         QVBoxLayout,
         QWidget,
@@ -85,7 +87,9 @@ def extract_dynamic_joint_state(msg):
         if joint_index >= len(msg.interface_values):
             continue
         interface_values = msg.interface_values[joint_index]
-        for interface_index, interface_name in enumerate(interface_values.interface_names):
+        for interface_index, interface_name in enumerate(
+            interface_values.interface_names
+        ):
             if interface_index >= len(interface_values.values):
                 continue
             value = finite_number(interface_values.values[interface_index])
@@ -168,7 +172,7 @@ def extract_values(msg):
 class PlotCanvas(QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(780, 460)
+        self.setMinimumSize(640, 360)
         self.series = {}
         self.enabled = set()
         self.window_seconds = 10.0
@@ -269,21 +273,21 @@ class PlotCanvas(QWidget):
         names = [name for name in sorted(self.enabled) if name in self.series]
         if not names:
             painter.setPen(QColor("#555555"))
-            painter.drawText(self.rect(), Qt.AlignCenter, "Select numeric fields to plot")
+            painter.drawText(self.rect(), Qt.AlignCenter, "请选择要绘制的数值字段")
             painter.end()
             return
 
         xmin, xmax = self.current_time_range()
         if self.y_mode == "normalized":
             self.draw_normalized(painter, plot_rect, xmin, xmax, names)
-            self.draw_axis_labels(painter, plot_rect, 0.0, 1.0, xmin, xmax, "normalized")
+            self.draw_axis_labels(painter, plot_rect, 0.0, 1.0, xmin, xmax, "归一化")
         elif self.y_mode == "per_series":
             self.draw_per_series(painter, plot_rect, xmin, xmax, names)
-            self.draw_axis_labels(painter, plot_rect, 0.0, 1.0, xmin, xmax, "per series")
+            self.draw_axis_labels(painter, plot_rect, 0.0, 1.0, xmin, xmax, "分曲线")
         else:
             ymin, ymax = self.shared_range(names)
             self.draw_shared(painter, plot_rect, xmin, xmax, ymin, ymax, names)
-            self.draw_axis_labels(painter, plot_rect, ymin, ymax, xmin, xmax, "shared")
+            self.draw_axis_labels(painter, plot_rect, ymin, ymax, xmin, xmax, "共享")
 
         self.draw_legend(painter, plot_rect, names)
         painter.end()
@@ -334,7 +338,16 @@ class PlotCanvas(QWidget):
 
     def draw_shared(self, painter, rect, xmin, xmax, ymin, ymax, names):
         for index, name in enumerate(names):
-            self.draw_series(painter, rect, xmin, xmax, ymin, ymax, name, self.colors[index % len(self.colors)])
+            self.draw_series(
+                painter,
+                rect,
+                xmin,
+                xmax,
+                ymin,
+                ymax,
+                name,
+                self.colors[index % len(self.colors)],
+            )
 
     def draw_normalized(self, painter, rect, xmin, xmax, names):
         for index, name in enumerate(names):
@@ -358,7 +371,16 @@ class PlotCanvas(QWidget):
             band_top = top + index * band_height
             band_rect = (left, band_top, width, band_height)
             ymin, ymax = self.series_range(name, xmin)
-            self.draw_series(painter, band_rect, xmin, xmax, ymin, ymax, name, self.colors[index % len(self.colors)])
+            self.draw_series(
+                painter,
+                band_rect,
+                xmin,
+                xmax,
+                ymin,
+                ymax,
+                name,
+                self.colors[index % len(self.colors)],
+            )
             painter.setPen(QPen(QColor("#e0e0e0"), 1))
             painter.drawLine(left, band_top, left + width, band_top)
 
@@ -378,8 +400,8 @@ class PlotCanvas(QWidget):
         painter.setPen(QColor("#333333"))
         painter.drawText(6, top + 12, f"{ymax:.4g}")
         painter.drawText(6, top + height, f"{ymin:.4g}")
-        painter.drawText(left, top + height + 28, f"{xmin:.2f}s")
-        painter.drawText(left + width - 72, top + height + 28, f"{xmax:.2f}s")
+        painter.drawText(left, top + height + 28, f"{xmin:.2f}秒")
+        painter.drawText(left + width - 80, top + height + 28, f"{xmax:.2f}秒")
         painter.drawText(left + width // 2 - 40, top + height + 28, mode)
 
     def draw_legend(self, painter, rect, names):
@@ -396,7 +418,11 @@ class PlotCanvas(QWidget):
             painter.drawText(legend_x + 24, y, name)
         if len(names) > max_items:
             painter.setPen(QColor("#666666"))
-            painter.drawText(legend_x + 24, legend_y + max_items * 18, f"+ {len(names) - max_items} more")
+            painter.drawText(
+                legend_x + 24,
+                legend_y + max_items * 18,
+                f"+ 还有 {len(names) - max_items} 项",
+            )
 
 
 class TopicPlotterWindow(QMainWindow):
@@ -406,55 +432,73 @@ class TopicPlotterWindow(QMainWindow):
         self.subscription = None
         self.available_fields = set()
 
-        self.setWindowTitle("ROS Topic Plotter")
-        self.resize(1260, 760)
+        self.setWindowTitle("ROS 话题绘制工具")
+        self.resize(self.initial_window_size())
 
         self.topic_combo = QComboBox()
-        self.topic_combo.setMinimumWidth(380)
-        self.type_label = QLabel("type: -")
-        self.refresh_button = QPushButton("Refresh")
-        self.subscribe_button = QPushButton("Subscribe")
+        self.topic_combo.setMinimumWidth(180)
+        self.type_label = QLabel("类型: -")
+        self.type_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.type_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.refresh_button = QPushButton("刷新")
+        self.subscribe_button = QPushButton("订阅")
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filter numeric fields")
-        self.select_all_box = QCheckBox("Select all")
-        self.clear_button = QPushButton("Clear")
-        self.pause_box = QCheckBox("Pause")
+        self.filter_edit.setPlaceholderText("筛选数值字段")
+        self.select_all_box = QCheckBox("全选")
+        self.clear_button = QPushButton("清空")
+        self.pause_box = QCheckBox("暂停")
 
         self.window_spin = QDoubleSpinBox()
         self.window_spin.setRange(1.0, 3600.0)
         self.window_spin.setValue(10.0)
-        self.window_spin.setSuffix(" s")
+        self.window_spin.setSuffix(" 秒")
 
         self.time_combo = QComboBox()
-        self.time_combo.addItem("Receive time", "receive")
-        self.time_combo.addItem("Header stamp", "header")
+        self.time_combo.addItem("接收时间", "receive")
+        self.time_combo.addItem("消息时间戳", "header")
 
         self.y_combo = QComboBox()
-        self.y_combo.addItem("Shared Y", "shared")
-        self.y_combo.addItem("Normalized", "normalized")
-        self.y_combo.addItem("Per series", "per_series")
+        self.y_combo.addItem("共享纵轴", "shared")
+        self.y_combo.addItem("归一化", "normalized")
+        self.y_combo.addItem("分曲线", "per_series")
 
         self.field_list = QListWidget()
         self.canvas = PlotCanvas()
 
-        controls = QHBoxLayout()
-        controls.addWidget(QLabel("Topic"))
-        controls.addWidget(self.topic_combo)
-        controls.addWidget(self.refresh_button)
-        controls.addWidget(self.subscribe_button)
-        controls.addWidget(self.type_label)
-        controls.addStretch()
-        controls.addWidget(QLabel("Time"))
-        controls.addWidget(self.time_combo)
-        controls.addWidget(QLabel("Y"))
-        controls.addWidget(self.y_combo)
-        controls.addWidget(QLabel("Window"))
-        controls.addWidget(self.window_spin)
-        controls.addWidget(self.pause_box)
-        controls.addWidget(self.clear_button)
+        controls_panel = QWidget()
+        controls_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        controls_layout = QVBoxLayout(controls_panel)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(4)
+
+        topic_controls = QHBoxLayout()
+        topic_controls.setContentsMargins(0, 0, 0, 0)
+        topic_controls.addWidget(QLabel("话题"))
+        topic_controls.addWidget(self.topic_combo, 1)
+        topic_controls.addWidget(self.refresh_button)
+        topic_controls.addWidget(self.subscribe_button)
+        topic_controls.addWidget(self.type_label, 2)
+
+        plot_controls = QHBoxLayout()
+        plot_controls.setContentsMargins(0, 0, 0, 0)
+        plot_controls.addWidget(QLabel("时间"))
+        plot_controls.addWidget(self.time_combo)
+        plot_controls.addWidget(QLabel("纵轴"))
+        plot_controls.addWidget(self.y_combo)
+        plot_controls.addWidget(QLabel("窗口"))
+        plot_controls.addWidget(self.window_spin)
+        plot_controls.addWidget(self.pause_box)
+        plot_controls.addWidget(self.clear_button)
+        plot_controls.addStretch()
+
+        controls_layout.addLayout(topic_controls)
+        controls_layout.addLayout(plot_controls)
 
         left_panel = QWidget()
+        left_panel.setMaximumWidth(360)
+        left_panel.setMinimumWidth(220)
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.filter_edit)
         left_layout.addWidget(self.select_all_box)
         left_layout.addWidget(self.field_list)
@@ -462,12 +506,16 @@ class TopicPlotterWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(self.canvas)
-        splitter.setSizes([380, 880])
+        splitter.setSizes([260, 1000])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
-        root_layout.addLayout(controls)
-        root_layout.addWidget(splitter)
+        root_layout.setContentsMargins(6, 6, 6, 6)
+        root_layout.setSpacing(6)
+        root_layout.addWidget(controls_panel, 0)
+        root_layout.addWidget(splitter, 1)
         self.setCentralWidget(root)
 
         self.refresh_button.clicked.connect(self.refresh_topics)
@@ -475,12 +523,20 @@ class TopicPlotterWindow(QMainWindow):
         self.filter_edit.textChanged.connect(self.rebuild_field_list)
         self.select_all_box.stateChanged.connect(self.set_all_visible_fields)
         self.clear_button.clicked.connect(self.clear_plot)
-        self.pause_box.stateChanged.connect(lambda state: self.canvas.set_paused(state == Qt.Checked))
+        self.pause_box.stateChanged.connect(
+            lambda state: self.canvas.set_paused(state == Qt.Checked)
+        )
         self.window_spin.valueChanged.connect(self.canvas.set_window_seconds)
-        self.time_combo.currentIndexChanged.connect(lambda _index: self.canvas.set_time_source(self.time_combo.currentData()))
-        self.y_combo.currentIndexChanged.connect(lambda _index: self.canvas.set_y_mode(self.y_combo.currentData()))
+        self.time_combo.currentIndexChanged.connect(
+            lambda _index: self.canvas.set_time_source(self.time_combo.currentData())
+        )
+        self.y_combo.currentIndexChanged.connect(
+            lambda _index: self.canvas.set_y_mode(self.y_combo.currentData())
+        )
         self.field_list.itemChanged.connect(self.update_enabled_fields)
-        self.topic_combo.currentIndexChanged.connect(lambda _index: self.update_type_label())
+        self.topic_combo.currentIndexChanged.connect(
+            lambda _index: self.update_type_label()
+        )
 
         self.spin_timer = QTimer(self)
         self.spin_timer.timeout.connect(self.spin_ros)
@@ -491,6 +547,16 @@ class TopicPlotterWindow(QMainWindow):
         self.refresh_timer.start(3000)
 
         self.refresh_topics()
+
+    def initial_window_size(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return QSize(1260, 760)
+
+        available = screen.availableGeometry()
+        width = min(1260, max(900, int(available.width() * 0.9)))
+        height = min(760, max(600, int(available.height() * 0.9)))
+        return QSize(width, height)
 
     def spin_ros(self):
         rclpy.spin_once(self.node, timeout_sec=0.0)
@@ -511,7 +577,7 @@ class TopicPlotterWindow(QMainWindow):
 
     def update_type_label(self):
         topic_type = self.topic_combo.currentData()
-        self.type_label.setText(f"type: {topic_type or '-'}")
+        self.type_label.setText(f"类型: {topic_type or '-'}")
 
     def subscribe_selected_topic(self):
         topic_name = self.topic_combo.currentText()
@@ -526,15 +592,17 @@ class TopicPlotterWindow(QMainWindow):
         try:
             msg_class = get_message(topic_type)
         except (AttributeError, ModuleNotFoundError, ValueError) as exc:
-            self.node.get_logger().error(f"Cannot load message type {topic_type}: {exc}")
+            self.node.get_logger().error(f"无法加载消息类型 {topic_type}: {exc}")
             return
 
         self.available_fields.clear()
         self.canvas.clear()
         self.rebuild_field_list()
 
-        self.subscription = self.node.create_subscription(msg_class, topic_name, self.on_message, 10)
-        self.node.get_logger().info(f"Subscribed to {topic_name} [{topic_type}]")
+        self.subscription = self.node.create_subscription(
+            msg_class, topic_name, self.on_message, 10
+        )
+        self.node.get_logger().info(f"已订阅 {topic_name} [{topic_type}]")
 
     def on_message(self, msg):
         values = extract_values(msg)
@@ -580,7 +648,9 @@ class TopicPlotterWindow(QMainWindow):
     def set_all_visible_fields(self, state):
         self.field_list.blockSignals(True)
         for index in range(self.field_list.count()):
-            self.field_list.item(index).setCheckState(Qt.Checked if state == Qt.Checked else Qt.Unchecked)
+            self.field_list.item(index).setCheckState(
+                Qt.Checked if state == Qt.Checked else Qt.Unchecked
+            )
         self.field_list.blockSignals(False)
         self.update_enabled_fields()
 
