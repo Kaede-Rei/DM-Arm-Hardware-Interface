@@ -64,6 +64,8 @@ private:
 
     std::vector<double> _hw_positions_;
     std::vector<double> _hw_velocities_;
+    std::vector<double> _hw_efforts_;
+    std::vector<double> _motor_efforts_;
     std::vector<double> _hw_commands_pos_;
     std::vector<double> _hw_commands_pos_prev_;
     std::vector<double> _hw_commands_vel_;
@@ -76,6 +78,8 @@ private:
     std::shared_ptr<PinocchioDynamicsModel> _dynamics_model_;
     std::vector<double> _gravity_feedforward_;
     std::vector<double> _nonlinear_feedforward_;
+    std::vector<double> _active_feedforward_;
+    std::vector<double> _external_efforts_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //
