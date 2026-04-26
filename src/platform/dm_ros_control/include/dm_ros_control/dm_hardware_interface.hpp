@@ -5,15 +5,11 @@
 #include "dm_ros_control/dm_motor_bus.hpp"
 #include "dm_ros_control/dynamics_observer.hpp"
 
-#include <termios.h>
-
-#include <cstddef>
-#include <string>
-#include <vector>
-
 namespace dm_ros_control {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
+
+
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
@@ -24,24 +20,103 @@ class DmHardwareInterface : public hardware_interface::SystemInterface {
 public:
     using CallbackReturn = hardware_interface::CallbackReturn;
 
+    /**
+     * @brief 初始化硬件接口，解析 ros2_control 参数并分配状态/命令缓冲
+     * @param info ros2_control 传入的硬件信息
+     * @return 初始化成功返回 SUCCESS，否则返回 ERROR
+     */
     CallbackReturn on_init(const hardware_interface::HardwareInfo& info) override;
+
+    /**
+     * @brief 配置硬件资源，建立电机 bus 和可选动力学观测器
+     * @param previous_state 上一个生命周期状态
+     * @return 配置成功返回 SUCCESS，否则返回 ERROR
+     */
     CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
+
+    /**
+     * @brief 激活硬件，完成电机使能、控制模式切换和初始状态读取
+     * @param previous_state 上一个生命周期状态
+     * @return 激活成功返回 SUCCESS，否则返回 ERROR
+     */
     CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
+
+    /**
+     * @brief 停用硬件，执行电机停机和失能流程
+     * @param previous_state 上一个生命周期状态
+     * @return 停用成功返回 SUCCESS，否则返回 ERROR
+     */
     CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
+
+    /**
+     * @brief 清理硬件资源，释放 bus 和动力学观测器
+     * @param previous_state 上一个生命周期状态
+     * @return 清理成功返回 SUCCESS
+     */
     CallbackReturn on_cleanup(const rclcpp_lifecycle::State& previous_state) override;
 
+    /**
+     * @brief 导出 ros2_control 状态接口
+     * @return 状态接口列表
+     */
     std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+
+    /**
+     * @brief 导出 ros2_control 命令接口
+     * @return 命令接口列表
+     */
     std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
 
+    /**
+     * @brief 控制周期读取入口，读取电机状态并更新动力学观测
+     * @param time 当前 ROS 时间
+     * @param period 控制周期
+     * @return 读取成功返回 OK，否则返回 ERROR
+     */
     hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+
+    /**
+     * @brief 控制周期写入入口，汇总控制输入并发送到电机 bus
+     * @param time 当前 ROS 时间
+     * @param period 控制周期
+     * @return 写入成功返回 OK，否则返回 ERROR
+     */
     hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
 private:
+    /**
+     * @brief 将整数波特率转换为 termios speed_t
+     * @param baudrate 整数波特率
+     * @return termios speed_t
+     */
     speed_t baudrate_to_speed_t(int baudrate) const;
+
+    /**
+     * @brief 从安装后的 pd_config.yaml 加载过渡期 PD 增益
+     * @return 成功返回 true，失败返回 false
+     */
     bool load_pd_gains_from_yaml();
 
+    /**
+     * @brief 汇总解耦后的控制输入，生成单关节命令
+     * @param index 关节索引
+     * @return 关节侧命令
+     */
     DmJointCommand build_joint_command(std::size_t index) const;
+
+    /**
+     * @brief 选择过渡期硬件侧前馈力矩
+     * @param index 关节索引
+     * @return 当前应叠加到 effort 命令上的前馈力矩
+     */
     double select_legacy_feedforward(std::size_t index) const;
+
+    /**
+     * @brief 过滤非有限数，避免 NaN/Inf 进入电机命令
+     * @param value 输入值
+     * @param default_value fallback 值
+     * @return 有限输入值或 fallback 值
+     */
     double sanitize_or_default(double value, double default_value) const;
 
 private:
@@ -89,6 +164,7 @@ private:
     std::vector<double> _nonlinear_feedforward_;
     std::vector<double> _active_feedforward_;
     std::vector<double> _external_efforts_;
+    DynamicsObservation _dynamics_observation_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

@@ -1,5 +1,4 @@
 #include "dm_ros_control/dm_motor_bus.hpp"
-
 #include "dm_hw/serial_port.hpp"
 
 #include <unistd.h>
@@ -10,6 +9,12 @@ namespace dm_ros_control {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
+/**
+ * @brief 配置电机 bus，创建串口、达妙控制器和电机对象
+ * @param serial_port 串口设备路径
+ * @param baudrate termios 波特率
+ * @param configs 关节-电机配置表
+ */
 void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, const std::vector<DmMotorConfig>& configs) {
     _configs_ = configs;
     _serial_ = std::make_shared<SerialPort>(serial_port, baudrate);
@@ -24,6 +29,11 @@ void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, con
     }
 }
 
+/**
+ * @brief 激活 bus 管理的全部电机并读取启动初始状态
+ * @param startup_read_cycles 启动阶段状态读取次数
+ * @param states 输出启动阶段平均后的关节状态
+ */
 void DmMotorBus::activate(int startup_read_cycles, std::vector<DmJointState>& states) {
     for(size_t i = 0; i < _motors_.size(); ++i) {
         damiao::DmControlMode dm_mode;
@@ -53,6 +63,10 @@ void DmMotorBus::activate(int startup_read_cycles, std::vector<DmJointState>& st
     }
 }
 
+/**
+ * @brief 停用全部电机
+ * @note 先切换到 POS_VEL 模式并发送零位置/低速度命令，再等待后失能
+ */
 void DmMotorBus::deactivate() {
     for(auto& motor : _motors_) {
         _motor_controller_->switch_control_mode(*motor, damiao::DmControlMode::POS_VEL_MODE);
@@ -66,6 +80,9 @@ void DmMotorBus::deactivate() {
     }
 }
 
+/**
+ * @brief 清理 bus 持有的串口、电机控制器和电机对象
+ */
 void DmMotorBus::cleanup() {
     _motors_.clear();
     _motor_controller_.reset();
@@ -73,6 +90,12 @@ void DmMotorBus::cleanup() {
     _configs_.clear();
 }
 
+/**
+ * @brief 读取所有电机状态并换算到关节侧
+ * @param refresh_state 是否向电机主动请求状态刷新
+ * @param states 预分配状态缓冲，大小必须等于电机数量
+ * @return 成功返回 true，失败返回 false
+ */
 bool DmMotorBus::read(bool refresh_state, std::vector<DmJointState>& states) noexcept {
     try {
         if(!_motor_controller_ || states.size() != _motors_.size()) return false;
@@ -88,6 +111,12 @@ bool DmMotorBus::read(bool refresh_state, std::vector<DmJointState>& states) noe
     }
 }
 
+/**
+ * @brief 写入单个关节命令
+ * @param index 关节/电机索引
+ * @param command 关节侧命令
+ * @return 成功返回 true，失败返回 false
+ */
 bool DmMotorBus::write(std::size_t index, const DmJointCommand& command) noexcept {
     try {
         if(!_motor_controller_ || index >= _motors_.size() || index >= _configs_.size()) return false;
@@ -121,6 +150,12 @@ bool DmMotorBus::write(std::size_t index, const DmJointCommand& command) noexcep
 
 // ! ========================= 私 有 函 数 实 现 ========================= ! //
 
+/**
+ * @brief 将内部控制模式转换为达妙 SDK 控制模式
+ * @param mode 内部控制模式
+ * @param dm_mode 输出达妙控制模式
+ * @return 成功返回 true，未知模式返回 false
+ */
 bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_mode) const noexcept {
     if(mode == ControlMode::MIT) {
         dm_mode = damiao::DmControlMode::MIT_MODE;
@@ -133,6 +168,13 @@ bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_
     return false;
 }
 
+/**
+ * @brief 读取单个电机并换算为关节侧状态
+ * @param index 关节/电机索引
+ * @param refresh_state 是否向电机主动请求状态刷新
+ * @param state 输出关节侧状态
+ * @return 成功返回 true，失败返回 false
+ */
 bool DmMotorBus::read_one(std::size_t index, bool refresh_state, DmJointState& state) noexcept {
     try {
         if(index >= _motors_.size() || index >= _configs_.size()) return false;

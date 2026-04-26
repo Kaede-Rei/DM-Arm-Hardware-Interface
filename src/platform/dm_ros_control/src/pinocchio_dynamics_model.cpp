@@ -5,6 +5,7 @@
 #include <pinocchio/parsers/urdf.hpp>
 
 #include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace dm_ros_control {
@@ -23,6 +24,14 @@ namespace dm_ros_control {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
+/**
+ * @brief 构造 Pinocchio reduced model
+ * @param urdf_path 机器人 URDF 路径
+ * @param joint_names 需要保留的受控关节名称
+ *
+ * 从完整 URDF 模型中锁定非受控关节，只保留 ros2_control 管理的 1-DoF 关节，
+ * 后续动力学输出顺序与 joint_names 保持一致。
+ */
 PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, const std::vector<std::string>& joint_names) {
     _joint_names_ = joint_names;
 
@@ -93,6 +102,12 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
     _m_q_ = Eigen::MatrixXd::Zero(_model_.nv, _model_.nv);
 }
 
+/**
+ * @brief 更新受控关节状态并计算动力学项
+ * @param q 受控关节位置
+ * @param dq 受控关节速度
+ * @return 成功返回 true，输入维度或内部索引异常返回 false
+ */
 bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vector<double>& dq) {
     if(q.size() != _joint_names_.size() || dq.size() != _joint_names_.size()) return false;
 
@@ -127,6 +142,24 @@ bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vec
     }
 
     return true;
+}
+
+/**
+ * @brief 拷贝最近一次 update() 得到的重力项
+ * @param gravity 输出重力项缓冲
+ */
+void PinocchioDynamicsModel::copy_gravity_to(std::vector<double>& gravity) const {
+    if(gravity.size() != static_cast<size_t>(_g_.size())) gravity.resize(_g_.size());
+    for(size_t i = 0; i < gravity.size(); ++i) gravity[i] = _g_[i];
+}
+
+/**
+ * @brief 拷贝最近一次 update() 得到的非线性项
+ * @param nonlinear 输出非线性项缓冲
+ */
+void PinocchioDynamicsModel::copy_nonlinear_effects_to(std::vector<double>& nonlinear) const {
+    if(nonlinear.size() != static_cast<size_t>(_nle_.size())) nonlinear.resize(_nle_.size());
+    for(size_t i = 0; i < nonlinear.size(); ++i) nonlinear[i] = _nle_[i];
 }
 
 // ! ========================= 私 有 函 数 实 现 ========================= ! //

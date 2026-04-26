@@ -4,32 +4,51 @@ namespace dm_ros_control {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
+/**
+ * @brief 配置动力学观测器
+ * @param urdf_path 机器人 URDF 路径
+ * @param joint_names 受控关节名称列表
+ */
 void DynamicsObserver::configure(const std::string& urdf_path, const std::vector<std::string>& joint_names) {
     _dynamics_model_ = std::make_shared<PinocchioDynamicsModel>(urdf_path, joint_names);
 }
 
+/**
+ * @brief 清理动力学模型
+ */
 void DynamicsObserver::cleanup() {
     _dynamics_model_.reset();
 }
 
-DynamicsObservation DynamicsObserver::observe(
+/**
+ * @brief 根据关节状态计算动力学观测量
+ * @param positions 关节位置
+ * @param velocities 关节速度
+ * @param efforts 关节侧实测力矩
+ * @param enable_gravity_feedforward 是否选择重力项作为 active_feedforward
+ * @param enable_nonlinear_feedforward 是否选择非线性项作为 active_feedforward
+ * @param observation 预分配观测结果输出
+ * @return 成功返回 true，失败返回 false
+ */
+bool DynamicsObserver::observe(
     const std::vector<double>& positions,
     const std::vector<double>& velocities,
     const std::vector<double>& efforts,
     bool enable_gravity_feedforward,
-    bool enable_nonlinear_feedforward) {
+    bool enable_nonlinear_feedforward,
+    DynamicsObservation& observation) {
 
-    DynamicsObservation observation;
-    observation.gravity.assign(positions.size(), 0.0);
-    observation.nonlinear.assign(positions.size(), 0.0);
-    observation.active_feedforward.assign(positions.size(), 0.0);
-    observation.external_effort.assign(positions.size(), 0.0);
+    if(observation.gravity.size() != positions.size()) observation.gravity.assign(positions.size(), 0.0);
+    if(observation.nonlinear.size() != positions.size()) observation.nonlinear.assign(positions.size(), 0.0);
+    if(observation.active_feedforward.size() != positions.size()) observation.active_feedforward.assign(positions.size(), 0.0);
+    if(observation.external_effort.size() != positions.size()) observation.external_effort.assign(positions.size(), 0.0);
 
-    if(!_dynamics_model_) return observation;
-    if(!_dynamics_model_->update(positions, velocities)) return observation;
+    observation.valid = false;
+    if(!_dynamics_model_) return false;
+    if(!_dynamics_model_->update(positions, velocities)) return false;
 
-    observation.gravity = _dynamics_model_->get_gravity_std();
-    observation.nonlinear = _dynamics_model_->get_nonlinear_effects_std();
+    _dynamics_model_->copy_gravity_to(observation.gravity);
+    _dynamics_model_->copy_nonlinear_effects_to(observation.nonlinear);
     observation.valid = true;
 
     for(size_t i = 0; i < positions.size(); ++i) {
@@ -40,7 +59,7 @@ DynamicsObservation DynamicsObserver::observe(
         observation.external_effort[i] = efforts[i] - observation.active_feedforward[i];
     }
 
-    return observation;
+    return true;
 }
 
 }

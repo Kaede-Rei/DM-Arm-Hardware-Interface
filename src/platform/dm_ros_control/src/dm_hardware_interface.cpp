@@ -5,10 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include <algorithm>
-#include <cmath>
 #include <filesystem>
-#include <stdexcept>
 
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>
@@ -27,6 +24,13 @@ using CallbackReturn = hardware_interface::CallbackReturn;
 
 namespace {
 
+/**
+ * @brief 尝试从硬件参数表读取并转换参数
+ * @tparam T 目标参数类型
+ * @param info ros2_control 硬件信息
+ * @param key 参数名
+ * @return 转换成功返回参数值，否则返回 nullopt
+ */
 template<typename T>
 tl::optional<T> try_get_param(const hardware_interface::HardwareInfo& info, const std::string& key) {
     const auto it = info.hardware_parameters.find(key);
@@ -40,6 +44,14 @@ tl::optional<T> try_get_param(const hardware_interface::HardwareInfo& info, cons
     }
 }
 
+/**
+ * @brief 从硬件参数表读取参数，失败时返回默认值
+ * @tparam T 目标参数类型
+ * @param info ros2_control 硬件信息
+ * @param key 参数名
+ * @param default_value 默认值
+ * @return 参数值或默认值
+ */
 template<typename T>
 T get_param(const hardware_interface::HardwareInfo& info, const std::string& key, const T& default_value) {
     return try_get_param<T>(info, key).value_or(default_value);
@@ -101,6 +113,10 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     _nonlinear_feedforward_.assign(n, 0.0);
     _active_feedforward_.assign(n, 0.0);
     _external_efforts_.assign(n, 0.0);
+    _dynamics_observation_.gravity.assign(n, 0.0);
+    _dynamics_observation_.nonlinear.assign(n, 0.0);
+    _dynamics_observation_.active_feedforward.assign(n, 0.0);
+    _dynamics_observation_.external_effort.assign(n, 0.0);
 
     for(size_t i = 0; i < n; ++i) {
         const auto& joint = info.joints[i];
@@ -246,7 +262,11 @@ CallbackReturn DmHardwareInterface::on_cleanup(const rclcpp_lifecycle::State& pr
 }
 
 /**
- * @brief 导出状态接口，提供位置和速度状态
+ * @brief 导出状态接口
+ *
+ * 标准状态接口包含 position / velocity / effort。
+ * 额外状态接口用于观测电机侧力矩、动力学前馈项和外力估计。
+ *
  * @return 状态接口列表
  */
 std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_state_interfaces() {
@@ -265,7 +285,11 @@ std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_stat
 }
 
 /**
- * @brief 导出命令接口，提供位置命令
+ * @brief 导出命令接口
+ *
+ * 解耦后的控制输入包含 position / velocity / effort / kp / kd。
+ * write() 只汇总这些输入并交给 DmMotorBus，不在热路径内重新做控制策略分支。
+ *
  * @return 命令接口列表
  */
 std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_command_interfaces() {
@@ -281,7 +305,10 @@ std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_co
 }
 
 /**
- * @brief 读取电机状态，更新位置和速度
+ * @brief 控制周期读取电机状态和动力学观测
+ *
+ * 读取路径复用 _bus_states_ 和 _dynamics_observation_ 缓冲，避免周期分配。
+ *
  * @param time 当前时间
  * @param period 周期时间
  * @return return_type
@@ -303,18 +330,19 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     }
 
     if(_enable_dynamics_) {
-        const auto observation = _dynamics_observer_.observe(
+        const bool ok = _dynamics_observer_.observe(
             _hw_positions_,
             _hw_velocities_,
             _hw_efforts_,
             _enable_gravity_feedforward_,
-            _enable_nonlinear_feedforward_);
+            _enable_nonlinear_feedforward_,
+            _dynamics_observation_);
 
-        if(observation.valid) {
-            _gravity_feedforward_ = observation.gravity;
-            _nonlinear_feedforward_ = observation.nonlinear;
-            _active_feedforward_ = observation.active_feedforward;
-            _external_efforts_ = observation.external_effort;
+        if(ok) {
+            _gravity_feedforward_ = _dynamics_observation_.gravity;
+            _nonlinear_feedforward_ = _dynamics_observation_.nonlinear;
+            _active_feedforward_ = _dynamics_observation_.active_feedforward;
+            _external_efforts_ = _dynamics_observation_.external_effort;
         }
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics observer with current joint states.");
@@ -335,7 +363,10 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
 }
 
 /**
- * @brief 写入命令到电机，根据控制模式计算目标位置和速度
+ * @brief 控制周期写入命令到电机
+ *
+ * write() 不直接访问达妙 SDK，只构建 DmJointCommand 并委托 DmMotorBus。
+ *
  * @param time 当前时间
  * @param period 周期时间
  * @return return_type
@@ -378,6 +409,10 @@ speed_t DmHardwareInterface::baudrate_to_speed_t(int baudrate) const {
     }
 }
 
+/**
+ * @brief 从安装目录读取 pd_config.yaml 中的关节 PD 增益
+ * @return 读取成功返回 true，文件缺失或格式错误返回 false
+ */
 bool DmHardwareInterface::load_pd_gains_from_yaml() {
     try {
         const auto package_share = ament_index_cpp::get_package_share_directory("dm_ros_control");
@@ -420,6 +455,11 @@ bool DmHardwareInterface::load_pd_gains_from_yaml() {
     return true;
 }
 
+/**
+ * @brief 汇总单关节控制输入
+ * @param index 关节索引
+ * @return 关节侧命令
+ */
 DmJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const {
     DmJointCommand command;
     command.position = sanitize_or_default(_hw_commands_pos_[index], _hw_positions_[index]);
@@ -433,11 +473,22 @@ DmJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const
     return command;
 }
 
+/**
+ * @brief 获取过渡期硬件侧前馈力矩
+ * @param index 关节索引
+ * @return 需要叠加到 effort 命令上的前馈力矩
+ */
 double DmHardwareInterface::select_legacy_feedforward(std::size_t index) const {
     if(!_legacy_feedforward_enabled_) return 0.0;
     return sanitize_or_default(_active_feedforward_[index], 0.0);
 }
 
+/**
+ * @brief 过滤非有限数
+ * @param value 输入值
+ * @param default_value 默认值
+ * @return value 为有限数时返回 value，否则返回 default_value
+ */
 double DmHardwareInterface::sanitize_or_default(double value, double default_value) const {
     if(std::isfinite(value)) return value;
     return default_value;
