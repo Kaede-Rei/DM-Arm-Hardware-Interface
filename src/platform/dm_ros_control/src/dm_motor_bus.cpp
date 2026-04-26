@@ -1,10 +1,6 @@
 #include "dm_ros_control/dm_motor_bus.hpp"
 #include "dm_hw/serial_port.hpp"
 
-#include <unistd.h>
-
-#include <stdexcept>
-
 namespace dm_ros_control {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
@@ -130,11 +126,8 @@ bool DmMotorBus::write(std::size_t index, const DmJointCommand& command) noexcep
         if(config.control_mode == ControlMode::MIT) {
             const double tau_motor = command.effort / scale;
             _motor_controller_->control_mit(*_motors_[index],
-                static_cast<float>(command.kp),
-                static_cast<float>(command.kd),
-                static_cast<float>(cmd_motor),
-                static_cast<float>(cmd_vel_motor),
-                static_cast<float>(tau_motor));
+                static_cast<float>(command.kp), static_cast<float>(command.kd),
+                static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_motor));
         }
         else if(config.control_mode == ControlMode::POS_VEL) {
             _motor_controller_->control_pos_vel(*_motors_[index], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));

@@ -263,10 +263,6 @@ CallbackReturn DmHardwareInterface::on_cleanup(const rclcpp_lifecycle::State& pr
 
 /**
  * @brief 导出状态接口
- *
- * 标准状态接口包含 position / velocity / effort。
- * 额外状态接口用于观测电机侧力矩、动力学前馈项和外力估计。
- *
  * @return 状态接口列表
  */
 std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_state_interfaces() {
@@ -286,10 +282,6 @@ std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_stat
 
 /**
  * @brief 导出命令接口
- *
- * 解耦后的控制输入包含 position / velocity / effort / kp / kd。
- * write() 只汇总这些输入并交给 DmMotorBus，不在热路径内重新做控制策略分支。
- *
  * @return 命令接口列表
  */
 std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_command_interfaces() {
@@ -306,9 +298,6 @@ std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_co
 
 /**
  * @brief 控制周期读取电机状态和动力学观测
- *
- * 读取路径复用 _bus_states_ 和 _dynamics_observation_ 缓冲，避免周期分配。
- *
  * @param time 当前时间
  * @param period 周期时间
  * @return return_type
@@ -330,13 +319,8 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     }
 
     if(_enable_dynamics_) {
-        const bool ok = _dynamics_observer_.observe(
-            _hw_positions_,
-            _hw_velocities_,
-            _hw_efforts_,
-            _enable_gravity_feedforward_,
-            _enable_nonlinear_feedforward_,
-            _dynamics_observation_);
+        const bool ok = _dynamics_observer_.observe(_hw_positions_, _hw_velocities_, _hw_efforts_,
+            _enable_gravity_feedforward_, _enable_nonlinear_feedforward_, _dynamics_observation_);
 
         if(ok) {
             _gravity_feedforward_ = _dynamics_observation_.gravity;
@@ -364,9 +348,6 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
 
 /**
  * @brief 控制周期写入命令到电机
- *
- * write() 不直接访问达妙 SDK，只构建 DmJointCommand 并委托 DmMotorBus。
- *
  * @param time 当前时间
  * @param period 周期时间
  * @return return_type

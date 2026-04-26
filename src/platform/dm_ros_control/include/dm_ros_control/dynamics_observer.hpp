@@ -46,13 +46,8 @@ public:
      * @param observation 预分配的动力学观测输出
      * @return 成功返回 true，失败返回 false
      */
-    bool observe(
-        const std::vector<double>& positions,
-        const std::vector<double>& velocities,
-        const std::vector<double>& efforts,
-        bool enable_gravity_feedforward,
-        bool enable_nonlinear_feedforward,
-        DynamicsObservation& observation);
+    bool observe(const std::vector<double>& positions, const std::vector<double>& velocities, const std::vector<double>& efforts,
+        bool enable_gravity_feedforward, bool enable_nonlinear_feedforward, DynamicsObservation& observation);
 
 private:
     std::shared_ptr<PinocchioDynamicsModel> _dynamics_model_;
