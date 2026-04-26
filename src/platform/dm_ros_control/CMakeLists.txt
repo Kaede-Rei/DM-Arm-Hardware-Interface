@@ -29,7 +29,7 @@ set(DEPENDENCIES
     pluginlib
     controller_manager
     pinocchio
-
+    tl
     dm_hw
 )
 
@@ -53,6 +53,8 @@ set(LIB_NAME ${PROJECT_NAME})
 set(LIB_SOURCES
     # src/library.cpp
     src/dm_hardware_interface.cpp
+    src/dm_motor_bus.cpp
+    src/dynamics_observer.cpp
     src/pinocchio_dynamics_model.cpp
 )
 

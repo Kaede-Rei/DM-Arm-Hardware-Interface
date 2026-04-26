@@ -4,6 +4,7 @@
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
+#include <sstream>
 #include <unordered_set>
 
 namespace dm_ros_control {

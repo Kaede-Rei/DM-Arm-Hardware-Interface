@@ -15,6 +15,8 @@ def generate_launch_description():
     enable_write = LaunchConfiguration("enable_write")
     refresh_state_in_read = LaunchConfiguration("refresh_state_in_read")
     startup_read_cycles = LaunchConfiguration("startup_read_cycles")
+    legacy_feedforward_enabled = LaunchConfiguration("legacy_feedforward_enabled")
+    legacy_pd_fallback = LaunchConfiguration("legacy_pd_fallback")
 
     enable_dynamics = LaunchConfiguration("enable_dynamics")
     enable_gravity_feedforward = LaunchConfiguration("enable_gravity_feedforward")
@@ -36,6 +38,10 @@ def generate_launch_description():
             refresh_state_in_read,
             " startup_read_cycles:=",
             startup_read_cycles,
+            " legacy_feedforward_enabled:=",
+            legacy_feedforward_enabled,
+            " legacy_pd_fallback:=",
+            legacy_pd_fallback,
             " enable_dynamics:=",
             enable_dynamics,
             " enable_gravity_feedforward:=",
@@ -87,6 +93,8 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_write", default_value="true"),
             DeclareLaunchArgument("refresh_state_in_read", default_value="false"),
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
+            DeclareLaunchArgument("legacy_feedforward_enabled", default_value="true"),
+            DeclareLaunchArgument("legacy_pd_fallback", default_value="true"),
             DeclareLaunchArgument("enable_dynamics", default_value="true"),
             DeclareLaunchArgument("enable_gravity_feedforward", default_value="true"),
             DeclareLaunchArgument(

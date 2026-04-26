@@ -1,9 +1,12 @@
 #include "dm_ros_control/dm_hardware_interface.hpp"
+#include "tl/optional.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 
@@ -20,11 +23,31 @@ using CallbackReturn = hardware_interface::CallbackReturn;
 
 
 
-// ! ========================= 私 有 量 / 函 数 声 明 ========================= ! //
+// ! ========================= 私 有 量 / 工 具 函 数 声 明 ========================= ! //
 
+namespace {
 
+template<typename T>
+tl::optional<T> try_get_param(const hardware_interface::HardwareInfo& info, const std::string& key) {
+    const auto it = info.hardware_parameters.find(key);
+    if(it == info.hardware_parameters.end()) return tl::nullopt;
 
-// ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
+    try {
+        return YAML::Node(it->second).as<T>();
+    }
+    catch(...) {
+        return tl::nullopt;
+    }
+}
+
+template<typename T>
+T get_param(const hardware_interface::HardwareInfo& info, const std::string& key, const T& default_value) {
+    return try_get_param<T>(info, key).value_or(default_value);
+}
+
+}
+
+// ! ========================= 接 口 类 方 法 / 函 数 实 现 ========================= ! //
 
 /**
  * @brief 初始化硬件接口
@@ -34,18 +57,31 @@ using CallbackReturn = hardware_interface::CallbackReturn;
 CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareInfo& info) {
     if(hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS) return CallbackReturn::ERROR;
 
-    _serial_port_ = info.hardware_parameters.at("serial_port");
-    _baudrate_ = std::stoi(info.hardware_parameters.at("baudrate"));
-    _enable_write_ = info.hardware_parameters.at("enable_write") == "true";
-    _refresh_state_in_read_ = info.hardware_parameters.at("refresh_state_in_read") == "true";
-    _startup_read_cycles_ = std::stoi(info.hardware_parameters.at("startup_read_cycles"));
+    _serial_port_ = get_param<std::string>(info, "serial_port", "/dev/ttyACM0");
+    _baudrate_ = get_param<int>(info, "baudrate", 921600);
+    _enable_write_ = get_param<bool>(info, "enable_write", true);
+    _refresh_state_in_read_ = get_param<bool>(info, "refresh_state_in_read", false);
+    _startup_read_cycles_ = get_param<int>(info, "startup_read_cycles", 5);
+
+    if(_startup_read_cycles_ < 1) {
+        RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+            "Invalid startup_read_cycles (%d), must be at least 1. Defaulting to 5.", _startup_read_cycles_);
+        _startup_read_cycles_ = 5;
+    }
+
+    _legacy_feedforward_enabled_ = get_param<bool>(info, "legacy_feedforward_enabled", true);
+    _legacy_pd_fallback_ = get_param<bool>(info, "legacy_pd_fallback", true);
+
+    _enable_dynamics_ = get_param<bool>(info, "enable_dynamics", false);
+    _enable_gravity_feedforward_ = get_param<bool>(info, "enable_gravity_feedforward", false);
+    _enable_nonlinear_feedforward_ = get_param<bool>(info, "enable_nonlinear_feedforward", false);
+    _urdf_path_ = get_param<std::string>(info, "urdf_path", "");
 
     const auto n = info.joints.size();
+
     _joint_names_.resize(n);
-    _motor_ids_.resize(n);
-    _motor_types_.resize(n);
-    _joint_to_motor_scale_.resize(n);
-    _control_modes_.resize(n);
+    _motor_configs_.resize(n);
+
     _joint_kp_.assign(n, 0.0);
     _joint_kd_.assign(n, 0.0);
 
@@ -53,45 +89,59 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     _hw_velocities_.assign(n, 0.0);
     _hw_efforts_.assign(n, 0.0);
     _motor_efforts_.assign(n, 0.0);
+
     _hw_commands_pos_.assign(n, 0.0);
-    _hw_commands_pos_prev_.assign(n, 0.0);
     _hw_commands_vel_.assign(n, 0.0);
+    _hw_commands_effort_.assign(n, 0.0);
+    _hw_commands_kp_.assign(n, 0.0);
+    _hw_commands_kd_.assign(n, 0.0);
+    _bus_states_.assign(n, {});
+
+    _gravity_feedforward_.assign(n, 0.0);
+    _nonlinear_feedforward_.assign(n, 0.0);
+    _active_feedforward_.assign(n, 0.0);
+    _external_efforts_.assign(n, 0.0);
 
     for(size_t i = 0; i < n; ++i) {
         const auto& joint = info.joints[i];
         _joint_names_[i] = joint.name;
 
-        _motor_ids_[i] = static_cast<uint32_t>(std::stoul(joint.parameters.at("motor_id")));
-        _motor_types_[i] = static_cast<damiao::DmMotorType>(std::stoi(joint.parameters.at("motor_type")));
-        _joint_to_motor_scale_[i] = std::stod(joint.parameters.at("joint_to_motor_scale"));
-        if(_joint_to_motor_scale_[i] == 0.0) {
+        _motor_configs_[i].joint_name = joint.name;
+        _motor_configs_[i].motor_id = static_cast<uint32_t>(std::stoul(joint.parameters.at("motor_id")));
+        _motor_configs_[i].motor_type = static_cast<damiao::DmMotorType>(std::stoi(joint.parameters.at("motor_type")));
+        _motor_configs_[i].joint_to_motor_scale = std::stod(joint.parameters.at("joint_to_motor_scale"));
+
+        if(_motor_configs_[i].joint_to_motor_scale == 0.0) {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "joint_to_motor_scale for joint '%s' must not be zero.", joint.name.c_str());
             return hardware_interface::CallbackReturn::ERROR;
         }
 
         const auto mode = joint.parameters.at("control_mode");
-        if(mode == "MIT") _control_modes_[i] = ControlMode::MIT;
-        else if(mode == "POS_VEL")_control_modes_[i] = ControlMode::POS_VEL;
+        if(mode == "MIT") _motor_configs_[i].control_mode = ControlMode::MIT;
+        else if(mode == "POS_VEL")_motor_configs_[i].control_mode = ControlMode::POS_VEL;
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unknown control_mode '%s' for joint '%s'", mode.c_str(), joint.name.c_str());
             return hardware_interface::CallbackReturn::ERROR;
         }
     }
 
-    _enable_dynamics_ = info.hardware_parameters.at("enable_dynamics") == "true";
-    _enable_gravity_feedforward_ = info.hardware_parameters.at("enable_gravity_feedforward") == "true";
-    _enable_nonlinear_feedforward_ = info.hardware_parameters.at("enable_nonlinear_feedforward") == "true";
-    _urdf_path_ = info.hardware_parameters.at("urdf_path");
+    if(_legacy_pd_fallback_) {
+        if(!load_pd_gains_from_yaml()) {
+            RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+                "Failed to load pd_config.yaml, fallback to zero gains for all joints.");
+        }
 
-    _gravity_feedforward_.assign(info.joints.size(), 0.0);
-    _nonlinear_feedforward_.assign(info.joints.size(), 0.0);
-    _active_feedforward_.assign(info.joints.size(), 0.0);
-    _external_efforts_.assign(info.joints.size(), 0.0);
-
-    if(!load_pd_gains_from_yaml()) {
-        RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
-            "Failed to load pd_config.yaml, fallback to zero gains for all joints.");
+        for(std::size_t i = 0; i < n; ++i) {
+            _hw_commands_kp_[i] = _joint_kp_[i];
+            _hw_commands_kd_[i] = _joint_kd_[i];
+        }
     }
+    RCLCPP_INFO(rclcpp::get_logger("DmHardwareInterface"),
+        "Initialized DmHardwareInterface: joints=%zu, write=%s, dynamics=%s, legacy_feedforward=%s, legacy_pd=%s", n,
+        _enable_write_ ? "true" : "false",
+        _enable_dynamics_ ? "true" : "false",
+        _legacy_feedforward_enabled_ ? "true" : "false",
+        _legacy_pd_fallback_ ? "true" : "false");
 
     return CallbackReturn::SUCCESS;
 }
@@ -104,18 +154,21 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    _serial_ = std::make_shared<SerialPort>(_serial_port_, baudrate_to_speed_t(_baudrate_));
-    _motor_controller_ = std::make_shared<damiao::MotorControl>(_serial_);
-    _motors_.clear();
-    _motors_.reserve(_joint_names_.size());
+    try {
+        _motor_bus_.configure(_serial_port_, baudrate_to_speed_t(_baudrate_), _motor_configs_);
 
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        auto motor = std::make_shared<damiao::Motor>(_motor_types_[i], _motor_ids_[i], 0x00);
-        _motor_controller_->add_motor(motor.get());
-        _motors_.push_back(motor);
+        if(_enable_dynamics_) {
+            if(_urdf_path_.empty()) {
+                RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "URDF path must be specified to enable dynamics model.");
+                return CallbackReturn::ERROR;
+            }
+            _dynamics_observer_.configure(_urdf_path_, _joint_names_);
+        }
     }
-
-    if(_enable_dynamics_) _dynamics_model_ = std::make_shared<PinocchioDynamicsModel>(_urdf_path_, _joint_names_);
+    catch(const std::exception& e) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Exception during on_configure: %s", e.what());
+        return CallbackReturn::ERROR;
+    }
 
     return CallbackReturn::SUCCESS;
 }
@@ -128,38 +181,32 @@ CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& 
 CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    for(size_t i = 0; i < _motors_.size(); ++i) {
-        _motor_controller_->enable(*_motors_[i]);
-
-        if(_control_modes_[i] == ControlMode::MIT) {
-            _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::MIT_MODE);
-        }
-        else if(_control_modes_[i] == ControlMode::POS_VEL) {
-            _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::POS_VEL_MODE);
-        }
-        else {
-            RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
-            return CallbackReturn::ERROR;
-        }
+    std::vector<DmJointState> startup_states;
+    try {
+        _motor_bus_.activate(_startup_read_cycles_, startup_states);
     }
-
-    std::vector<double> sum_pos(_joint_names_.size(), 0.0);
-    for(uint8_t i = 0; i < _startup_read_cycles_; ++i) {
-        for(size_t j = 0; j < _motors_.size(); ++j) {
-            _motor_controller_->refresh_motor_status(*_motors_[j]);
-            const double scale = _joint_to_motor_scale_[j];
-            sum_pos[j] += _motors_[j]->get_position() / scale;
-        }
+    catch(const std::exception& e) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Exception during on_activate: %s", e.what());
+        return CallbackReturn::ERROR;
     }
 
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        _hw_positions_[i] = sum_pos[i] / static_cast<double>(_startup_read_cycles_);
-        _hw_velocities_[i] = 0.0;
-        _hw_efforts_[i] = 0.0;
-        _motor_efforts_[i] = 0.0;
+        _hw_positions_[i] = startup_states[i].position;
+        _hw_velocities_[i] = startup_states[i].velocity;
+        _hw_efforts_[i] = startup_states[i].effort;
+        _motor_efforts_[i] = startup_states[i].motor_effort;
+
         _hw_commands_pos_[i] = _hw_positions_[i];
-        _hw_commands_pos_prev_[i] = _hw_positions_[i];
-        _hw_commands_vel_[i] = _hw_velocities_[i];
+        _hw_commands_vel_[i] = 0.0;
+        _hw_commands_effort_[i] = 0.0;
+
+        if(_legacy_pd_fallback_) {
+            _hw_commands_kp_[i] = _joint_kp_[i];
+            _hw_commands_kd_[i] = _joint_kd_[i];
+        }
+
+        _active_feedforward_[i] = 0.0;
+        _external_efforts_[i] = 0.0;
     }
 
     return CallbackReturn::SUCCESS;
@@ -173,15 +220,12 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
 CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    for(size_t i = 0; i < _motors_.size(); ++i) {
-        _motor_controller_->switch_control_mode(*_motors_[i], damiao::DmControlMode::POS_VEL_MODE);
-        _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(0.0f), static_cast<float>(1.0f));
+    try {
+        _motor_bus_.deactivate();
     }
-
-    rclcpp::sleep_for(std::chrono::seconds(5));
-
-    for(auto& motor : _motors_) {
-        _motor_controller_->disable(*motor);
+    catch(const std::exception& e) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Exception during on_deactivate: %s", e.what());
+        return CallbackReturn::ERROR;
     }
 
     return CallbackReturn::SUCCESS;
@@ -195,9 +239,8 @@ CallbackReturn DmHardwareInterface::on_deactivate(const rclcpp_lifecycle::State&
 CallbackReturn DmHardwareInterface::on_cleanup(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    _motors_.clear();
-    _motor_controller_.reset();
-    _serial_.reset();
+    _motor_bus_.cleanup();
+    _dynamics_observer_.cleanup();
 
     return CallbackReturn::SUCCESS;
 }
@@ -230,6 +273,9 @@ std::vector<hardware_interface::CommandInterface> DmHardwareInterface::export_co
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
         command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_POSITION, &_hw_commands_pos_[i]);
         command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_VELOCITY, &_hw_commands_vel_[i]);
+        command_interfaces.emplace_back(_joint_names_[i], hardware_interface::HW_IF_EFFORT, &_hw_commands_effort_[i]);
+        command_interfaces.emplace_back(_joint_names_[i], "kp", &_hw_commands_kp_[i]);
+        command_interfaces.emplace_back(_joint_names_[i], "kd", &_hw_commands_kd_[i]);
     }
     return command_interfaces;
 }
@@ -244,43 +290,45 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     (void)time;
     (void)period;
 
-    for(size_t i = 0; i < _motors_.size(); ++i) {
-        if(_refresh_state_in_read_) _motor_controller_->refresh_motor_status(*_motors_[i]);
-        const double scale = _joint_to_motor_scale_[i];
-        _hw_positions_[i] = _motors_[i]->get_position() / scale;
-        _hw_velocities_[i] = _motors_[i]->get_velocity() / scale;
-        _motor_efforts_[i] = _motors_[i]->get_tau();
-        _hw_efforts_[i] = _motor_efforts_[i] * scale;
+    if(!_motor_bus_.read(_refresh_state_in_read_, _bus_states_)) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to read motor bus state.");
+        return hardware_interface::return_type::ERROR;
     }
 
-    bool dynamics_observation_valid = false;
-    if(_enable_dynamics_ && _dynamics_model_) {
-        const bool ok = _dynamics_model_->update(_hw_positions_, _hw_velocities_);
-        if(ok) {
-            const auto gravity_feedforward = _dynamics_model_->get_gravity_std();
-            const auto nonlinear_feedforward = _dynamics_model_->get_nonlinear_effects_std();
-            for(size_t i = 0; i < _joint_names_.size(); ++i) {
-                _gravity_feedforward_[i] = gravity_feedforward[i];
-                _nonlinear_feedforward_[i] = nonlinear_feedforward[i];
-            }
-            dynamics_observation_valid = true;
-        }
-        else RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics model with current joint states.");
+    for(size_t i = 0; i < _bus_states_.size(); ++i) {
+        _hw_positions_[i] = _bus_states_[i].position;
+        _hw_velocities_[i] = _bus_states_[i].velocity;
+        _hw_efforts_[i] = _bus_states_[i].effort;
+        _motor_efforts_[i] = _bus_states_[i].motor_effort;
     }
 
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        if(dynamics_observation_valid) {
-            if(_enable_nonlinear_feedforward_) _active_feedforward_[i] = _nonlinear_feedforward_[i];
-            else if(_enable_gravity_feedforward_) _active_feedforward_[i] = _gravity_feedforward_[i];
-            else _active_feedforward_[i] = 0.0;
-            _external_efforts_[i] = _hw_efforts_[i] - _active_feedforward_[i];
+    if(_enable_dynamics_) {
+        const auto observation = _dynamics_observer_.observe(
+            _hw_positions_,
+            _hw_velocities_,
+            _hw_efforts_,
+            _enable_gravity_feedforward_,
+            _enable_nonlinear_feedforward_);
+
+        if(observation.valid) {
+            _gravity_feedforward_ = observation.gravity;
+            _nonlinear_feedforward_ = observation.nonlinear;
+            _active_feedforward_ = observation.active_feedforward;
+            _external_efforts_ = observation.external_effort;
         }
         else {
-            _gravity_feedforward_[i] = 0.0;
-            _nonlinear_feedforward_[i] = 0.0;
-            _active_feedforward_[i] = 0.0;
-            _external_efforts_[i] = 0.0;
+            RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics observer with current joint states.");
+            std::fill(_gravity_feedforward_.begin(), _gravity_feedforward_.end(), 0.0);
+            std::fill(_nonlinear_feedforward_.begin(), _nonlinear_feedforward_.end(), 0.0);
+            std::fill(_active_feedforward_.begin(), _active_feedforward_.end(), 0.0);
+            std::fill(_external_efforts_.begin(), _external_efforts_.end(), 0.0);
         }
+    }
+    else {
+        std::fill(_gravity_feedforward_.begin(), _gravity_feedforward_.end(), 0.0);
+        std::fill(_nonlinear_feedforward_.begin(), _nonlinear_feedforward_.end(), 0.0);
+        std::fill(_active_feedforward_.begin(), _active_feedforward_.end(), 0.0);
+        std::fill(_external_efforts_.begin(), _external_efforts_.end(), 0.0);
     }
 
     return hardware_interface::return_type::OK;
@@ -298,41 +346,17 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
     if(!_enable_write_) return hardware_interface::return_type::OK;
 
-    for(size_t i = 0; i < _motors_.size(); ++i) {
-        const double scale = _joint_to_motor_scale_[i];
-
-        double cmd_joint = _hw_commands_pos_[i];
-        double cmd_vel_joint = _hw_commands_vel_[i];
-
-        const double cmd_motor = cmd_joint * scale;
-        const double cmd_vel_motor = cmd_vel_joint * scale;
-
-        double tau_feedforward_joint = 0.0;
-
-        if(_enable_dynamics_) {
-            if(_enable_nonlinear_feedforward_) tau_feedforward_joint = _nonlinear_feedforward_[i];
-            else if(_enable_gravity_feedforward_) tau_feedforward_joint = _gravity_feedforward_[i];
-        }
-
-        if(_control_modes_[i] == ControlMode::MIT) {
-            const double tau_feedforward_motor = tau_feedforward_joint / scale;
-            _motor_controller_->control_mit(*_motors_[i], static_cast<float>(_joint_kp_[i]), static_cast<float>(_joint_kd_[i]), static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_feedforward_motor));
-        }
-        else if(_control_modes_[i] == ControlMode::POS_VEL) {
-            _motor_controller_->control_pos_vel(*_motors_[i], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));
-        }
-        else {
-            RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unsupported control mode for motor ID %u", _motor_ids_[i]);
+    for(size_t i = 0; i < _motor_bus_.size(); ++i) {
+        if(!_motor_bus_.write(i, build_joint_command(i))) {
+            RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to write command for joint '%s'.", _joint_names_[i].c_str());
             return hardware_interface::return_type::ERROR;
         }
-
-        _hw_commands_pos_prev_[i] = cmd_joint;
     }
 
     return hardware_interface::return_type::OK;
 }
 
-// ! ========================= 私 有 函 数 实 现 ========================= ! //
+// ! ========================= 私 有 类 方 法 实 现 ========================= ! //
 
 /**
  * @brief 将波特率转换为 speed_t 类型
@@ -394,6 +418,29 @@ bool DmHardwareInterface::load_pd_gains_from_yaml() {
     }
 
     return true;
+}
+
+DmJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const {
+    DmJointCommand command;
+    command.position = sanitize_or_default(_hw_commands_pos_[index], _hw_positions_[index]);
+    command.velocity = sanitize_or_default(_hw_commands_vel_[index], 0.0);
+    command.effort = sanitize_or_default(_hw_commands_effort_[index], 0.0) + select_legacy_feedforward(index);
+
+    const double fallback_kp = _legacy_pd_fallback_ ? _joint_kp_[index] : 0.0;
+    const double fallback_kd = _legacy_pd_fallback_ ? _joint_kd_[index] : 0.0;
+    command.kp = sanitize_or_default(_hw_commands_kp_[index], fallback_kp);
+    command.kd = sanitize_or_default(_hw_commands_kd_[index], fallback_kd);
+    return command;
+}
+
+double DmHardwareInterface::select_legacy_feedforward(std::size_t index) const {
+    if(!_legacy_feedforward_enabled_) return 0.0;
+    return sanitize_or_default(_active_feedforward_[index], 0.0);
+}
+
+double DmHardwareInterface::sanitize_or_default(double value, double default_value) const {
+    if(std::isfinite(value)) return value;
+    return default_value;
 }
 
 }

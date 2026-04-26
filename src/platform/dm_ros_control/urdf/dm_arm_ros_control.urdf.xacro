@@ -7,6 +7,8 @@
     <xacro:arg name="enable_write" default="true"/>
     <xacro:arg name="refresh_state_in_read" default="false"/>
     <xacro:arg name="startup_read_cycles" default="5"/>
+    <xacro:arg name="legacy_feedforward_enabled" default="true"/>
+    <xacro:arg name="legacy_pd_fallback" default="true"/>
 
     <xacro:arg name="enable_dynamics" default="true"/>
     <xacro:arg name="enable_gravity_feedforward" default="true"/>
@@ -29,6 +31,8 @@
                 <param name="enable_write">$(arg enable_write)</param>
                 <param name="refresh_state_in_read">$(arg refresh_state_in_read)</param>
                 <param name="startup_read_cycles">$(arg startup_read_cycles)</param>
+                <param name="legacy_feedforward_enabled">$(arg legacy_feedforward_enabled)</param>
+                <param name="legacy_pd_fallback">$(arg legacy_pd_fallback)</param>
 
                 <param name="enable_dynamics">$(arg enable_dynamics)</param>
                 <param name="enable_gravity_feedforward">$(arg enable_gravity_feedforward)</param>
@@ -44,6 +48,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -61,6 +68,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -78,6 +88,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -95,6 +108,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -112,6 +128,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -129,6 +148,9 @@
             <param name="joint_to_motor_scale">1.0</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
@@ -146,6 +168,9 @@
             <param name="joint_to_motor_scale">118.55066617319976</param>
             <command_interface name="position"/>
             <command_interface name="velocity"/>
+            <command_interface name="effort"/>
+            <command_interface name="kp"/>
+            <command_interface name="kd"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
