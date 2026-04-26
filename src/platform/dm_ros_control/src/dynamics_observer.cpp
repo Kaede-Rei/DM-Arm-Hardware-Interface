@@ -56,7 +56,7 @@ bool DynamicsObserver::observe(
         else if(enable_gravity_feedforward) observation.active_feedforward[i] = observation.gravity[i];
         else observation.active_feedforward[i] = 0.0;
 
-        observation.external_effort[i] = efforts[i] - observation.active_feedforward[i];
+        observation.external_effort[i] = efforts[i] - observation.nonlinear[i];
     }
 
     return true;

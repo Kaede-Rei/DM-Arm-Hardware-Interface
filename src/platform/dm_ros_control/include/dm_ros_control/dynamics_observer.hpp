@@ -14,7 +14,7 @@ struct DynamicsObservation {
     std::vector<double> gravity;                 ///< 重力项
     std::vector<double> nonlinear;               ///< 非线性项
     std::vector<double> active_feedforward;      ///< 当前启用的前馈力矩
-    std::vector<double> external_effort;         ///< 扣除前馈后的外部力矩估计
+    std::vector<double> external_effort;         ///< 扣除模型非线性项后的外部力矩估计
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
@@ -44,6 +44,9 @@ public:
      * @param enable_gravity_feedforward 是否选择重力项作为 active_feedforward
      * @param enable_nonlinear_feedforward 是否选择非线性项作为 active_feedforward
      * @param observation 预分配的动力学观测输出
+     *
+     * external_effort 始终扣除 nonlinear，与 active_feedforward 选择解耦。
+     *
      * @return 成功返回 true，失败返回 false
      */
     bool observe(const std::vector<double>& positions, const std::vector<double>& velocities, const std::vector<double>& efforts,
