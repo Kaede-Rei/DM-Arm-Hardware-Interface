@@ -22,6 +22,7 @@
     <!-- TODO: 功能包的 ROS 依赖优先写在这里；如果依赖你自己的接口包，也写在这里 -->
     <depend>pinocchio</depend>
     <depend>dm_hw</depend>
+    <depend>tl</depend>
 
     <!-- TODO: 如果提供 launch 文件，通常需要这些 -->
     <!-- <exec_depend>launch</exec_depend> -->

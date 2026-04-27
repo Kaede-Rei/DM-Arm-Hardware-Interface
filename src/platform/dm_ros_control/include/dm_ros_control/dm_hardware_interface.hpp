@@ -104,6 +104,20 @@ private:
      */
     dm_control_core::JointImpedanceControllerConfig build_joint_impedance_config() const;
 
+    /**
+     * @brief 解析上层关节命令语义
+     * @param mode 命令模式字符串
+     * @return 关节命令模式
+     */
+    dm_control_core::JointCommandMode parse_command_mode(const std::string& mode) const;
+
+    /**
+     * @brief 将命令校验错误转为日志字符串
+     * @param error 命令校验错误
+     * @return 错误描述
+     */
+    const char* command_error_to_string(dm_control_core::JointCommandError error) const;
+
 private:
     std::string serial_port_{ "/dev/ttyACM0" };
     int baudrate_{ 921600 };
@@ -115,6 +129,7 @@ private:
     bool legacy_feedforward_enabled_{ true };
     // 过渡期使用开关，决定是否在 YAML 中加载 PD 增益配置
     bool legacy_pd_fallback_{ true };
+    dm_control_core::JointCommandMode command_mode_{ dm_control_core::JointCommandMode::IMPEDANCE };
 
     dm_control_core::DmMotorBus motor_bus_;
     dm_control_core::DynamicsObserver dynamics_observer_;

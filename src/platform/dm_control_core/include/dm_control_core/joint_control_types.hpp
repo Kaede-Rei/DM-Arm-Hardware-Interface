@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tl/optional.hpp"
+
 #include <string>
 #include <vector>
 
@@ -14,6 +16,31 @@ enum class JointImpedanceMode {
     RIGID_HOLD,                     ///< 刚性保持模式
     COMPLIANT_HOLD,                 ///< 柔顺保持模式
     TRACKING                        ///< 跟踪模式
+};
+
+/**
+ * @brief 上层关节命令语义
+ */
+enum class JointCommandMode {
+    HOLD,                           ///< 保持当前位置
+    POSITION,                       ///< 位置命令，速度目标为 0
+    POSITION_VELOCITY,              ///< 位置+速度命令
+    IMPEDANCE,                      ///< 位置+速度+残差力矩命令
+    VELOCITY,                       ///< 速度命令，位置刚度关闭
+    TORQUE                          ///< 纯力矩命令，位置/速度刚度关闭
+};
+
+/**
+ * @brief 关节命令校验错误
+ */
+enum class JointCommandError {
+    MISSING_POSITION,               ///< 当前模式需要位置命令
+    MISSING_VELOCITY,               ///< 当前模式需要速度命令
+    MISSING_EFFORT,                 ///< 当前模式需要力矩命令
+    INVALID_POSITION_SIZE,          ///< 位置命令长度错误
+    INVALID_VELOCITY_SIZE,          ///< 速度命令长度错误
+    INVALID_EFFORT_SIZE,            ///< 力矩命令长度错误
+    INVALID_STATE_SIZE              ///< 状态长度错误
 };
 
 /**
@@ -33,6 +60,16 @@ struct JointReference {
     std::vector<double> position;       ///< 目标关节位置
     std::vector<double> velocity;       ///< 目标关节速度
     std::vector<double> effort;         ///< 上层外部力矩或 residual effort
+};
+
+/**
+ * @brief 上层关节命令，使用 optional 区分未提供和 0.0 命令
+ */
+struct JointCommand {
+    JointCommandMode mode{ JointCommandMode::HOLD };           ///< 命令语义
+    tl::optional<std::vector<double>> position;                ///< 目标关节位置
+    tl::optional<std::vector<double>> velocity;                ///< 目标关节速度
+    tl::optional<std::vector<double>> effort;                  ///< 残差力矩或纯力矩，取决于 mode
 };
 
 /**
@@ -83,7 +120,7 @@ struct JointImpedanceControllerConfig {
     JointImpedanceGains tracking_gains;                  ///< 跟踪模式阻抗参数
     JointCommandLimits limits;                           ///< 命令限幅配置
     bool use_gravity_feedforward{ true };                ///< 是否叠加 input.gravity_effort
-    bool use_reference_effort{ true };                   ///< 是否叠加 JointReference::effort
+    bool use_reference_effort{ true };                   ///< 是否叠加 JointCommand::effort
 };
 
 /**

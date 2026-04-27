@@ -86,6 +86,7 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 
     legacy_feedforward_enabled_ = get_param<bool>(info, "legacy_feedforward_enabled", true);
     legacy_pd_fallback_ = get_param<bool>(info, "legacy_pd_fallback", true);
+    command_mode_ = parse_command_mode(get_param<std::string>(info, "command_mode", "impedance"));
 
     enable_dynamics_ = get_param<bool>(info, "enable_dynamics", false);
     enable_gravity_feedforward_ = get_param<bool>(info, "enable_gravity_feedforward", false);
@@ -376,12 +377,43 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
     if(!enable_write_) return hardware_interface::return_type::OK;
 
-    dm_control_core::JointReference reference;
-    reference.position = hw_commands_pos_;
-    reference.velocity = hw_commands_vel_;
-    reference.effort = hw_commands_effort_;
+    dm_control_core::JointCommand command;
+    command.mode = command_mode_;
 
-    joint_impedance_controller_.set_reference(reference);
+    switch(command_mode_) {
+        case dm_control_core::JointCommandMode::HOLD:
+            break;
+
+        case dm_control_core::JointCommandMode::POSITION:
+            command.position = hw_commands_pos_;
+            break;
+
+        case dm_control_core::JointCommandMode::POSITION_VELOCITY:
+            command.position = hw_commands_pos_;
+            command.velocity = hw_commands_vel_;
+            break;
+
+        case dm_control_core::JointCommandMode::IMPEDANCE:
+            command.position = hw_commands_pos_;
+            command.velocity = hw_commands_vel_;
+            command.effort = hw_commands_effort_;
+            break;
+
+        case dm_control_core::JointCommandMode::VELOCITY:
+            command.velocity = hw_commands_vel_;
+            break;
+
+        case dm_control_core::JointCommandMode::TORQUE:
+            command.effort = hw_commands_effort_;
+            break;
+    }
+
+    const auto command_result = joint_impedance_controller_.set_command(command);
+    if(!command_result) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"),
+            "Invalid joint command: %s.", command_error_to_string(command_result.error()));
+        return hardware_interface::return_type::ERROR;
+    }
 
     dm_control_core::JointImpedanceControllerInput input;
     input.state = bus_state_;
@@ -424,6 +456,43 @@ speed_t DmHardwareInterface::baudrate_to_speed_t(int baudrate) const {
         default:
             throw std::runtime_error("Unsupported baudrate: " + std::to_string(baudrate));
     }
+}
+
+/**
+ * @brief 解析上层关节命令语义
+ * @param mode 命令模式字符串
+ * @return 关节命令模式
+ */
+dm_control_core::JointCommandMode DmHardwareInterface::parse_command_mode(const std::string& mode) const {
+    if(mode == "hold") return dm_control_core::JointCommandMode::HOLD;
+    if(mode == "position") return dm_control_core::JointCommandMode::POSITION;
+    if(mode == "position_velocity") return dm_control_core::JointCommandMode::POSITION_VELOCITY;
+    if(mode == "impedance") return dm_control_core::JointCommandMode::IMPEDANCE;
+    if(mode == "velocity") return dm_control_core::JointCommandMode::VELOCITY;
+    if(mode == "torque") return dm_control_core::JointCommandMode::TORQUE;
+
+    RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
+        "Unknown command_mode '%s', fallback to impedance.", mode.c_str());
+    return dm_control_core::JointCommandMode::IMPEDANCE;
+}
+
+/**
+ * @brief 将命令校验错误转为日志字符串
+ * @param error 命令校验错误
+ * @return 错误描述
+ */
+const char* DmHardwareInterface::command_error_to_string(dm_control_core::JointCommandError error) const {
+    switch(error) {
+        case dm_control_core::JointCommandError::MISSING_POSITION: return "missing position command";
+        case dm_control_core::JointCommandError::MISSING_VELOCITY: return "missing velocity command";
+        case dm_control_core::JointCommandError::MISSING_EFFORT: return "missing effort command";
+        case dm_control_core::JointCommandError::INVALID_POSITION_SIZE: return "invalid position command size";
+        case dm_control_core::JointCommandError::INVALID_VELOCITY_SIZE: return "invalid velocity command size";
+        case dm_control_core::JointCommandError::INVALID_EFFORT_SIZE: return "invalid effort command size";
+        case dm_control_core::JointCommandError::INVALID_STATE_SIZE: return "invalid state size";
+    }
+
+    return "unknown command error";
 }
 
 /**

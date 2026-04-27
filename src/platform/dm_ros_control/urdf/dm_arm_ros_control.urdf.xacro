@@ -9,6 +9,7 @@
     <xacro:arg name="startup_read_cycles" default="5"/>
     <xacro:arg name="legacy_feedforward_enabled" default="true"/>
     <xacro:arg name="legacy_pd_fallback" default="true"/>
+    <xacro:arg name="command_mode" default="impedance"/>
 
     <xacro:arg name="enable_dynamics" default="true"/>
     <xacro:arg name="enable_gravity_feedforward" default="true"/>
@@ -33,6 +34,7 @@
                 <param name="startup_read_cycles">$(arg startup_read_cycles)</param>
                 <param name="legacy_feedforward_enabled">$(arg legacy_feedforward_enabled)</param>
                 <param name="legacy_pd_fallback">$(arg legacy_pd_fallback)</param>
+                <param name="command_mode">$(arg command_mode)</param>
 
                 <param name="enable_dynamics">$(arg enable_dynamics)</param>
                 <param name="enable_gravity_feedforward">$(arg enable_gravity_feedforward)</param>

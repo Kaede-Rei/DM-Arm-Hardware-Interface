@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dm_control_core/joint_control_types.hpp"
+#include "tl/expected.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -53,6 +54,13 @@ public:
     void set_reference(const JointReference& reference);
 
     /**
+     * @brief 设置多关节命令
+     * @param command 多关节命令
+     * @return 命令合法返回空 expected，失败返回错误原因
+     */
+    tl::expected<void, JointCommandError> set_command(const JointCommand& command);
+
+    /**
      * @brief 执行一次多关节阻抗控制更新
      * @param input 周期输入
      * @return 周期输出命令
@@ -64,6 +72,13 @@ private:
      * @brief 检查配置数组长度
      */
     void validate_config() const;
+
+    /**
+     * @brief 检查命令是否满足当前模式的字段需求
+     * @param command 多关节命令
+     * @return 命令合法返回空 expected，失败返回错误原因
+     */
+    tl::expected<void, JointCommandError> validate_command(const JointCommand& command) const;
 
     /**
      * @brief 锁存保持模式目标位置
@@ -109,8 +124,8 @@ private:
     JointImpedanceMode mode_{ JointImpedanceMode::RIGID_HOLD };
 
     std::vector<double> hold_position_;
-    JointReference reference_;
-    bool reference_valid_{ false };
+    JointCommand command_;
+    bool command_valid_{ false };
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //
