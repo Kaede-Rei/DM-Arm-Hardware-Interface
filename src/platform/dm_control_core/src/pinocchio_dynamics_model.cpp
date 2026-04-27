@@ -30,12 +30,12 @@ namespace dm_control_core {
  *       后续动力学输出顺序与 joint_names 保持一致
  */
 PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, const std::vector<std::string>& joint_names) {
-    _joint_names_ = joint_names;
+    joint_names_ = joint_names;
 
     pinocchio::Model full_model;
     pinocchio::urdf::buildModel(urdf_path, full_model);
 
-    for(const auto& name : _joint_names_) {
+    for(const auto& name : joint_names_) {
         const pinocchio::JointIndex jid = full_model.getJointId(name);
         if(jid == full_model.joints.size()) {
             std::ostringstream oss;
@@ -51,7 +51,7 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
         }
     }
 
-    std::unordered_set<std::string> controlled_joint_set(_joint_names_.begin(), _joint_names_.end());
+    std::unordered_set<std::string> controlled_joint_set(joint_names_.begin(), joint_names_.end());
     std::vector<pinocchio::JointIndex> joints_to_lock;
     joints_to_lock.reserve(full_model.njoints);
 
@@ -61,42 +61,42 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
     }
 
     const Eigen::VectorXd q_ref = pinocchio::neutral(full_model);
-    _model_ = pinocchio::buildReducedModel(full_model, joints_to_lock, q_ref);
-    _data_ = std::make_shared<pinocchio::Data>(_model_);
+    model_ = pinocchio::buildReducedModel(full_model, joints_to_lock, q_ref);
+    data_ = std::make_shared<pinocchio::Data>(model_);
 
-    if(_model_.nq != static_cast<int>(_joint_names_.size()) || _model_.nv != static_cast<int>(_joint_names_.size())) {
+    if(model_.nq != static_cast<int>(joint_names_.size()) || model_.nv != static_cast<int>(joint_names_.size())) {
         std::ostringstream oss;
         oss << "PinocchioDynamicsModel: reduced model dimension mismatch. "
-            << "Expected nq=nv=" << _joint_names_.size() << ", but got nq=" << _model_.nq << ", nv=" << _model_.nv << ".";
+            << "Expected nq=nv=" << joint_names_.size() << ", but got nq=" << model_.nq << ", nv=" << model_.nv << ".";
         throw std::runtime_error(oss.str());
     }
 
-    _q_indices_.resize(_joint_names_.size(), -1);
-    _v_indices_.resize(_joint_names_.size(), -1);
+    q_indices_.resize(joint_names_.size(), -1);
+    v_indices_.resize(joint_names_.size(), -1);
 
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        const pinocchio::JointIndex jid = _model_.getJointId(_joint_names_[i]);
-        if(jid == _model_.joints.size()) {
+    for(size_t i = 0; i < joint_names_.size(); ++i) {
+        const pinocchio::JointIndex jid = model_.getJointId(joint_names_[i]);
+        if(jid == model_.joints.size()) {
             std::ostringstream oss;
-            oss << "PinocchioDynamicsModel: joint [" << _joint_names_[i] << "] not found in reduced model.";
+            oss << "PinocchioDynamicsModel: joint [" << joint_names_[i] << "] not found in reduced model.";
             throw std::runtime_error(oss.str());
         }
 
-        if(_model_.nqs[jid] != 1 || _model_.nvs[jid] != 1) {
+        if(model_.nqs[jid] != 1 || model_.nvs[jid] != 1) {
             std::ostringstream oss;
-            oss << "PinocchioDynamicsModel: joint [" << _joint_names_[i] << "] is not 1-DoF in reduced model (nq=" << _model_.nqs[jid] << ", nv=" << _model_.nvs[jid] << ").";
+            oss << "PinocchioDynamicsModel: joint [" << joint_names_[i] << "] is not 1-DoF in reduced model (nq=" << model_.nqs[jid] << ", nv=" << model_.nvs[jid] << ").";
             throw std::runtime_error(oss.str());
         }
 
-        _q_indices_[i] = _model_.idx_qs[jid];
-        _v_indices_[i] = _model_.idx_vs[jid];
+        q_indices_[i] = model_.idx_qs[jid];
+        v_indices_[i] = model_.idx_vs[jid];
     }
 
-    _q_ = Eigen::VectorXd::Zero(_model_.nq);
-    _dq_ = Eigen::VectorXd::Zero(_model_.nv);
-    _g_ = Eigen::VectorXd::Zero(_model_.nv);
-    _nle_ = Eigen::VectorXd::Zero(_model_.nv);
-    _m_q_ = Eigen::MatrixXd::Zero(_model_.nv, _model_.nv);
+    q_ = Eigen::VectorXd::Zero(model_.nq);
+    dq_ = Eigen::VectorXd::Zero(model_.nv);
+    g_ = Eigen::VectorXd::Zero(model_.nv);
+    nle_ = Eigen::VectorXd::Zero(model_.nv);
+    m_q_ = Eigen::MatrixXd::Zero(model_.nv, model_.nv);
 }
 
 /**
@@ -107,39 +107,39 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
  */
 bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vector<double>& dq,
     bool enable_gravity, bool enable_nonlinear, bool enable_mass_matrix) {
-    if(q.size() != _joint_names_.size() || dq.size() != _joint_names_.size()) return false;
+    if(q.size() != joint_names_.size() || dq.size() != joint_names_.size()) return false;
 
-    _q_.setZero();
-    _dq_.setZero();
+    q_.setZero();
+    dq_.setZero();
 
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        if(_q_indices_[i] < 0 || _v_indices_[i] < 0) return false;
-        _q_[_q_indices_[i]] = q[i];
-        _dq_[_v_indices_[i]] = dq[i];
+    for(size_t i = 0; i < joint_names_.size(); ++i) {
+        if(q_indices_[i] < 0 || v_indices_[i] < 0) return false;
+        q_[q_indices_[i]] = q[i];
+        dq_[v_indices_[i]] = dq[i];
     }
 
     if(enable_nonlinear) {
-        pinocchio::nonLinearEffects(_model_, *_data_, _q_, _dq_);
-        for(size_t i = 0; i < _joint_names_.size(); ++i) {
-            if(_v_indices_[i] < 0) return false;
-            _nle_[i] = _data_->nle[_v_indices_[i]];
+        pinocchio::nonLinearEffects(model_, *data_, q_, dq_);
+        for(size_t i = 0; i < joint_names_.size(); ++i) {
+            if(v_indices_[i] < 0) return false;
+            nle_[i] = data_->nle[v_indices_[i]];
         }
     }
     else if(enable_gravity) {
-        pinocchio::computeGeneralizedGravity(_model_, *_data_, _q_);
-        for(size_t i = 0; i < _joint_names_.size(); ++i) {
-            if(_v_indices_[i] < 0) return false;
-            _g_[i] = _data_->g[_v_indices_[i]];
+        pinocchio::computeGeneralizedGravity(model_, *data_, q_);
+        for(size_t i = 0; i < joint_names_.size(); ++i) {
+            if(v_indices_[i] < 0) return false;
+            g_[i] = data_->g[v_indices_[i]];
         }
     }
 
     if(enable_mass_matrix) {
-        pinocchio::crba(_model_, *_data_, _q_);
-        for(size_t i = 0; i < _joint_names_.size(); ++i) {
-            if(_v_indices_[i] < 0) return false;
-            for(size_t j = 0; j < _joint_names_.size(); ++j) {
-                if(_v_indices_[j] < 0) return false;
-                _m_q_(i, j) = _data_->M(_v_indices_[i], _v_indices_[j]);
+        pinocchio::crba(model_, *data_, q_);
+        for(size_t i = 0; i < joint_names_.size(); ++i) {
+            if(v_indices_[i] < 0) return false;
+            for(size_t j = 0; j < joint_names_.size(); ++j) {
+                if(v_indices_[j] < 0) return false;
+                m_q_(i, j) = data_->M(v_indices_[i], v_indices_[j]);
             }
         }
     }
@@ -152,8 +152,8 @@ bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vec
  * @param gravity 输出重力项缓冲
  */
 void PinocchioDynamicsModel::copy_gravity_to(std::vector<double>& gravity) const {
-    if(gravity.size() != static_cast<size_t>(_g_.size())) gravity.resize(_g_.size());
-    for(size_t i = 0; i < gravity.size(); ++i) gravity[i] = _g_[i];
+    if(gravity.size() != static_cast<size_t>(g_.size())) gravity.resize(g_.size());
+    for(size_t i = 0; i < gravity.size(); ++i) gravity[i] = g_[i];
 }
 
 /**
@@ -161,8 +161,8 @@ void PinocchioDynamicsModel::copy_gravity_to(std::vector<double>& gravity) const
  * @param nonlinear 输出非线性项缓冲
  */
 void PinocchioDynamicsModel::copy_nonlinear_effects_to(std::vector<double>& nonlinear) const {
-    if(nonlinear.size() != static_cast<size_t>(_nle_.size())) nonlinear.resize(_nle_.size());
-    for(size_t i = 0; i < nonlinear.size(); ++i) nonlinear[i] = _nle_[i];
+    if(nonlinear.size() != static_cast<size_t>(nle_.size())) nonlinear.resize(nle_.size());
+    for(size_t i = 0; i < nonlinear.size(); ++i) nonlinear[i] = nle_[i];
 }
 
 // ! ========================= 私 有 函 数 实 现 ========================= ! //

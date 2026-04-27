@@ -12,16 +12,16 @@ namespace dm_control_core {
  * @param config 控制器配置
  */
 void JointImpedanceController::configure(const JointImpedanceControllerConfig& config) {
-    _config_ = config;
+    config_ = config;
     validate_config();
 
-    const std::size_t n = _config_.layout.joint_names.size();
-    _hold_position_.assign(n, 0.0);
-    _reference_.position.assign(n, 0.0);
-    _reference_.velocity.assign(n, 0.0);
-    _reference_.effort.assign(n, 0.0);
-    _reference_valid_ = false;
-    _mode_ = JointImpedanceMode::RIGID_HOLD;
+    const std::size_t n = config_.layout.joint_names.size();
+    hold_position_.assign(n, 0.0);
+    reference_.position.assign(n, 0.0);
+    reference_.velocity.assign(n, 0.0);
+    reference_.effort.assign(n, 0.0);
+    reference_valid_ = false;
+    mode_ = JointImpedanceMode::RIGID_HOLD;
 }
 
 /**
@@ -30,8 +30,8 @@ void JointImpedanceController::configure(const JointImpedanceControllerConfig& c
  */
 void JointImpedanceController::reset(const JointState& current_state) {
     latch_hold_position(current_state);
-    _reference_valid_ = false;
-    _mode_ = JointImpedanceMode::RIGID_HOLD;
+    reference_valid_ = false;
+    mode_ = JointImpedanceMode::RIGID_HOLD;
 }
 
 /**
@@ -40,7 +40,7 @@ void JointImpedanceController::reset(const JointState& current_state) {
  * @param current_state 当前关节状态
  */
 void JointImpedanceController::set_mode(JointImpedanceMode mode, const JointState& current_state) {
-    _mode_ = mode;
+    mode_ = mode;
 
     if(mode == JointImpedanceMode::RIGID_HOLD || mode == JointImpedanceMode::COMPLIANT_HOLD) {
         latch_hold_position(current_state);
@@ -52,14 +52,14 @@ void JointImpedanceController::set_mode(JointImpedanceMode mode, const JointStat
  * @param reference 多关节参考输入
  */
 void JointImpedanceController::set_reference(const JointReference& reference) {
-    const std::size_t n = _config_.layout.joint_names.size();
+    const std::size_t n = config_.layout.joint_names.size();
     if(reference.position.size() != n || reference.velocity.size() != n || reference.effort.size() != n) {
-        _reference_valid_ = false;
+        reference_valid_ = false;
         return;
     }
 
-    _reference_ = reference;
-    _reference_valid_ = true;
+    reference_ = reference;
+    reference_valid_ = true;
 }
 
 /**
@@ -68,7 +68,7 @@ void JointImpedanceController::set_reference(const JointReference& reference) {
  * @return 周期输出命令
  */
 JointImpedanceControllerOutput JointImpedanceController::update(const JointImpedanceControllerInput& input) {
-    const std::size_t n = _config_.layout.joint_names.size();
+    const std::size_t n = config_.layout.joint_names.size();
 
     JointImpedanceControllerOutput output;
     output.command.position.resize(n);
@@ -89,22 +89,22 @@ JointImpedanceControllerOutput JointImpedanceController::update(const JointImped
 
         select_gains(i, kp, kd);
 
-        switch(_mode_) {
+        switch(mode_) {
             case JointImpedanceMode::RIGID_HOLD:
-                q_ref = _hold_position_[i];
+                q_ref = hold_position_[i];
                 dq_ref = 0.0;
                 break;
 
             case JointImpedanceMode::COMPLIANT_HOLD:
-                q_ref = _hold_position_[i];
+                q_ref = hold_position_[i];
                 dq_ref = 0.0;
                 break;
 
             case JointImpedanceMode::TRACKING:
-                if(_reference_valid_) {
-                    q_ref = _reference_.position[i];
-                    dq_ref = _reference_.velocity[i];
-                    residual_effort = _reference_.effort[i];
+                if(reference_valid_) {
+                    q_ref = reference_.position[i];
+                    dq_ref = reference_.velocity[i];
+                    residual_effort = reference_.effort[i];
                 }
                 else {
                     q_ref = input.state.position[i];
@@ -115,19 +115,19 @@ JointImpedanceControllerOutput JointImpedanceController::update(const JointImped
 
         double tau_ff = 0.0;
 
-        if(_config_.use_gravity_feedforward && i < input.gravity_effort.size()) {
+        if(config_.use_gravity_feedforward && i < input.gravity_effort.size()) {
             tau_ff += sanitize_or_default(input.gravity_effort[i], 0.0);
         }
 
-        if(_config_.use_reference_effort) {
+        if(config_.use_reference_effort) {
             tau_ff += sanitize_or_default(residual_effort, 0.0);
         }
 
         output.command.position[i] = sanitize_or_default(q_ref, input.state.position[i]);
-        output.command.velocity[i] = clamp_abs(sanitize_or_default(dq_ref, 0.0), _config_.limits.max_velocity[i]);
-        output.command.effort[i] = clamp_abs(sanitize_or_default(tau_ff, 0.0), _config_.limits.max_effort[i]);
-        output.command.kp[i] = clamp_range(sanitize_or_default(kp, 0.0), _config_.limits.min_kp[i], _config_.limits.max_kp[i]);
-        output.command.kd[i] = clamp_range(sanitize_or_default(kd, 0.0), _config_.limits.min_kd[i], _config_.limits.max_kd[i]);
+        output.command.velocity[i] = clamp_abs(sanitize_or_default(dq_ref, 0.0), config_.limits.max_velocity[i]);
+        output.command.effort[i] = clamp_abs(sanitize_or_default(tau_ff, 0.0), config_.limits.max_effort[i]);
+        output.command.kp[i] = clamp_range(sanitize_or_default(kp, 0.0), config_.limits.min_kp[i], config_.limits.max_kp[i]);
+        output.command.kd[i] = clamp_range(sanitize_or_default(kd, 0.0), config_.limits.min_kd[i], config_.limits.max_kd[i]);
     }
 
     return output;
@@ -139,22 +139,22 @@ JointImpedanceControllerOutput JointImpedanceController::update(const JointImped
  * @brief 检查配置数组长度
  */
 void JointImpedanceController::validate_config() const {
-    const std::size_t n = _config_.layout.joint_names.size();
+    const std::size_t n = config_.layout.joint_names.size();
     if(n == 0) throw std::runtime_error("JointImpedanceController requires at least one joint");
 
-    if(_config_.rigid_hold_gains.kp.size() != n) throw std::runtime_error("Invalid rigid_hold_gains.kp size");
-    if(_config_.rigid_hold_gains.kd.size() != n) throw std::runtime_error("Invalid rigid_hold_gains.kd size");
-    if(_config_.compliant_hold_gains.kp.size() != n) throw std::runtime_error("Invalid compliant_hold_gains.kp size");
-    if(_config_.compliant_hold_gains.kd.size() != n) throw std::runtime_error("Invalid compliant_hold_gains.kd size");
-    if(_config_.tracking_gains.kp.size() != n) throw std::runtime_error("Invalid tracking_gains.kp size");
-    if(_config_.tracking_gains.kd.size() != n) throw std::runtime_error("Invalid tracking_gains.kd size");
+    if(config_.rigid_hold_gains.kp.size() != n) throw std::runtime_error("Invalid rigid_hold_gains.kp size");
+    if(config_.rigid_hold_gains.kd.size() != n) throw std::runtime_error("Invalid rigid_hold_gains.kd size");
+    if(config_.compliant_hold_gains.kp.size() != n) throw std::runtime_error("Invalid compliant_hold_gains.kp size");
+    if(config_.compliant_hold_gains.kd.size() != n) throw std::runtime_error("Invalid compliant_hold_gains.kd size");
+    if(config_.tracking_gains.kp.size() != n) throw std::runtime_error("Invalid tracking_gains.kp size");
+    if(config_.tracking_gains.kd.size() != n) throw std::runtime_error("Invalid tracking_gains.kd size");
 
-    if(_config_.limits.max_velocity.size() != n) throw std::runtime_error("Invalid max_velocity limits size");
-    if(_config_.limits.max_effort.size() != n) throw std::runtime_error("Invalid max_effort limits size");
-    if(_config_.limits.min_kp.size() != n) throw std::runtime_error("Invalid min_kp limits size");
-    if(_config_.limits.max_kp.size() != n) throw std::runtime_error("Invalid max_kp limits size");
-    if(_config_.limits.min_kd.size() != n) throw std::runtime_error("Invalid min_kd limits size");
-    if(_config_.limits.max_kd.size() != n) throw std::runtime_error("Invalid max_kd limits size");
+    if(config_.limits.max_velocity.size() != n) throw std::runtime_error("Invalid max_velocity limits size");
+    if(config_.limits.max_effort.size() != n) throw std::runtime_error("Invalid max_effort limits size");
+    if(config_.limits.min_kp.size() != n) throw std::runtime_error("Invalid min_kp limits size");
+    if(config_.limits.max_kp.size() != n) throw std::runtime_error("Invalid max_kp limits size");
+    if(config_.limits.min_kd.size() != n) throw std::runtime_error("Invalid min_kd limits size");
+    if(config_.limits.max_kd.size() != n) throw std::runtime_error("Invalid max_kd limits size");
 }
 
 /**
@@ -162,11 +162,11 @@ void JointImpedanceController::validate_config() const {
  * @param current_state 当前关节状态
  */
 void JointImpedanceController::latch_hold_position(const JointState& current_state) {
-    const std::size_t n = _config_.layout.joint_names.size();
+    const std::size_t n = config_.layout.joint_names.size();
     if(current_state.position.size() != n) return;
 
     for(std::size_t i = 0; i < n; ++i) {
-        _hold_position_[i] = sanitize_or_default(current_state.position[i], _hold_position_[i]);
+        hold_position_[i] = sanitize_or_default(current_state.position[i], hold_position_[i]);
     }
 }
 
@@ -177,20 +177,20 @@ void JointImpedanceController::latch_hold_position(const JointState& current_sta
  * @param kd 当前模式下的速度阻尼
  */
 void JointImpedanceController::select_gains(std::size_t index, double& kp, double& kd) const {
-    switch(_mode_) {
+    switch(mode_) {
         case JointImpedanceMode::RIGID_HOLD:
-            kp = _config_.rigid_hold_gains.kp[index];
-            kd = _config_.rigid_hold_gains.kd[index];
+            kp = config_.rigid_hold_gains.kp[index];
+            kd = config_.rigid_hold_gains.kd[index];
             return;
 
         case JointImpedanceMode::COMPLIANT_HOLD:
-            kp = _config_.compliant_hold_gains.kp[index];
-            kd = _config_.compliant_hold_gains.kd[index];
+            kp = config_.compliant_hold_gains.kp[index];
+            kd = config_.compliant_hold_gains.kd[index];
             return;
 
         case JointImpedanceMode::TRACKING:
-            kp = _config_.tracking_gains.kp[index];
-            kd = _config_.tracking_gains.kd[index];
+            kp = config_.tracking_gains.kp[index];
+            kd = config_.tracking_gains.kd[index];
             return;
     }
 

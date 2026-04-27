@@ -44,7 +44,7 @@ public:
      * @brief 获取当前控制模式
      * @return 当前控制模式
      */
-    JointImpedanceMode get_mode() const { return _mode_; }
+    JointImpedanceMode get_mode() const { return mode_; }
 
     /**
      * @brief 设置多关节参考输入
@@ -105,12 +105,12 @@ private:
     double clamp_range(double value, double lower, double upper) const;
 
 private:
-    JointImpedanceControllerConfig _config_;
-    JointImpedanceMode _mode_{ JointImpedanceMode::RIGID_HOLD };
+    JointImpedanceControllerConfig config_;
+    JointImpedanceMode mode_{ JointImpedanceMode::RIGID_HOLD };
 
-    std::vector<double> _hold_position_;
-    JointReference _reference_;
-    bool _reference_valid_{ false };
+    std::vector<double> hold_position_;
+    JointReference reference_;
+    bool reference_valid_{ false };
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

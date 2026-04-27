@@ -15,16 +15,16 @@ namespace dm_control_core {
  * @param configs 关节-电机配置表
  */
 void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, const std::vector<DmMotorConfig>& configs) {
-    _configs_ = configs;
-    _serial_ = std::make_shared<SerialPort>(serial_port, baudrate);
-    _motor_controller_ = std::make_shared<damiao::MotorControl>(_serial_);
-    _motors_.clear();
-    _motors_.reserve(_configs_.size());
+    configs_ = configs;
+    serial_ = std::make_shared<SerialPort>(serial_port, baudrate);
+    motor_controller_ = std::make_shared<damiao::MotorControl>(serial_);
+    motors_.clear();
+    motors_.reserve(configs_.size());
 
-    for(const auto& config : _configs_) {
+    for(const auto& config : configs_) {
         auto motor = std::make_shared<damiao::Motor>(config.motor_type, config.motor_id, 0x00);
-        _motor_controller_->add_motor(motor.get());
-        _motors_.push_back(motor);
+        motor_controller_->add_motor(motor.get());
+        motors_.push_back(motor);
     }
 }
 
@@ -34,15 +34,15 @@ void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, con
  * @param state 输出启动阶段平均后的关节状态
  */
 void DmMotorBus::activate(int startup_read_cycles, JointState& state) {
-    for(size_t i = 0; i < _motors_.size(); ++i) {
+    for(size_t i = 0; i < motors_.size(); ++i) {
         damiao::DmControlMode dm_mode;
-        if(!to_dm_control_mode(_configs_[i].control_mode, dm_mode)) throw std::runtime_error("DmMotorBus unsupported control mode");
+        if(!to_dm_control_mode(configs_[i].control_mode, dm_mode)) throw std::runtime_error("DmMotorBus unsupported control mode");
 
-        _motor_controller_->enable(*_motors_[i]);
-        _motor_controller_->switch_control_mode(*_motors_[i], dm_mode);
+        motor_controller_->enable(*motors_[i]);
+        motor_controller_->switch_control_mode(*motors_[i], dm_mode);
     }
 
-    const std::size_t n = _configs_.size();
+    const std::size_t n = configs_.size();
     state.position.assign(n, 0.0);
     state.velocity.assign(n, 0.0);
     state.effort.assign(n, 0.0);
@@ -55,7 +55,7 @@ void DmMotorBus::activate(int startup_read_cycles, JointState& state) {
     sample.motor_effort.assign(n, 0.0);
 
     for(int i = 0; i < startup_read_cycles; ++i) {
-        for(size_t j = 0; j < _motors_.size(); ++j) {
+        for(size_t j = 0; j < motors_.size(); ++j) {
             if(!read_one(j, true, sample)) throw std::runtime_error("DmMotorBus failed to read startup state");
             state.position[j] += sample.position[j];
             state.velocity[j] += sample.velocity[j];
@@ -77,15 +77,15 @@ void DmMotorBus::activate(int startup_read_cycles, JointState& state) {
  * @note 先切换到 POS_VEL 模式并发送零位置/低速度命令，再等待后失能
  */
 void DmMotorBus::deactivate() {
-    for(auto& motor : _motors_) {
-        _motor_controller_->switch_control_mode(*motor, damiao::DmControlMode::POS_VEL_MODE);
-        _motor_controller_->control_pos_vel(*motor, static_cast<float>(0.0f), static_cast<float>(1.0f));
+    for(auto& motor : motors_) {
+        motor_controller_->switch_control_mode(*motor, damiao::DmControlMode::POS_VEL_MODE);
+        motor_controller_->control_pos_vel(*motor, static_cast<float>(0.0f), static_cast<float>(1.0f));
     }
 
     usleep(5000000);
 
-    for(auto& motor : _motors_) {
-        _motor_controller_->disable(*motor);
+    for(auto& motor : motors_) {
+        motor_controller_->disable(*motor);
     }
 }
 
@@ -93,10 +93,10 @@ void DmMotorBus::deactivate() {
  * @brief 清理 bus 持有的串口、电机控制器和电机对象
  */
 void DmMotorBus::cleanup() {
-    _motors_.clear();
-    _motor_controller_.reset();
-    _serial_.reset();
-    _configs_.clear();
+    motors_.clear();
+    motor_controller_.reset();
+    serial_.reset();
+    configs_.clear();
 }
 
 /**
@@ -107,13 +107,13 @@ void DmMotorBus::cleanup() {
  */
 bool DmMotorBus::read(bool refresh_state, JointState& state) noexcept {
     try {
-        if(!_motor_controller_) return false;
-        if(state.position.size() != _motors_.size()) return false;
-        if(state.velocity.size() != _motors_.size()) return false;
-        if(state.effort.size() != _motors_.size()) return false;
-        if(state.motor_effort.size() != _motors_.size()) return false;
+        if(!motor_controller_) return false;
+        if(state.position.size() != motors_.size()) return false;
+        if(state.velocity.size() != motors_.size()) return false;
+        if(state.effort.size() != motors_.size()) return false;
+        if(state.motor_effort.size() != motors_.size()) return false;
 
-        for(size_t i = 0; i < _motors_.size(); ++i) {
+        for(size_t i = 0; i < motors_.size(); ++i) {
             if(!read_one(i, refresh_state, state)) return false;
         }
 
@@ -132,11 +132,11 @@ bool DmMotorBus::read(bool refresh_state, JointState& state) noexcept {
  */
 bool DmMotorBus::write(std::size_t index, const MitJointCommand& command) noexcept {
     try {
-        if(!_motor_controller_ || index >= _motors_.size() || index >= _configs_.size()) return false;
+        if(!motor_controller_ || index >= motors_.size() || index >= configs_.size()) return false;
         if(index >= command.position.size() || index >= command.velocity.size() || index >= command.effort.size()) return false;
         if(index >= command.kp.size() || index >= command.kd.size()) return false;
 
-        const auto& config = _configs_[index];
+        const auto& config = configs_[index];
         const double scale = config.joint_to_motor_scale;
 
         const double cmd_motor = command.position[index] * scale;
@@ -144,12 +144,12 @@ bool DmMotorBus::write(std::size_t index, const MitJointCommand& command) noexce
 
         if(config.control_mode == ControlMode::MIT) {
             const double tau_motor = command.effort[index] / scale;
-            _motor_controller_->control_mit(*_motors_[index],
+            motor_controller_->control_mit(*motors_[index],
                 static_cast<float>(command.kp[index]), static_cast<float>(command.kd[index]),
                 static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor), static_cast<float>(tau_motor));
         }
         else if(config.control_mode == ControlMode::POS_VEL) {
-            _motor_controller_->control_pos_vel(*_motors_[index], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));
+            motor_controller_->control_pos_vel(*motors_[index], static_cast<float>(cmd_motor), static_cast<float>(cmd_vel_motor));
         }
         else return false;
 
@@ -189,17 +189,17 @@ bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_
  */
 bool DmMotorBus::read_one(std::size_t index, bool refresh_state, JointState& state) noexcept {
     try {
-        if(index >= _motors_.size() || index >= _configs_.size()) return false;
+        if(index >= motors_.size() || index >= configs_.size()) return false;
         if(index >= state.position.size() || index >= state.velocity.size() || index >= state.effort.size()) return false;
         if(index >= state.motor_effort.size()) return false;
-        if(refresh_state) _motor_controller_->refresh_motor_status(*_motors_[index]);
+        if(refresh_state) motor_controller_->refresh_motor_status(*motors_[index]);
 
-        const auto& config = _configs_[index];
+        const auto& config = configs_[index];
         const double scale = config.joint_to_motor_scale;
-        const double motor_effort = _motors_[index]->get_tau();
+        const double motor_effort = motors_[index]->get_tau();
 
-        state.position[index] = _motors_[index]->get_position() / scale;
-        state.velocity[index] = _motors_[index]->get_velocity() / scale;
+        state.position[index] = motors_[index]->get_position() / scale;
+        state.velocity[index] = motors_[index]->get_velocity() / scale;
         state.motor_effort[index] = motor_effort;
         state.effort[index] = motor_effort * scale;
         return true;

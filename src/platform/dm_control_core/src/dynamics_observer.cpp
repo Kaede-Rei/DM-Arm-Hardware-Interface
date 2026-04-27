@@ -10,14 +10,14 @@ namespace dm_control_core {
  * @param joint_names 受控关节名称列表
  */
 void DynamicsObserver::configure(const std::string& urdf_path, const std::vector<std::string>& joint_names) {
-    _dynamics_model_ = std::make_shared<PinocchioDynamicsModel>(urdf_path, joint_names);
+    dynamics_model_ = std::make_shared<PinocchioDynamicsModel>(urdf_path, joint_names);
 }
 
 /**
  * @brief 清理动力学模型
  */
 void DynamicsObserver::cleanup() {
-    _dynamics_model_.reset();
+    dynamics_model_.reset();
 }
 
 /**
@@ -39,12 +39,12 @@ bool DynamicsObserver::observe(const std::vector<double>& positions, const std::
     if(observation.external_effort.size() != positions.size()) observation.external_effort.assign(positions.size(), 0.0);
 
     observation.valid = false;
-    if(!_dynamics_model_) return false;
-    if(!_dynamics_model_->update(positions, velocities,
+    if(!dynamics_model_) return false;
+    if(!dynamics_model_->update(positions, velocities,
         enable_gravity_feedforward, enable_nonlinear_feedforward)) return false;
 
-    _dynamics_model_->copy_gravity_to(observation.gravity);
-    _dynamics_model_->copy_nonlinear_effects_to(observation.nonlinear);
+    dynamics_model_->copy_gravity_to(observation.gravity);
+    dynamics_model_->copy_nonlinear_effects_to(observation.nonlinear);
     observation.valid = true;
 
     for(size_t i = 0; i < positions.size(); ++i) {

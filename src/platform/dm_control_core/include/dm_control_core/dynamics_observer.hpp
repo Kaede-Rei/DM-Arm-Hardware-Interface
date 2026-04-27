@@ -53,7 +53,7 @@ public:
         bool enable_gravity_feedforward, bool enable_nonlinear_feedforward, DynamicsObservation& observation);
 
 private:
-    std::shared_ptr<PinocchioDynamicsModel> _dynamics_model_;
+    std::shared_ptr<PinocchioDynamicsModel> dynamics_model_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

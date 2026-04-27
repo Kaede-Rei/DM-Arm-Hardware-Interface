@@ -48,13 +48,13 @@ public:
      * @brief 获取重力项拷贝
      * @return 重力项 vector
      */
-    std::vector<double> get_gravity_std() const { return std::vector<double>(_g_.data(), _g_.data() + _g_.size()); }
+    std::vector<double> get_gravity_std() const { return std::vector<double>(g_.data(), g_.data() + g_.size()); }
 
     /**
      * @brief 获取非线性项拷贝
      * @return 非线性项 vector
      */
-    std::vector<double> get_nonlinear_effects_std() const { return std::vector<double>(_nle_.data(), _nle_.data() + _nle_.size()); }
+    std::vector<double> get_nonlinear_effects_std() const { return std::vector<double>(nle_.data(), nle_.data() + nle_.size()); }
 
     /**
      * @brief 拷贝重力项到预分配缓冲，避免周期路径构造临时 vector
@@ -72,20 +72,20 @@ public:
      * @brief 获取质量矩阵引用
      * @return 质量矩阵
      */
-    const Eigen::MatrixXd& get_mass_matrix() const { return _m_q_; }
+    const Eigen::MatrixXd& get_mass_matrix() const { return m_q_; }
 
 private:
-    pinocchio::Model _model_;
-    std::shared_ptr<pinocchio::Data> _data_;
-    std::vector<std::string> _joint_names_;
-    std::vector<int> _q_indices_;
-    std::vector<int> _v_indices_;
+    pinocchio::Model model_;
+    std::shared_ptr<pinocchio::Data> data_;
+    std::vector<std::string> joint_names_;
+    std::vector<int> q_indices_;
+    std::vector<int> v_indices_;
 
-    Eigen::VectorXd _q_;
-    Eigen::VectorXd _dq_;
-    Eigen::VectorXd _g_;
-    Eigen::VectorXd _nle_;
-    Eigen::MatrixXd _m_q_;
+    Eigen::VectorXd q_;
+    Eigen::VectorXd dq_;
+    Eigen::VectorXd g_;
+    Eigen::VectorXd nle_;
+    Eigen::MatrixXd m_q_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

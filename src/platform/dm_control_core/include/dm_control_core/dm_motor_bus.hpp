@@ -92,7 +92,7 @@ public:
      * @brief 获取当前 bus 管理的电机数量
      * @return 电机数量
      */
-    std::size_t size() const { return _configs_.size(); }
+    std::size_t size() const { return configs_.size(); }
 
 private:
     /**
@@ -113,10 +113,10 @@ private:
     bool read_one(std::size_t index, bool refresh_state, JointState& state) noexcept;
 
 private:
-    std::shared_ptr<SerialPort> _serial_;
-    std::shared_ptr<damiao::MotorControl> _motor_controller_;
-    std::vector<std::shared_ptr<damiao::Motor>> _motors_;
-    std::vector<DmMotorConfig> _configs_;
+    std::shared_ptr<SerialPort> serial_;
+    std::shared_ptr<damiao::MotorControl> motor_controller_;
+    std::vector<std::shared_ptr<damiao::Motor>> motors_;
+    std::vector<DmMotorConfig> configs_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

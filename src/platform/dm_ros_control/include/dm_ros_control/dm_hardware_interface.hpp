@@ -105,52 +105,52 @@ private:
     dm_control_core::JointImpedanceControllerConfig build_joint_impedance_config() const;
 
 private:
-    std::string _serial_port_{ "/dev/ttyACM0" };
-    int _baudrate_{ 921600 };
-    bool _enable_write_{ true };
-    bool _refresh_state_in_read_{ true };
-    int _startup_read_cycles_{ 5 };
+    std::string serial_port_{ "/dev/ttyACM0" };
+    int baudrate_{ 921600 };
+    bool enable_write_{ true };
+    bool refresh_state_in_read_{ true };
+    int startup_read_cycles_{ 5 };
 
     // 过渡期使用开关，决定是否继续使用 JTC + hardware_interface 补力矩
-    bool _legacy_feedforward_enabled_{ true };
+    bool legacy_feedforward_enabled_{ true };
     // 过渡期使用开关，决定是否在 YAML 中加载 PD 增益配置
-    bool _legacy_pd_fallback_{ true };
+    bool legacy_pd_fallback_{ true };
 
-    dm_control_core::DmMotorBus _motor_bus_;
-    dm_control_core::DynamicsObserver _dynamics_observer_;
-    dm_control_core::JointImpedanceController _joint_impedance_controller_;
+    dm_control_core::DmMotorBus motor_bus_;
+    dm_control_core::DynamicsObserver dynamics_observer_;
+    dm_control_core::JointImpedanceController joint_impedance_controller_;
 
-    std::vector<std::string> _joint_names_;
-    std::vector<dm_control_core::DmMotorConfig> _motor_configs_;
+    std::vector<std::string> joint_names_;
+    std::vector<dm_control_core::DmMotorConfig> motor_configs_;
 
     // 过渡期使用的 PD 增益，从 YAML 加载，如果加载失败则使用默认值
-    std::vector<double> _joint_kp_;
-    std::vector<double> _joint_kd_;
+    std::vector<double> joint_kp_;
+    std::vector<double> joint_kd_;
 
-    std::vector<double> _hw_positions_;
-    std::vector<double> _hw_velocities_;
-    std::vector<double> _hw_efforts_;
-    std::vector<double> _motor_efforts_;
+    std::vector<double> hw_positions_;
+    std::vector<double> hw_velocities_;
+    std::vector<double> hw_efforts_;
+    std::vector<double> motor_efforts_;
 
-    std::vector<double> _hw_commands_pos_;
-    std::vector<double> _hw_commands_vel_;
-    std::vector<double> _hw_commands_effort_;
-    std::vector<double> _hw_commands_kp_;
-    std::vector<double> _hw_commands_kd_;
+    std::vector<double> hw_commands_pos_;
+    std::vector<double> hw_commands_vel_;
+    std::vector<double> hw_commands_effort_;
+    std::vector<double> hw_commands_kp_;
+    std::vector<double> hw_commands_kd_;
 
-    dm_control_core::JointState _bus_state_;
+    dm_control_core::JointState bus_state_;
 
-    bool _enable_dynamics_{ true };
-    bool _enable_gravity_feedforward_{ true };
-    bool _enable_nonlinear_feedforward_{ false };
+    bool enable_dynamics_{ true };
+    bool enable_gravity_feedforward_{ true };
+    bool enable_nonlinear_feedforward_{ false };
 
-    std::string _urdf_path_;
+    std::string urdf_path_;
 
-    std::vector<double> _gravity_feedforward_;
-    std::vector<double> _nonlinear_feedforward_;
-    std::vector<double> _active_feedforward_;
-    std::vector<double> _external_efforts_;
-    dm_control_core::DynamicsObservation _dynamics_observation_;
+    std::vector<double> gravity_feedforward_;
+    std::vector<double> nonlinear_feedforward_;
+    std::vector<double> active_feedforward_;
+    std::vector<double> external_efforts_;
+    dm_control_core::DynamicsObservation dynamics_observation_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //
