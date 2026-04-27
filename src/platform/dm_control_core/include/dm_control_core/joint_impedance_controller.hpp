@@ -48,12 +48,6 @@ public:
     JointImpedanceMode get_mode() const { return mode_; }
 
     /**
-     * @brief 设置多关节参考输入
-     * @param reference 多关节参考输入
-     */
-    void set_reference(const JointReference& reference);
-
-    /**
      * @brief 设置多关节命令
      * @param command 多关节命令
      * @return 命令合法返回空 expected，失败返回错误原因

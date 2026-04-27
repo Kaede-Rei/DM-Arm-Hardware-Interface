@@ -417,10 +417,15 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
     dm_control_core::JointImpedanceControllerInput input;
     input.state = bus_state_;
-    input.gravity_effort = active_feedforward_;
+    input.model_feedforward = active_feedforward_;
     input.dt = period.seconds();
 
     const auto output = joint_impedance_controller_.update(input);
+    if(!output.valid) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Joint impedance controller returned invalid output.");
+        return hardware_interface::return_type::ERROR;
+    }
+
     if(output.command.position.size() != motor_bus_.size()) {
         RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Joint impedance controller returned invalid command size.");
         return hardware_interface::return_type::ERROR;
@@ -562,8 +567,8 @@ dm_control_core::JointImpedanceControllerConfig DmHardwareInterface::build_joint
     config.limits.max_kp.assign(n, std::numeric_limits<double>::max());
     config.limits.min_kd.assign(n, std::numeric_limits<double>::lowest());
     config.limits.max_kd.assign(n, std::numeric_limits<double>::max());
-    config.use_gravity_feedforward = legacy_feedforward_enabled_;
-    config.use_reference_effort = true;
+    config.use_model_feedforward = legacy_feedforward_enabled_;
+    config.use_command_effort = true;
 
     return config;
 }

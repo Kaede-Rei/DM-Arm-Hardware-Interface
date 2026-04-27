@@ -125,12 +125,19 @@ bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vec
             nle_[i] = data_->nle[v_indices_[i]];
         }
     }
-    else if(enable_gravity) {
+    else {
+        nle_.setZero();
+    }
+
+    if(enable_gravity) {
         pinocchio::computeGeneralizedGravity(model_, *data_, q_);
         for(size_t i = 0; i < joint_names_.size(); ++i) {
             if(v_indices_[i] < 0) return false;
             g_[i] = data_->g[v_indices_[i]];
         }
+    }
+    else {
+        g_.setZero();
     }
 
     if(enable_mass_matrix) {

@@ -54,22 +54,13 @@ struct JointState {
 };
 
 /**
- * @brief 关节侧参考输入，可由 ROS、LeRobot、Isaac 或其它上层策略生成
- */
-struct JointReference {
-    std::vector<double> position;       ///< 目标关节位置
-    std::vector<double> velocity;       ///< 目标关节速度
-    std::vector<double> effort;         ///< 上层外部力矩或 residual effort
-};
-
-/**
  * @brief 上层关节命令，使用 optional 区分未提供和 0.0 命令
  */
 struct JointCommand {
-    JointCommandMode mode{ JointCommandMode::HOLD };           ///< 命令语义
-    tl::optional<std::vector<double>> position;                ///< 目标关节位置
-    tl::optional<std::vector<double>> velocity;                ///< 目标关节速度
-    tl::optional<std::vector<double>> effort;                  ///< 残差力矩或纯力矩，取决于 mode
+    JointCommandMode mode{ JointCommandMode::HOLD };            ///< 命令语义
+    tl::optional<std::vector<double>> position;                 ///< 目标关节位置
+    tl::optional<std::vector<double>> velocity;                 ///< 目标关节速度
+    tl::optional<std::vector<double>> effort;                   ///< 残差力矩或纯力矩，取决于 mode
 };
 
 /**
@@ -102,41 +93,42 @@ struct JointControlLayout {
  * @brief 关节命令限幅配置
  */
 struct JointCommandLimits {
-    std::vector<double> max_velocity;     ///< 速度绝对值上限，非正数表示不限制
-    std::vector<double> max_effort;       ///< 力矩绝对值上限，非正数表示不限制
-    std::vector<double> min_kp;           ///< 位置刚度下限
-    std::vector<double> max_kp;           ///< 位置刚度上限
-    std::vector<double> min_kd;           ///< 速度阻尼下限
-    std::vector<double> max_kd;           ///< 速度阻尼上限
+    std::vector<double> max_velocity;       ///< 速度绝对值上限，非正数表示不限制
+    std::vector<double> max_effort;         ///< 力矩绝对值上限，非正数表示不限制
+    std::vector<double> min_kp;             ///< 位置刚度下限
+    std::vector<double> max_kp;             ///< 位置刚度上限
+    std::vector<double> min_kd;             ///< 速度阻尼下限
+    std::vector<double> max_kd;             ///< 速度阻尼上限
 };
 
 /**
  * @brief 关节阻抗控制器配置
  */
 struct JointImpedanceControllerConfig {
-    JointControlLayout layout;                           ///< 多关节布局
-    JointImpedanceGains rigid_hold_gains;                ///< 刚性保持模式阻抗参数
-    JointImpedanceGains compliant_hold_gains;            ///< 柔顺保持模式阻抗参数
-    JointImpedanceGains tracking_gains;                  ///< 跟踪模式阻抗参数
-    JointCommandLimits limits;                           ///< 命令限幅配置
-    bool use_gravity_feedforward{ true };                ///< 是否叠加 input.gravity_effort
-    bool use_reference_effort{ true };                   ///< 是否叠加 JointCommand::effort
+    JointControlLayout layout;                          ///< 多关节布局
+    JointImpedanceGains rigid_hold_gains;               ///< 刚性保持模式阻抗参数
+    JointImpedanceGains compliant_hold_gains;           ///< 柔顺保持模式阻抗参数
+    JointImpedanceGains tracking_gains;                 ///< 跟踪模式阻抗参数
+    JointCommandLimits limits;                          ///< 命令限幅配置
+    bool use_model_feedforward{ true };                 ///< 是否叠加 input.model_feedforward
+    bool use_command_effort{ true };                    ///< 是否叠加 JointCommand::effort
 };
 
 /**
  * @brief 关节阻抗控制器周期输入
  */
 struct JointImpedanceControllerInput {
-    JointState state;                         ///< 当前关节状态
-    std::vector<double> gravity_effort;       ///< 与 JointControlLayout::joint_names 对齐的重力/动力学前馈力矩
-    double dt{ 0.0 };                         ///< 控制周期
+    JointState state;                           ///< 当前关节状态
+    std::vector<double> model_feedforward;      ///< 与 JointControlLayout::joint_names 对齐的当前模型前馈力矩
+    double dt{ 0.0 };                           ///< 控制周期
 };
 
 /**
  * @brief 关节阻抗控制器周期输出
  */
 struct JointImpedanceControllerOutput {
-    MitJointCommand command;                  ///< 与 JointControlLayout::joint_names 对齐的 MIT 命令
+    bool valid{ false };                        ///< 输出是否有效（输入状态长度不匹配时为 false）
+    MitJointCommand command;                    ///< 与 JointControlLayout::joint_names 对齐的 MIT 命令
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

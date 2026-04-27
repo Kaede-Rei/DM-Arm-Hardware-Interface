@@ -46,20 +46,6 @@ void JointImpedanceController::set_mode(JointImpedanceMode mode, const JointStat
 }
 
 /**
- * @brief 设置多关节参考输入
- * @param reference 多关节参考输入
- */
-void JointImpedanceController::set_reference(const JointReference& reference) {
-    const std::size_t n = config_.layout.joint_names.size();
-    JointCommand command;
-    command.mode = JointCommandMode::IMPEDANCE;
-    if(reference.position.size() == n) command.position = reference.position;
-    if(reference.velocity.size() == n) command.velocity = reference.velocity;
-    if(reference.effort.size() == n) command.effort = reference.effort;
-    (void)set_command(command);
-}
-
-/**
  * @brief 设置多关节命令
  * @param command 多关节命令
  * @return 命令合法返回空 expected，失败返回错误原因
@@ -162,13 +148,13 @@ JointImpedanceControllerOutput JointImpedanceController::update(const JointImped
 
         double tau_ff = 0.0;
 
-        const bool use_model_feedforward = config_.use_gravity_feedforward
+        const bool use_model_feedforward = config_.use_model_feedforward
             && !(command_valid_ && command_.mode == JointCommandMode::TORQUE);
-        if(use_model_feedforward && i < input.gravity_effort.size()) {
-            tau_ff += sanitize_or_default(input.gravity_effort[i], 0.0);
+        if(use_model_feedforward && i < input.model_feedforward.size()) {
+            tau_ff += sanitize_or_default(input.model_feedforward[i], 0.0);
         }
 
-        if(config_.use_reference_effort) {
+        if(config_.use_command_effort) {
             tau_ff += sanitize_or_default(command_effort, 0.0);
         }
 
@@ -179,6 +165,7 @@ JointImpedanceControllerOutput JointImpedanceController::update(const JointImped
         output.command.kd[i] = clamp_range(sanitize_or_default(kd, 0.0), config_.limits.min_kd[i], config_.limits.max_kd[i]);
     }
 
+    output.valid = true;
     return output;
 }
 
@@ -218,19 +205,19 @@ tl::expected<void, JointCommandError> JointImpedanceController::validate_command
         if(!command.position) return tl::make_unexpected(JointCommandError::MISSING_POSITION);
         if(command.position->size() != n) return tl::make_unexpected(JointCommandError::INVALID_POSITION_SIZE);
         return {};
-    };
+        };
 
     auto check_velocity = [&]() -> tl::expected<void, JointCommandError> {
         if(!command.velocity) return tl::make_unexpected(JointCommandError::MISSING_VELOCITY);
         if(command.velocity->size() != n) return tl::make_unexpected(JointCommandError::INVALID_VELOCITY_SIZE);
         return {};
-    };
+        };
 
     auto check_effort = [&]() -> tl::expected<void, JointCommandError> {
         if(!command.effort) return tl::make_unexpected(JointCommandError::MISSING_EFFORT);
         if(command.effort->size() != n) return tl::make_unexpected(JointCommandError::INVALID_EFFORT_SIZE);
         return {};
-    };
+        };
 
     switch(command.mode) {
         case JointCommandMode::HOLD:
