@@ -40,7 +40,8 @@ bool DynamicsObserver::observe(const std::vector<double>& positions, const std::
 
     observation.valid = false;
     if(!_dynamics_model_) return false;
-    if(!_dynamics_model_->update(positions, velocities)) return false;
+    if(!_dynamics_model_->update(positions, velocities,
+        enable_gravity_feedforward, enable_nonlinear_feedforward)) return false;
 
     _dynamics_model_->copy_gravity_to(observation.gravity);
     _dynamics_model_->copy_nonlinear_effects_to(observation.nonlinear);
@@ -51,7 +52,7 @@ bool DynamicsObserver::observe(const std::vector<double>& positions, const std::
         else if(enable_gravity_feedforward) observation.active_feedforward[i] = observation.gravity[i];
         else observation.active_feedforward[i] = 0.0;
 
-        observation.external_effort[i] = efforts[i] - observation.nonlinear[i];
+        observation.external_effort[i] = efforts[i] - observation.active_feedforward[i];
     }
 
     return true;

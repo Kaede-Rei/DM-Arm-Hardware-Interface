@@ -33,6 +33,7 @@ MitJointCommand JointImpedanceController::compute_command(const JointState& stat
     command.effort = sanitize_or_default(reference.effort, 0.0) + sanitize_or_default(feedforward.effort, 0.0);
     command.kp = sanitize_or_default(command_gains.kp, fallback_gains.kp);
     command.kd = sanitize_or_default(command_gains.kd, fallback_gains.kd);
+
     return command;
 }
 

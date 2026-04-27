@@ -105,7 +105,8 @@ PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, con
  * @param dq 受控关节速度
  * @return 成功返回 true，输入维度或内部索引异常返回 false
  */
-bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vector<double>& dq) {
+bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vector<double>& dq,
+    bool enable_gravity, bool enable_nonlinear, bool enable_mass_matrix) {
     if(q.size() != _joint_names_.size() || dq.size() != _joint_names_.size()) return false;
 
     _q_.setZero();
@@ -117,24 +118,29 @@ bool PinocchioDynamicsModel::update(const std::vector<double>& q, const std::vec
         _dq_[_v_indices_[i]] = dq[i];
     }
 
-    pinocchio::computeGeneralizedGravity(_model_, *_data_, _q_);
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        if(_v_indices_[i] < 0) return false;
-        _g_[i] = _data_->g[_v_indices_[i]];
+    if(enable_nonlinear) {
+        pinocchio::nonLinearEffects(_model_, *_data_, _q_, _dq_);
+        for(size_t i = 0; i < _joint_names_.size(); ++i) {
+            if(_v_indices_[i] < 0) return false;
+            _nle_[i] = _data_->nle[_v_indices_[i]];
+        }
+    }
+    else if(enable_gravity) {
+        pinocchio::computeGeneralizedGravity(_model_, *_data_, _q_);
+        for(size_t i = 0; i < _joint_names_.size(); ++i) {
+            if(_v_indices_[i] < 0) return false;
+            _g_[i] = _data_->g[_v_indices_[i]];
+        }
     }
 
-    pinocchio::nonLinearEffects(_model_, *_data_, _q_, _dq_);
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        if(_v_indices_[i] < 0) return false;
-        _nle_[i] = _data_->nle[_v_indices_[i]];
-    }
-
-    pinocchio::crba(_model_, *_data_, _q_);
-    for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        if(_v_indices_[i] < 0) return false;
-        for(size_t j = 0; j < _joint_names_.size(); ++j) {
-            if(_v_indices_[j] < 0) return false;
-            _m_q_(i, j) = _data_->M(_v_indices_[i], _v_indices_[j]);
+    if(enable_mass_matrix) {
+        pinocchio::crba(_model_, *_data_, _q_);
+        for(size_t i = 0; i < _joint_names_.size(); ++i) {
+            if(_v_indices_[i] < 0) return false;
+            for(size_t j = 0; j < _joint_names_.size(); ++j) {
+                if(_v_indices_[j] < 0) return false;
+                _m_q_(i, j) = _data_->M(_v_indices_[i], _v_indices_[j]);
+            }
         }
     }
 

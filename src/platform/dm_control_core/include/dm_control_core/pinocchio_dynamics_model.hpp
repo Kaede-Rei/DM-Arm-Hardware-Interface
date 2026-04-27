@@ -36,9 +36,13 @@ public:
      * @brief 更新模型状态并计算重力项、非线性项和质量矩阵
      * @param q 受控关节位置
      * @param dq 受控关节速度
+     * @param enable_gravity 是否计算重力项，默认开启
+     * @param enable_nonlinear 是否计算非线性项，默认开启
+     * @param enable_mass_matrix 是否计算质量矩阵，默认开启
      * @return 更新成功返回 true，输入维度或索引异常返回 false
      */
-    bool update(const std::vector<double>& q, const std::vector<double>& dq);
+    bool update(const std::vector<double>& q, const std::vector<double>& dq,
+        bool enable_gravity = true, bool enable_nonlinear = true, bool enable_mass_matrix = true);
 
     /**
      * @brief 获取重力项拷贝
