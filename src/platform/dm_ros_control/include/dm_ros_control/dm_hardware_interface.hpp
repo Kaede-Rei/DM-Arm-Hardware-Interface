@@ -99,26 +99,10 @@ private:
     bool load_pd_gains_from_yaml();
 
     /**
-     * @brief 汇总解耦后的控制输入，生成单关节命令
-     * @param index 关节索引
-     * @return 关节侧命令
+     * @brief 构造纯 C++ 关节阻抗控制器配置
+     * @return 关节阻抗控制器配置
      */
-    dm_control_core::MitJointCommand build_joint_command(std::size_t index) const;
-
-    /**
-     * @brief 选择过渡期硬件侧前馈力矩
-     * @param index 关节索引
-     * @return 当前应叠加到 effort 命令上的前馈力矩
-     */
-    double select_legacy_feedforward(std::size_t index) const;
-
-    /**
-     * @brief 过滤非有限数，避免 NaN/Inf 进入电机命令
-     * @param value 输入值
-     * @param default_value fallback 值
-     * @return 有限输入值或 fallback 值
-     */
-    double sanitize_or_default(double value, double default_value) const;
+    dm_control_core::JointImpedanceControllerConfig build_joint_impedance_config() const;
 
 private:
     std::string _serial_port_{ "/dev/ttyACM0" };
@@ -154,7 +138,7 @@ private:
     std::vector<double> _hw_commands_kp_;
     std::vector<double> _hw_commands_kd_;
 
-    std::vector<dm_control_core::JointState> _bus_states_;
+    dm_control_core::JointState _bus_state_;
 
     bool _enable_dynamics_{ true };
     bool _enable_gravity_feedforward_{ true };

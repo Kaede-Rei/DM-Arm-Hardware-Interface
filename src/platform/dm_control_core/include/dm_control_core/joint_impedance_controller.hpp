@@ -2,6 +2,9 @@
 
 #include "dm_control_core/joint_control_types.hpp"
 
+#include <cstddef>
+#include <vector>
+
 namespace dm_control_core {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
@@ -18,31 +21,64 @@ namespace dm_control_core {
 class JointImpedanceController {
 public:
     /**
-     * @brief 配置受控关节顺序
-     * @param layout 关节控制布局
+     * @brief 配置关节阻抗控制器
+     * @param config 控制器配置
      */
-    void configure(const JointControlLayout& layout);
+    void configure(const JointImpedanceControllerConfig& config);
 
     /**
-     * @brief 获取当前受控关节顺序
-     * @return 关节控制布局
+     * @brief 重置控制器状态并锁存当前保持位置
+     * @param current_state 当前关节状态
      */
-    const JointControlLayout& layout() const { return _layout_; }
+    void reset(const JointState& current_state);
 
     /**
-     * @brief 由关节状态、参考、阻抗参数和前馈项生成 MIT 关节命令
-     * @param state 当前关节状态
-     * @param reference 上层参考输入
-     * @param command_gains 上层或适配层给出的阻抗参数
-     * @param fallback_gains command_gains 非有限时使用的默认阻抗参数
-     * @param feedforward 动力学/补偿前馈项
-     * @return MIT 模式关节侧命令
+     * @brief 切换控制模式
+     * @param mode 目标控制模式
+     * @param current_state 当前关节状态
+     * @note 切换到保持模式时会重新锁存当前关节位置，避免回拉旧保持点。
      */
-    MitJointCommand compute_command(const JointState& state, const JointReference& reference,
-        const JointImpedanceGains& command_gains, const JointImpedanceGains& fallback_gains,
-        const JointFeedforward& feedforward) const;
+    void set_mode(JointImpedanceMode mode, const JointState& current_state);
+
+    /**
+     * @brief 获取当前控制模式
+     * @return 当前控制模式
+     */
+    JointImpedanceMode get_mode() const { return _mode_; }
+
+    /**
+     * @brief 设置多关节参考输入
+     * @param reference 多关节参考输入
+     */
+    void set_reference(const JointReference& reference);
+
+    /**
+     * @brief 执行一次多关节阻抗控制更新
+     * @param input 周期输入
+     * @return 周期输出命令
+     */
+    JointImpedanceControllerOutput update(const JointImpedanceControllerInput& input);
 
 private:
+    /**
+     * @brief 检查配置数组长度
+     */
+    void validate_config() const;
+
+    /**
+     * @brief 锁存保持模式目标位置
+     * @param current_state 当前关节状态
+     */
+    void latch_hold_position(const JointState& current_state);
+
+    /**
+     * @brief 根据当前模式选择对应关节阻抗参数
+     * @param index 关节索引
+     * @param kp 当前模式下的位置刚度
+     * @param kd 当前模式下的速度阻尼
+     */
+    void select_gains(std::size_t index, double& kp, double& kd) const;
+
     /**
      * @brief 过滤非有限数，避免 NaN/Inf 进入控制命令
      * @param value 输入值
@@ -51,8 +87,30 @@ private:
      */
     double sanitize_or_default(double value, double default_value) const;
 
+    /**
+     * @brief 对称限幅
+     * @param value 输入值
+     * @param limit 绝对值上限，非正数或非有限数表示不限制
+     * @return 限幅后的值
+     */
+    double clamp_abs(double value, double limit) const;
+
+    /**
+     * @brief 区间限幅
+     * @param value 输入值
+     * @param lower 下限
+     * @param upper 上限
+     * @return 限幅后的值
+     */
+    double clamp_range(double value, double lower, double upper) const;
+
 private:
-    JointControlLayout _layout_;
+    JointImpedanceControllerConfig _config_;
+    JointImpedanceMode _mode_{ JointImpedanceMode::RIGID_HOLD };
+
+    std::vector<double> _hold_position_;
+    JointReference _reference_;
+    bool _reference_valid_{ false };
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

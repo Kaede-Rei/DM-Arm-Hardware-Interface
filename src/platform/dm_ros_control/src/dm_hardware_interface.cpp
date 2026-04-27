@@ -5,7 +5,10 @@
 #include <rclcpp/rclcpp.hpp>
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <limits>
+#include <stdexcept>
 
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>
@@ -107,7 +110,10 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
     _hw_commands_effort_.assign(n, 0.0);
     _hw_commands_kp_.assign(n, 0.0);
     _hw_commands_kd_.assign(n, 0.0);
-    _bus_states_.assign(n, {});
+    _bus_state_.position.assign(n, 0.0);
+    _bus_state_.velocity.assign(n, 0.0);
+    _bus_state_.effort.assign(n, 0.0);
+    _bus_state_.motor_effort.assign(n, 0.0);
 
     _gravity_feedforward_.assign(n, 0.0);
     _nonlinear_feedforward_.assign(n, 0.0);
@@ -141,10 +147,6 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
         }
     }
 
-    dm_control_core::JointControlLayout control_layout;
-    control_layout.joint_names = _joint_names_;
-    _joint_impedance_controller_.configure(control_layout);
-
     if(_legacy_pd_fallback_) {
         if(!load_pd_gains_from_yaml()) {
             RCLCPP_WARN(rclcpp::get_logger("DmHardwareInterface"),
@@ -156,6 +158,15 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
             _hw_commands_kd_[i] = _joint_kd_[i];
         }
     }
+
+    try {
+        _joint_impedance_controller_.configure(build_joint_impedance_config());
+    }
+    catch(const std::exception& e) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to configure joint impedance controller: %s", e.what());
+        return hardware_interface::CallbackReturn::ERROR;
+    }
+
     RCLCPP_INFO(rclcpp::get_logger("DmHardwareInterface"),
         "Initialized DmHardwareInterface: joints=%zu, write=%s, dynamics=%s, legacy_feedforward=%s, legacy_pd=%s", n,
         _enable_write_ ? "true" : "false",
@@ -201,9 +212,9 @@ CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& 
 CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    std::vector<dm_control_core::JointState> startup_states;
+    dm_control_core::JointState startup_state;
     try {
-        _motor_bus_.activate(_startup_read_cycles_, startup_states);
+        _motor_bus_.activate(_startup_read_cycles_, startup_state);
     }
     catch(const std::exception& e) {
         RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Exception during on_activate: %s", e.what());
@@ -211,10 +222,10 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
     }
 
     for(size_t i = 0; i < _joint_names_.size(); ++i) {
-        _hw_positions_[i] = startup_states[i].position;
-        _hw_velocities_[i] = startup_states[i].velocity;
-        _hw_efforts_[i] = startup_states[i].effort;
-        _motor_efforts_[i] = startup_states[i].motor_effort;
+        _hw_positions_[i] = startup_state.position[i];
+        _hw_velocities_[i] = startup_state.velocity[i];
+        _hw_efforts_[i] = startup_state.effort[i];
+        _motor_efforts_[i] = startup_state.motor_effort[i];
 
         _hw_commands_pos_[i] = _hw_positions_[i];
         _hw_commands_vel_[i] = 0.0;
@@ -228,6 +239,10 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
         _active_feedforward_[i] = 0.0;
         _external_efforts_[i] = 0.0;
     }
+
+    _bus_state_ = startup_state;
+    _joint_impedance_controller_.reset(startup_state);
+    _joint_impedance_controller_.set_mode(dm_control_core::JointImpedanceMode::TRACKING, startup_state);
 
     return CallbackReturn::SUCCESS;
 }
@@ -310,16 +325,16 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
     (void)time;
     (void)period;
 
-    if(!_motor_bus_.read(_refresh_state_in_read_, _bus_states_)) {
+    if(!_motor_bus_.read(_refresh_state_in_read_, _bus_state_)) {
         RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to read motor bus state.");
         return hardware_interface::return_type::ERROR;
     }
 
-    for(size_t i = 0; i < _bus_states_.size(); ++i) {
-        _hw_positions_[i] = _bus_states_[i].position;
-        _hw_velocities_[i] = _bus_states_[i].velocity;
-        _hw_efforts_[i] = _bus_states_[i].effort;
-        _motor_efforts_[i] = _bus_states_[i].motor_effort;
+    for(size_t i = 0; i < _joint_names_.size(); ++i) {
+        _hw_positions_[i] = _bus_state_.position[i];
+        _hw_velocities_[i] = _bus_state_.velocity[i];
+        _hw_efforts_[i] = _bus_state_.effort[i];
+        _motor_efforts_[i] = _bus_state_.motor_effort[i];
     }
 
     if(_enable_dynamics_) {
@@ -358,12 +373,29 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
  */
 hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& time, const rclcpp::Duration& period) {
     (void)time;
-    (void)period;
 
     if(!_enable_write_) return hardware_interface::return_type::OK;
 
+    dm_control_core::JointReference reference;
+    reference.position = _hw_commands_pos_;
+    reference.velocity = _hw_commands_vel_;
+    reference.effort = _hw_commands_effort_;
+
+    _joint_impedance_controller_.set_reference(reference);
+
+    dm_control_core::JointImpedanceControllerInput input;
+    input.state = _bus_state_;
+    input.gravity_effort = _active_feedforward_;
+    input.dt = period.seconds();
+
+    const auto output = _joint_impedance_controller_.update(input);
+    if(output.command.position.size() != _motor_bus_.size()) {
+        RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Joint impedance controller returned invalid command size.");
+        return hardware_interface::return_type::ERROR;
+    }
+
     for(size_t i = 0; i < _motor_bus_.size(); ++i) {
-        if(!_motor_bus_.write(i, build_joint_command(i))) {
+        if(!_motor_bus_.write(i, output.command)) {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to write command for joint '%s'.", _joint_names_[i].c_str());
             return hardware_interface::return_type::ERROR;
         }
@@ -441,67 +473,30 @@ bool DmHardwareInterface::load_pd_gains_from_yaml() {
 }
 
 /**
- * @brief 汇总单关节控制输入
- * @param index 关节索引
- * @return 关节侧命令
+ * @brief 构造纯 C++ 关节阻抗控制器配置
+ * @return 关节阻抗控制器配置
  */
-dm_control_core::MitJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const {
-    const double fallback_kp = _legacy_pd_fallback_ ? _joint_kp_[index] : 0.0;
-    const double fallback_kd = _legacy_pd_fallback_ ? _joint_kd_[index] : 0.0;
+dm_control_core::JointImpedanceControllerConfig DmHardwareInterface::build_joint_impedance_config() const {
+    const std::size_t n = _joint_names_.size();
 
-    dm_control_core::JointState state;
-    state.position = _hw_positions_[index];
-    state.velocity = _hw_velocities_[index];
-    state.effort = _hw_efforts_[index];
+    dm_control_core::JointImpedanceControllerConfig config;
+    config.layout.joint_names = _joint_names_;
+    config.rigid_hold_gains.kp = _joint_kp_;
+    config.rigid_hold_gains.kd = _joint_kd_;
+    config.compliant_hold_gains.kp = _joint_kp_;
+    config.compliant_hold_gains.kd = _joint_kd_;
+    config.tracking_gains.kp = _joint_kp_;
+    config.tracking_gains.kd = _joint_kd_;
+    config.limits.max_velocity.assign(n, 0.0);
+    config.limits.max_effort.assign(n, 0.0);
+    config.limits.min_kp.assign(n, std::numeric_limits<double>::lowest());
+    config.limits.max_kp.assign(n, std::numeric_limits<double>::max());
+    config.limits.min_kd.assign(n, std::numeric_limits<double>::lowest());
+    config.limits.max_kd.assign(n, std::numeric_limits<double>::max());
+    config.use_gravity_feedforward = _legacy_feedforward_enabled_;
+    config.use_reference_effort = true;
 
-    dm_control_core::JointReference reference;
-    reference.position = _hw_commands_pos_[index];
-    reference.velocity = _hw_commands_vel_[index];
-    reference.effort = _hw_commands_effort_[index];
-
-    dm_control_core::JointImpedanceGains command_gains;
-    command_gains.kp = _hw_commands_kp_[index];
-    command_gains.kd = _hw_commands_kd_[index];
-
-    dm_control_core::JointImpedanceGains fallback_gains;
-    fallback_gains.kp = fallback_kp;
-    fallback_gains.kd = fallback_kd;
-
-    dm_control_core::JointFeedforward feedforward;
-    feedforward.effort = select_legacy_feedforward(index);
-
-    const auto mit_command = _joint_impedance_controller_.compute_command(state, reference,
-        command_gains, fallback_gains, feedforward);
-
-    dm_control_core::MitJointCommand command;
-    command.position = mit_command.position;
-    command.velocity = mit_command.velocity;
-    command.effort = mit_command.effort;
-    command.kp = mit_command.kp;
-    command.kd = mit_command.kd;
-
-    return command;
-}
-
-/**
- * @brief 获取过渡期硬件侧前馈力矩
- * @param index 关节索引
- * @return 需要叠加到 effort 命令上的前馈力矩
- */
-double DmHardwareInterface::select_legacy_feedforward(std::size_t index) const {
-    if(!_legacy_feedforward_enabled_) return 0.0;
-    return sanitize_or_default(_active_feedforward_[index], 0.0);
-}
-
-/**
- * @brief 过滤非有限数
- * @param value 输入值
- * @param default_value 默认值
- * @return value 为有限数时返回 value，否则返回 default_value
- */
-double DmHardwareInterface::sanitize_or_default(double value, double default_value) const {
-    if(std::isfinite(value)) return value;
-    return default_value;
+    return config;
 }
 
 }
