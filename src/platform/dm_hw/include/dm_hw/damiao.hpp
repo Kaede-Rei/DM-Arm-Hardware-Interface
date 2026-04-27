@@ -327,8 +327,8 @@ class MotorControl {
 public:
 
     /**
-     * @brief 构造电机控制对象。
-     * @param serial 串口对象，默认使用 /dev/ttyACM0。
+     * @brief 构造电机控制对象
+     * @param serial 串口对象，默认使用 /dev/ttyACM0
      */
     MotorControl(SerialPort::SharedPtr serial = nullptr) : serial_(std::move(serial)) {
         if(serial_ == nullptr) {
@@ -341,8 +341,8 @@ public:
         = default;
 
     /**
-     * @brief 使能电机。
-     * @param motor 电机对象。
+     * @brief 使能电机
+     * @param motor 电机对象
      */
     void enable(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFC);
@@ -363,8 +363,8 @@ public:
     }
 
     /**
-     * @brief 刷新电机状态。
-     * @param motor 电机对象。
+     * @brief 刷新电机状态
+     * @param motor 电机对象
      */
     void refresh_motor_status(const Motor& motor) {
         uint32_t id = 0x7FF;
@@ -376,8 +376,8 @@ public:
         this->receive();
     }
     /**
-     * @brief 失能电机。
-     * @param motor 电机对象。
+     * @brief 失能电机
+     * @param motor 电机对象
      */
     void disable(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFD);
@@ -386,8 +386,8 @@ public:
     }
 
     /**
-     * @brief 将当前位置设为零点。
-     * @param motor 电机对象。
+     * @brief 将当前位置设为零点
+     * @param motor 电机对象
      */
     void set_zero_position(const Motor& motor) {
         control_cmd(motor.get_slave_id(), 0xFE);
@@ -396,13 +396,13 @@ public:
     }
 
     /**
-     * @brief MIT 控制模式，具体参数定义请参考达妙手册。
-     * @param motor 电机对象。
-     * @param kp 比例系数。
-     * @param kd 微分系数。
-     * @param q 位置。
-     * @param dq 速度。
-     * @param tau 扭矩。
+     * @brief MIT 控制模式，具体参数定义请参考达妙手册
+     * @param motor 电机对象
+     * @param kp 比例系数
+     * @param kd 微分系数
+     * @param q 位置
+     * @param dq 速度
+     * @param tau 扭矩
      */
     void control_mit(Motor& motor, float kp, float kd, float q, float dq, float tau) {
         // 位置、速度和扭矩采用线性映射的关系将浮点型数据转换成有符号的定点数据
@@ -440,10 +440,10 @@ public:
     }
 
     /**
-     * @brief 位置速度控制模式。
-     * @param motor 电机对象。
-     * @param pos 位置。
-     * @param vel 速度。
+     * @brief 位置速度控制模式
+     * @param motor 电机对象
+     * @param pos 位置
+     * @param vel 速度
      */
     void control_pos_vel(Motor& motor, float pos, float vel) {
         MotorId id = motor.get_slave_id();
@@ -460,9 +460,9 @@ public:
     }
 
     /**
-     * @brief 速度控制模式。
-     * @param motor 电机对象。
-     * @param vel 速度。
+     * @brief 速度控制模式
+     * @param motor 电机对象
+     * @param vel 速度
      */
     void control_vel(Motor& motor, float vel) {
         MotorId id = motor.get_slave_id();
@@ -478,11 +478,11 @@ public:
     }
 
     /**
-     * @brief 力位混合控制模式。
-     * @param motor 电机对象。
-     * @param pos 位置。
-     * @param vel 速度（范围 0-10000，详见手册）。
-     * @param i 电流（范围 0-10000，详见手册）。
+     * @brief 力位混合控制模式
+     * @param motor 电机对象
+     * @param pos 位置
+     * @param vel 速度（范围 0-10000，详见手册）
+     * @param i 电流（范围 0-10000，详见手册）
      */
     void control_pos_force(Motor& motor, float pos, uint16_t vel, uint16_t i) {
         MotorId id = motor.get_slave_id();
@@ -501,10 +501,10 @@ public:
 
 
     /**
-     * @brief 周期同步位置速度控制模式。
-     * @param motor 电机对象。
-     * @param pos 位置。
-     * @param vel 速度。
+     * @brief 周期同步位置速度控制模式
+     * @param motor 电机对象
+     * @param pos 位置
+     * @param vel 速度
      */
     void control_pos_vel_csp(Motor& motor, float pos, float vel) {
         MotorId id = motor.get_slave_id();
@@ -521,9 +521,9 @@ public:
     }
 
     /**
-     * @brief 周期同步速度控制模式。
-     * @param motor 电机对象。
-     * @param vel 速度。
+     * @brief 周期同步速度控制模式
+     * @param motor 电机对象
+     * @param vel 速度
      */
     void control_vel_csp(Motor& motor, float vel) {
         MotorId id = motor.get_slave_id();
@@ -539,9 +539,9 @@ public:
     }
 
     /**
-     * @brief 周期同步力矩控制模式。
-     * @param motor 电机对象。
-     * @param tor 力矩。
+     * @brief 周期同步力矩控制模式
+     * @param motor 电机对象
+     * @param tor 力矩
      */
     void control_tor_csp(Motor& motor, float tor) {
         MotorId id = motor.get_slave_id();
@@ -557,7 +557,7 @@ public:
     }
 
     /**
-     * @brief 接收并解析电机 CAN 反馈数据。
+     * @brief 接收并解析电机 CAN 反馈数据
      */
     void receive() {
         if(!serial_->recv_frame(reinterpret_cast<uint8_t*>(&receive_data), 0xAA, sizeof(CanReceiveFrame))) return;
@@ -649,8 +649,8 @@ public:
     }
 
     /**
-     * @brief 添加电机到控制器。
-     * @param motor 电机对象指针。
+     * @brief 添加电机到控制器
+     * @param motor 电机对象指针
      */
     void add_motor(Motor* motor) {
         motors.insert({ motor->get_slave_id(), motor });
@@ -660,10 +660,10 @@ public:
     }
 
     /**
-     * @brief 读取电机寄存器参数。
-     * @param motor 电机对象。
-     * @param reg_id 寄存器 ID，例如 damiao::UV_Value。
-     * @return 查询到的参数值；未查询到时返回 0。
+     * @brief 读取电机寄存器参数
+     * @param motor 电机对象
+     * @param reg_id 寄存器 ID，例如 damiao::UV_Value
+     * @return 查询到的参数值；未查询到时返回 0
      */
     float read_motor_param(Motor& motor, uint8_t reg_id) {
         motor.clear_param(reg_id);
@@ -691,9 +691,9 @@ public:
 
 
     /**
-     * @brief 切换电机控制模式。
-     * @param motor 电机对象。
-     * @param mode 控制模式，如 damiao::MIT_MODE。
+     * @brief 切换电机控制模式
+     * @param motor 电机对象
+     * @param mode 控制模式，如 damiao::MIT_MODE
      */
     bool switch_control_mode(Motor& motor, DmControlMode mode) {
         constexpr uint8_t reg_id = CTRL_MODE;
@@ -714,11 +714,11 @@ public:
     }
 
     /**
-     * @brief 修改电机寄存器参数。
-     * @param motor 电机对象。
-     * @param reg_id 寄存器 ID。
-     * @param data 参数值。
-     * @return 修改成功返回 true，否则返回 false。
+     * @brief 修改电机寄存器参数
+     * @param motor 电机对象
+     * @param reg_id 寄存器 ID
+     * @param data 参数值
+     * @return 修改成功返回 true，否则返回 false
      */
     bool change_motor_param(Motor& motor, uint8_t reg_id, float data) {
         motor.clear_param(reg_id);
@@ -755,8 +755,8 @@ public:
 
 
     /**
-     * @brief 将电机参数保存到 Flash。
-     * @param motor 电机对象。
+     * @brief 将电机参数保存到 Flash
+     * @param motor 电机对象
      */
     void save_motor_param(Motor& motor) {
         disable(motor);
@@ -770,11 +770,11 @@ public:
     }
 
     /**
-     * @brief 修改电机限制参数（非寄存器参数）。
-     * @param motor 电机对象。
-     * @param p_max 位置上限。
-     * @param q_max 速度上限。
-     * @param t_max 扭矩上限。
+     * @brief 修改电机限制参数（非寄存器参数）
+     * @param motor 电机对象
+     * @param p_max 位置上限
+     * @param q_max 速度上限
+     * @param t_max 扭矩上限
      */
     static void change_motor_limit(Motor& motor, float p_max, float q_max, float t_max) {
         limit_param[motor.get_motor_type()] = { p_max, q_max, t_max };

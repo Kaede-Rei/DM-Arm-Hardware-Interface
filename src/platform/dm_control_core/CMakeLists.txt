@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 
 # ========================= 项目配置(必填) ========================= #
 # TODO: 修改项目名称，必须与 package.xml 中的 <name> 一致
-project(dm_ros_control)
+project(dm_control_core)
 
 # ========================= 基本配置 ========================= #
 if(NOT CMAKE_C_STANDARD)
@@ -22,14 +22,8 @@ endif()
 # ========================= 依赖配置(按需修改) ========================= #
 # TODO: 在此列表中添加所有 ROS 依赖；如果依赖你自己的接口包，也写在这里
 set(DEPENDENCIES
-    ament_index_cpp
-    rclcpp
-    rclcpp_lifecycle
-    hardware_interface
-    pluginlib
-    controller_manager
-    tl
-    dm_control_core
+    pinocchio
+    dm_hw
 )
 
 # 必需依赖
@@ -44,14 +38,16 @@ endforeach()
 # 例如：find_package(Eigen3 REQUIRED)
 # 例如：find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(yaml-cpp REQUIRED)
 
 # ========================= 共享库配置(可选) ========================= #
 # TODO: 若无公共库，保持 LIB_SOURCES 为空即可
 set(LIB_NAME ${PROJECT_NAME})
 set(LIB_SOURCES
     # src/library.cpp
-    src/dm_hardware_interface.cpp
+    src/dm_motor_bus.cpp
+    src/dynamics_observer.cpp
+    src/joint_impedance_controller.cpp
+    src/pinocchio_dynamics_model.cpp
 )
 
 if(LIB_SOURCES)
@@ -64,10 +60,8 @@ if(LIB_SOURCES)
     ament_target_dependencies(${LIB_NAME} ${DEPENDENCIES})
 
     # TODO: 如需链接第三方库，在这里补充
-    target_link_libraries(${LIB_NAME} Eigen3::Eigen yaml-cpp)
+    target_link_libraries(${LIB_NAME} Eigen3::Eigen)
 endif()
-
-pluginlib_export_plugin_description_file(hardware_interface dm_ros_control_plugins.xml)
 
 # ========================= 节点配置(按需修改) ========================= #
 # TODO: 在此列表中添加所有 C++ 节点名称(不带 .cpp 后缀)

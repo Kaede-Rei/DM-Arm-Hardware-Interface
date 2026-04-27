@@ -1,8 +1,11 @@
 #pragma once
 
-#include "dm_ros_control/pinocchio_dynamics_model.hpp"
+#include "dm_control_core/pinocchio_dynamics_model.hpp"
 
-namespace dm_ros_control {
+#include <memory>
+#include <vector>
+
+namespace dm_control_core {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
@@ -44,9 +47,6 @@ public:
      * @param enable_gravity_feedforward 是否选择重力项作为 active_feedforward
      * @param enable_nonlinear_feedforward 是否选择非线性项作为 active_feedforward
      * @param observation 预分配的动力学观测输出
-     *
-     * external_effort 始终扣除 nonlinear，与 active_feedforward 选择解耦。
-     *
      * @return 成功返回 true，失败返回 false
      */
     bool observe(const std::vector<double>& positions, const std::vector<double>& velocities, const std::vector<double>& efforts,

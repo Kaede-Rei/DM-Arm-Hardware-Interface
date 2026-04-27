@@ -1,4 +1,4 @@
-#include "dm_ros_control/pinocchio_dynamics_model.hpp"
+#include "dm_control_core/pinocchio_dynamics_model.hpp"
 
 #include <pinocchio/algorithm/rnea.hpp>
 #include <pinocchio/algorithm/crba.hpp>
@@ -6,7 +6,7 @@
 
 #include <unordered_set>
 
-namespace dm_ros_control {
+namespace dm_control_core {
 
 // ! ========================= 宏 定 义 ========================= ! //
 
@@ -26,9 +26,8 @@ namespace dm_ros_control {
  * @brief 构造 Pinocchio reduced model
  * @param urdf_path 机器人 URDF 路径
  * @param joint_names 需要保留的受控关节名称
- *
- * 从完整 URDF 模型中锁定非受控关节，只保留 ros2_control 管理的 1-DoF 关节，
- * 后续动力学输出顺序与 joint_names 保持一致。
+ * @note 从完整 URDF 模型中锁定非受控关节，只保留 ros2_control 管理的 1-DoF 关节，
+ *       后续动力学输出顺序与 joint_names 保持一致
  */
 PinocchioDynamicsModel::PinocchioDynamicsModel(const std::string& urdf_path, const std::vector<std::string>& joint_names) {
     _joint_names_ = joint_names;

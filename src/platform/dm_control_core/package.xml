@@ -3,9 +3,9 @@
 <package format="3">
     <!-- ========================= 基本信息(必填) ========================= -->
     <!-- TODO: 包名必须与 CMakeLists.txt 中的 project() 完全一致 -->
-    <name>dm_ros_control</name>
+    <name>dm_control_core</name>
     <version>0.0.1</version>
-    <description>ROS2 ament_cmake feature package</description>
+    <description>ROS-independent joint-space control core for DM arm controllers.</description>
     <maintainer email="kaerei@foxmail.com">Kaede Rei</maintainer>
     <license>MIT</license>
 
@@ -20,15 +20,8 @@
 
     <!-- ========================= 常规依赖(按需添加) ========================= -->
     <!-- TODO: 功能包的 ROS 依赖优先写在这里；如果依赖你自己的接口包，也写在这里 -->
-    <depend>ament_index_cpp</depend>
-    <depend>rclcpp</depend>
-    <depend>rclcpp_lifecycle</depend>
-    <depend>hardware_interface</depend>
-    <depend>pluginlib</depend>
-    <depend>controller_manager</depend>
-    <depend>yaml-cpp</depend>
-    <depend>tl</depend>
-    <depend>dm_control_core</depend>
+    <depend>pinocchio</depend>
+    <depend>dm_hw</depend>
 
     <!-- TODO: 如果提供 launch 文件，通常需要这些 -->
     <!-- <exec_depend>launch</exec_depend> -->

@@ -1,6 +1,6 @@
-#include "dm_ros_control/dynamics_observer.hpp"
+#include "dm_control_core/dynamics_observer.hpp"
 
-namespace dm_ros_control {
+namespace dm_control_core {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
@@ -30,13 +30,8 @@ void DynamicsObserver::cleanup() {
  * @param observation 预分配观测结果输出
  * @return 成功返回 true，失败返回 false
  */
-bool DynamicsObserver::observe(
-    const std::vector<double>& positions,
-    const std::vector<double>& velocities,
-    const std::vector<double>& efforts,
-    bool enable_gravity_feedforward,
-    bool enable_nonlinear_feedforward,
-    DynamicsObservation& observation) {
+bool DynamicsObserver::observe(const std::vector<double>& positions, const std::vector<double>& velocities, const std::vector<double>& efforts,
+    bool enable_gravity_feedforward, bool enable_nonlinear_feedforward, DynamicsObservation& observation) {
 
     if(observation.gravity.size() != positions.size()) observation.gravity.assign(positions.size(), 0.0);
     if(observation.nonlinear.size() != positions.size()) observation.nonlinear.assign(positions.size(), 0.0);

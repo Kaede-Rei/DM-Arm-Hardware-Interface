@@ -2,8 +2,9 @@
 
 #include <hardware_interface/system_interface.hpp>
 
-#include "dm_ros_control/dm_motor_bus.hpp"
-#include "dm_ros_control/dynamics_observer.hpp"
+#include "dm_control_core/dm_motor_bus.hpp"
+#include "dm_control_core/dynamics_observer.hpp"
+#include "dm_control_core/joint_impedance_controller.hpp"
 
 namespace dm_ros_control {
 
@@ -102,7 +103,7 @@ private:
      * @param index 关节索引
      * @return 关节侧命令
      */
-    DmJointCommand build_joint_command(std::size_t index) const;
+    dm_control_core::MitJointCommand build_joint_command(std::size_t index) const;
 
     /**
      * @brief 选择过渡期硬件侧前馈力矩
@@ -131,11 +132,12 @@ private:
     // 过渡期使用开关，决定是否在 YAML 中加载 PD 增益配置
     bool _legacy_pd_fallback_{ true };
 
-    DmMotorBus _motor_bus_;
-    DynamicsObserver _dynamics_observer_;
+    dm_control_core::DmMotorBus _motor_bus_;
+    dm_control_core::DynamicsObserver _dynamics_observer_;
+    dm_control_core::JointImpedanceController _joint_impedance_controller_;
 
     std::vector<std::string> _joint_names_;
-    std::vector<DmMotorConfig> _motor_configs_;
+    std::vector<dm_control_core::DmMotorConfig> _motor_configs_;
 
     // 过渡期使用的 PD 增益，从 YAML 加载，如果加载失败则使用默认值
     std::vector<double> _joint_kp_;
@@ -152,7 +154,7 @@ private:
     std::vector<double> _hw_commands_kp_;
     std::vector<double> _hw_commands_kd_;
 
-    std::vector<DmJointState> _bus_states_;
+    std::vector<dm_control_core::JointState> _bus_states_;
 
     bool _enable_dynamics_{ true };
     bool _enable_gravity_feedforward_{ true };
@@ -164,7 +166,7 @@ private:
     std::vector<double> _nonlinear_feedforward_;
     std::vector<double> _active_feedforward_;
     std::vector<double> _external_efforts_;
-    DynamicsObservation _dynamics_observation_;
+    dm_control_core::DynamicsObservation _dynamics_observation_;
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

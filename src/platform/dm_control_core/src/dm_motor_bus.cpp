@@ -1,7 +1,10 @@
-#include "dm_ros_control/dm_motor_bus.hpp"
+#include "dm_control_core/dm_motor_bus.hpp"
 #include "dm_hw/serial_port.hpp"
 
-namespace dm_ros_control {
+#include <stdexcept>
+#include <unistd.h>
+
+namespace dm_control_core {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
@@ -30,7 +33,7 @@ void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, con
  * @param startup_read_cycles 启动阶段状态读取次数
  * @param states 输出启动阶段平均后的关节状态
  */
-void DmMotorBus::activate(int startup_read_cycles, std::vector<DmJointState>& states) {
+void DmMotorBus::activate(int startup_read_cycles, std::vector<JointState>& states) {
     for(size_t i = 0; i < _motors_.size(); ++i) {
         damiao::DmControlMode dm_mode;
         if(!to_dm_control_mode(_configs_[i].control_mode, dm_mode)) throw std::runtime_error("DmMotorBus unsupported control mode");
@@ -42,7 +45,7 @@ void DmMotorBus::activate(int startup_read_cycles, std::vector<DmJointState>& st
     states.assign(_configs_.size(), {});
     for(int i = 0; i < startup_read_cycles; ++i) {
         for(size_t j = 0; j < _motors_.size(); ++j) {
-            DmJointState state;
+            JointState state;
             if(!read_one(j, true, state)) throw std::runtime_error("DmMotorBus failed to read startup state");
             states[j].position += state.position;
             states[j].velocity += state.velocity;
@@ -92,7 +95,7 @@ void DmMotorBus::cleanup() {
  * @param states 预分配状态缓冲，大小必须等于电机数量
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::read(bool refresh_state, std::vector<DmJointState>& states) noexcept {
+bool DmMotorBus::read(bool refresh_state, std::vector<JointState>& states) noexcept {
     try {
         if(!_motor_controller_ || states.size() != _motors_.size()) return false;
 
@@ -113,7 +116,7 @@ bool DmMotorBus::read(bool refresh_state, std::vector<DmJointState>& states) noe
  * @param command 关节侧命令
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::write(std::size_t index, const DmJointCommand& command) noexcept {
+bool DmMotorBus::write(std::size_t index, const MitJointCommand& command) noexcept {
     try {
         if(!_motor_controller_ || index >= _motors_.size() || index >= _configs_.size()) return false;
 
@@ -168,7 +171,7 @@ bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_
  * @param state 输出关节侧状态
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::read_one(std::size_t index, bool refresh_state, DmJointState& state) noexcept {
+bool DmMotorBus::read_one(std::size_t index, bool refresh_state, JointState& state) noexcept {
     try {
         if(index >= _motors_.size() || index >= _configs_.size()) return false;
         if(refresh_state) _motor_controller_->refresh_motor_status(*_motors_[index]);

@@ -1,6 +1,11 @@
 #pragma once
 
-#include "dm_ros_control/dm_types.hpp"
+#include "dm_control_core/dm_types.hpp"
+#include "dm_control_core/joint_control_types.hpp"
+
+#include <memory>
+#include <string>
+#include <vector>
 
 class SerialPort;
 
@@ -9,7 +14,7 @@ class Motor;
 class MotorControl;
 }
 
-namespace dm_ros_control {
+namespace dm_control_core {
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
@@ -31,7 +36,7 @@ public:
      * @param startup_read_cycles 启动时读取并平均的次数
      * @param states 输出启动后的关节状态
      */
-    void activate(int startup_read_cycles, std::vector<DmJointState>& states);
+    void activate(int startup_read_cycles, std::vector<JointState>& states);
 
     /**
      * @brief 停用电机，先切回位置速度模式再失能
@@ -49,7 +54,7 @@ public:
      * @param states 预分配的状态缓冲，大小必须等于电机数量
      * @return 成功返回 true，失败返回 false；周期路径不向外抛异常
      */
-    bool read(bool refresh_state, std::vector<DmJointState>& states) noexcept;
+    bool read(bool refresh_state, std::vector<JointState>& states) noexcept;
 
     /**
      * @brief 写入单个关节命令到电机
@@ -57,7 +62,7 @@ public:
      * @param command 关节侧命令
      * @return 成功返回 true，失败返回 false；周期路径不向外抛异常
      */
-    bool write(std::size_t index, const DmJointCommand& command) noexcept;
+    bool write(std::size_t index, const MitJointCommand& command) noexcept;
 
     /**
      * @brief 获取当前 bus 管理的电机数量
@@ -81,7 +86,7 @@ private:
      * @param state 输出关节侧状态
      * @return 成功返回 true，失败返回 false
      */
-    bool read_one(std::size_t index, bool refresh_state, DmJointState& state) noexcept;
+    bool read_one(std::size_t index, bool refresh_state, JointState& state) noexcept;
 
 private:
     std::shared_ptr<SerialPort> _serial_;

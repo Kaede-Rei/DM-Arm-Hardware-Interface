@@ -133,13 +133,17 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
         }
 
         const auto mode = joint.parameters.at("control_mode");
-        if(mode == "MIT") _motor_configs_[i].control_mode = ControlMode::MIT;
-        else if(mode == "POS_VEL")_motor_configs_[i].control_mode = ControlMode::POS_VEL;
+        if(mode == "MIT") _motor_configs_[i].control_mode = dm_control_core::ControlMode::MIT;
+        else if(mode == "POS_VEL")_motor_configs_[i].control_mode = dm_control_core::ControlMode::POS_VEL;
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unknown control_mode '%s' for joint '%s'", mode.c_str(), joint.name.c_str());
             return hardware_interface::CallbackReturn::ERROR;
         }
     }
+
+    dm_control_core::JointControlLayout control_layout;
+    control_layout.joint_names = _joint_names_;
+    _joint_impedance_controller_.configure(control_layout);
 
     if(_legacy_pd_fallback_) {
         if(!load_pd_gains_from_yaml()) {
@@ -197,7 +201,7 @@ CallbackReturn DmHardwareInterface::on_configure(const rclcpp_lifecycle::State& 
 CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& previous_state) {
     (void)previous_state;
 
-    std::vector<DmJointState> startup_states;
+    std::vector<dm_control_core::JointState> startup_states;
     try {
         _motor_bus_.activate(_startup_read_cycles_, startup_states);
     }
@@ -441,16 +445,41 @@ bool DmHardwareInterface::load_pd_gains_from_yaml() {
  * @param index 关节索引
  * @return 关节侧命令
  */
-DmJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const {
-    DmJointCommand command;
-    command.position = sanitize_or_default(_hw_commands_pos_[index], _hw_positions_[index]);
-    command.velocity = sanitize_or_default(_hw_commands_vel_[index], 0.0);
-    command.effort = sanitize_or_default(_hw_commands_effort_[index], 0.0) + select_legacy_feedforward(index);
-
+dm_control_core::MitJointCommand DmHardwareInterface::build_joint_command(std::size_t index) const {
     const double fallback_kp = _legacy_pd_fallback_ ? _joint_kp_[index] : 0.0;
     const double fallback_kd = _legacy_pd_fallback_ ? _joint_kd_[index] : 0.0;
-    command.kp = sanitize_or_default(_hw_commands_kp_[index], fallback_kp);
-    command.kd = sanitize_or_default(_hw_commands_kd_[index], fallback_kd);
+
+    dm_control_core::JointState state;
+    state.position = _hw_positions_[index];
+    state.velocity = _hw_velocities_[index];
+    state.effort = _hw_efforts_[index];
+
+    dm_control_core::JointReference reference;
+    reference.position = _hw_commands_pos_[index];
+    reference.velocity = _hw_commands_vel_[index];
+    reference.effort = _hw_commands_effort_[index];
+
+    dm_control_core::JointImpedanceGains command_gains;
+    command_gains.kp = _hw_commands_kp_[index];
+    command_gains.kd = _hw_commands_kd_[index];
+
+    dm_control_core::JointImpedanceGains fallback_gains;
+    fallback_gains.kp = fallback_kp;
+    fallback_gains.kd = fallback_kd;
+
+    dm_control_core::JointFeedforward feedforward;
+    feedforward.effort = select_legacy_feedforward(index);
+
+    const auto mit_command = _joint_impedance_controller_.compute_command(state, reference,
+        command_gains, fallback_gains, feedforward);
+
+    dm_control_core::MitJointCommand command;
+    command.position = mit_command.position;
+    command.velocity = mit_command.velocity;
+    command.effort = mit_command.effort;
+    command.kp = mit_command.kp;
+    command.kd = mit_command.kd;
+
     return command;
 }
 

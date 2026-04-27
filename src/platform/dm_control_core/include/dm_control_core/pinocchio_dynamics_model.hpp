@@ -3,7 +3,11 @@
 #include <pinocchio/multibody/model.hpp>
 #include <pinocchio/multibody/data.hpp>
 
-namespace dm_ros_control {
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace dm_control_core {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 

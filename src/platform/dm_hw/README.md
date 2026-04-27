@@ -40,9 +40,9 @@ source install/setup.bash
 
 ### 2) 连接硬件
 
-默认串口设备为 `/dev/ttyACM0`，默认波特率为 `B921600`。
+默认串口设备为 `/dev/ttyACM0`，默认波特率为 `B921600`
 
-如果你使用其他设备节点，请在代码里创建 `SerialPort` 时替换为实际路径。
+如果你使用其他设备节点，请在代码里创建 `SerialPort` 时替换为实际路径
 
 ### 3) 运行示例
 
@@ -59,7 +59,7 @@ ros2 run dm_hw test_damiao
 
 ## 核心 API
 
-以下 API 均来自 `include/dm_hw/damiao.hpp` 和 `include/dm_hw/serial_port.hpp`。
+以下 API 均来自 `include/dm_hw/damiao.hpp` 和 `include/dm_hw/serial_port.hpp`
 
 ### 1) 类型与枚举
 
@@ -77,7 +77,7 @@ ros2 run dm_hw test_damiao
 
 ### 2) `damiao::Motor`
 
-用于描述单个电机并缓存反馈/参数。
+用于描述单个电机并缓存反馈/参数
 
 常用接口：
 
@@ -103,7 +103,7 @@ ros2 run dm_hw test_damiao
 
 ### 3) `damiao::MotorControl`
 
-用于发送控制命令、接收反馈、读写寄存器。
+用于发送控制命令、接收反馈、读写寄存器
 
 常用接口：
 
@@ -132,7 +132,7 @@ ros2 run dm_hw test_damiao
 
 ### 4) `SerialPort`
 
-`SerialPort` 在 `include/dm_hw/serial_port.hpp` 中定义。
+`SerialPort` 在 `include/dm_hw/serial_port.hpp` 中定义
 
 常用接口：
 
@@ -168,7 +168,7 @@ int main() {
 
 ## 注意事项
 
-- 控制前必须先 `add_motor`，否则会触发 “id not found” 异常。
-- 默认串口是 `/dev/ttyACM0`；设备路径变化时需要同步修改。
-- `Motor` 的速度/位置/扭矩反馈解码依赖对应型号的限幅参数。
-- 若反馈异常，优先检查：电源、总线接线、ID 冲突、串口权限。
+- 控制前必须先 `add_motor`，否则会触发 “id not found” 异常
+- 默认串口是 `/dev/ttyACM0`；设备路径变化时需要同步修改
+- `Motor` 的速度/位置/扭矩反馈解码依赖对应型号的限幅参数
+- 若反馈异常，优先检查：电源、总线接线、ID 冲突、串口权限
