@@ -1,5 +1,6 @@
 #include "dm_control_core/pinocchio_dynamics_model.hpp"
 
+#include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/parsers/urdf.hpp>
