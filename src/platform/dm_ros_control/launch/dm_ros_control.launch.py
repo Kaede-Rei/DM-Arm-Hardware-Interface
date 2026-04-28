@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -17,6 +18,8 @@ def generate_launch_description():
     startup_read_cycles = LaunchConfiguration("startup_read_cycles")
     legacy_feedforward_enabled = LaunchConfiguration("legacy_feedforward_enabled")
     legacy_pd_fallback = LaunchConfiguration("legacy_pd_fallback")
+    command_mode = LaunchConfiguration("command_mode")
+    use_rviz = LaunchConfiguration("use_rviz")
 
     enable_dynamics = LaunchConfiguration("enable_dynamics")
     enable_gravity_feedforward = LaunchConfiguration("enable_gravity_feedforward")
@@ -42,6 +45,8 @@ def generate_launch_description():
             legacy_feedforward_enabled,
             " legacy_pd_fallback:=",
             legacy_pd_fallback,
+            " command_mode:=",
+            command_mode,
             " enable_dynamics:=",
             enable_dynamics,
             " enable_gravity_feedforward:=",
@@ -85,9 +90,22 @@ def generate_launch_description():
         output="screen",
     )
 
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="screen",
+        arguments=[
+            "-d",
+            PathJoinSubstitution([pkg_share, "config", "view_robot.rviz"]),
+        ],
+        condition=IfCondition(use_rviz),
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument("use_fake_hardware", default_value="false"),
+            DeclareLaunchArgument("use_rviz", default_value="false"),
             DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0"),
             DeclareLaunchArgument("baudrate", default_value="921600"),
             DeclareLaunchArgument("enable_write", default_value="true"),
@@ -95,6 +113,7 @@ def generate_launch_description():
             DeclareLaunchArgument("startup_read_cycles", default_value="5"),
             DeclareLaunchArgument("legacy_feedforward_enabled", default_value="true"),
             DeclareLaunchArgument("legacy_pd_fallback", default_value="true"),
+            DeclareLaunchArgument("command_mode", default_value="impedance"),
             DeclareLaunchArgument("enable_dynamics", default_value="true"),
             DeclareLaunchArgument("enable_gravity_feedforward", default_value="true"),
             DeclareLaunchArgument(
@@ -104,5 +123,6 @@ def generate_launch_description():
             control_node,
             jsb,
             arm,
+            rviz,
         ]
     )

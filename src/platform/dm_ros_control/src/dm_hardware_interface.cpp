@@ -420,6 +420,7 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
     input.model_feedforward = active_feedforward_;
     input.dt = period.seconds();
 
+    // TODO: kp/kd 暂未参与控制，由 config 中设置固定增益
     const auto output = joint_impedance_controller_.update(input);
     if(!output.valid) {
         RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Joint impedance controller returned invalid output.");
