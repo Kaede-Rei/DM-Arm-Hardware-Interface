@@ -149,15 +149,20 @@ endif()
 # ========================= 测试配置(可选) ========================= #
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
 
   # TODO: 如需跳过某些检查，取消相应注释
-  # set(ament_cmake_copyright_FOUND TRUE)
-  # set(ament_cmake_cpplint_FOUND TRUE)
-  # set(ament_cmake_uncrustify_FOUND TRUE)
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  set(ament_cmake_uncrustify_FOUND TRUE)
+  set(ament_cmake_xmllint_FOUND TRUE)
 
-  # TODO: 如需 gtest / pytest，可在这里补充
-  # find_package(ament_cmake_gtest REQUIRED)
-  # ament_add_gtest(test_example test/test_example.cpp)
+  ament_add_gtest(test_joint_impedance_controller
+    test/test_joint_impedance_controller.cpp
+  )
+  if(TARGET test_joint_impedance_controller)
+    target_link_libraries(test_joint_impedance_controller ${LIB_NAME})
+  endif()
 
   ament_lint_auto_find_test_dependencies()
 endif()
