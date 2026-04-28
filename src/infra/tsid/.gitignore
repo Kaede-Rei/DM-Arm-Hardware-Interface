@@ -1,7 +1,0 @@
-*~
-*.pyc
-Xcode/
-.vscode/
-build*/
-_build*/
-.vscode

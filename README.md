@@ -2,7 +2,7 @@
 
 面向达妙电机机械臂的 ROS 2 Humble 工作区；仓库包含机械臂描述、达妙底层通信、ROS 2 control 硬件插件、关节阻抗控制核心、Pinocchio 动力学前馈、假硬件联调和真机启动入口
 
-当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令
+当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令；`dm_control_core`、`dm_hw` 和 `tl` 同时支持 ROS colcon 构建和普通 CMake 构建，方便在 Isaac、LeRobot 或其他虚拟环境中直接链接纯 C++ 控制核心
 
 ## 包结构
 
@@ -12,8 +12,7 @@ DM-Arm-Hardware-Interface/
 │   └── dm_control_core.cmake          # 非 ROS 工程复用 dm_control_core 的 CMake 入口
 ├── src/
 │   ├── infra/
-│   │   ├── tl/                        # tl::optional / tl::expected
-│   │   └── tsid/                      # TSID 源码树，后续高级控制实验使用
+│   │   └── tl/                        # tl::optional / tl::expected
 │   └── platform/
 │       ├── dm_arm_description/        # 机械臂 URDF、mesh、可视化模型
 │       ├── dm_control_core/           # ROS 无关控制核心与动力学封装
@@ -33,7 +32,6 @@ DM-Arm-Hardware-Interface/
 | `dm_control_core` | 纯 C++ 控制核心，包含阻抗控制、动力学观测、电机总线抽象 |
 | `dm_ros_control` | ROS 2 control 硬件插件，连接控制器、控制核心和真机 |
 | `tl` | `optional` / `expected` 基础依赖 |
-| `tsid` | 后续 inverse dynamics / TSID 研究基础 |
 
 ## 控制架构
 
@@ -67,16 +65,22 @@ tau = kp * (q_ref - q) + kd * (dq_ref - dq) + tau_ff
 - `tau_ff` 可由 Pinocchio 重力项或非线性项生成
 - 真机通信由 `DmMotorBus` 通过 `dm_hw` 完成
 
-## 环境依赖
+## 环境与构建
 
-推荐环境：
+构建组织原则：
 
-- Ubuntu 22.04
-- ROS 2 Humble
-- `colcon`
-- `rosdep`
+- `dm_control_core`、`dm_hw`、`tl` 使用同一套 CMake target 定义，支持 ROS 和非 ROS 环境复用
+- 动力学依赖只使用非 ROS Pinocchio；不要安装 `ros-humble-pinocchio`、`ros-humble-hpp-fcl`、`ros-humble-eigenpy`
+- CMake 查找 Pinocchio 的顺序是 `DM_ARM_PINOCCHIO_PREFIX`、当前 conda/mamba 的 `$CONDA_PREFIX`、`/opt/openrobots`
+- 找到 `/opt/ros` 下的 Pinocchio 时会直接报错，避免 ROS 版和非 ROS 版混用
 
-基础依赖：
+Pinocchio 官方 Linux 安装说明也推荐通过 robotpkg 提供 Ubuntu 20.04、22.04 和 24.04 的二进制包：
+
+<https://stack-of-tasks.github.io/pinocchio/download.html>
+
+### 本机非 ROS
+
+适合只构建纯 C++ 控制核心，供 Isaac、LeRobot 或其他非 ROS 工程链接
 
 ```bash
 sudo apt update
@@ -84,15 +88,78 @@ sudo apt install -y \
   git \
   build-essential \
   cmake \
-  python3-colcon-common-extensions \
-  python3-rosdep \
-  python3-vcstool
+  lsb-release \
+  curl \
+  libeigen3-dev
 ```
 
-ROS 2 control 和可视化依赖：
+如果机器上装过 ROS 版动力学包，先清理：
 
 ```bash
+sudo apt purge -y \
+  ros-humble-pinocchio \
+  ros-humble-hpp-fcl \
+  ros-humble-eigenpy
+sudo apt autoremove --purge -y
+rm -rf build install log
+```
+
+安装 robotpkg Pinocchio：
+
+```bash
+sudo mkdir -p /etc/apt/keyrings
+curl http://robotpkg.openrobots.org/packages/debian/robotpkg.asc \
+  | sudo tee /etc/apt/keyrings/robotpkg.asc >/dev/null
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robotpkg.openrobots.org/packages/debian/pub $(lsb_release -cs) robotpkg" \
+  | sudo tee /etc/apt/sources.list.d/robotpkg.list
+
+sudo apt update
 sudo apt install -y \
+  robotpkg-pinocchio \
+  robotpkg-py310-pinocchio
+```
+
+构建：
+
+```bash
+cmake -S cmake/standalone -B build/native -DCMAKE_BUILD_TYPE=Release
+cmake --build build/native -j
+```
+
+如果 Pinocchio 安装在自定义位置，显式传入 prefix：
+
+```bash
+cmake -S cmake/standalone -B build/native \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DDM_ARM_PINOCCHIO_PREFIX=/path/to/pinocchio/prefix
+cmake --build build/native -j
+```
+
+外部 CMake 工程可以直接复用控制核心：
+
+```cmake
+set(DM_ARM_SOURCE_DIR /path/to/DM-Arm-Hardware-Interface)
+include(${DM_ARM_SOURCE_DIR}/cmake/dm_control_core.cmake)
+target_link_libraries(your_target PRIVATE dm_control_core::dm_control_core)
+```
+
+### 本机 ROS
+
+适合真机、RViz、`ros2_control` 和 launch 联调；ROS 只负责运行时框架，Pinocchio 仍然使用非 ROS 版本
+
+```bash
+sudo apt update
+sudo apt install -y \
+  git \
+  build-essential \
+  cmake \
+  lsb-release \
+  curl \
+  libeigen3-dev \
+  python3-colcon-common-extensions \
+  python3-rosdep \
+  python3-vcstool \
   ros-humble-xacro \
   ros-humble-rviz2 \
   ros-humble-robot-state-publisher \
@@ -103,19 +170,30 @@ sudo apt install -y \
   ros-humble-joint-trajectory-controller
 ```
 
-动力学依赖：
+清理 ROS 版动力学包并安装 robotpkg Pinocchio：
 
 ```bash
-sudo apt install -y \
+sudo apt purge -y \
   ros-humble-pinocchio \
   ros-humble-hpp-fcl \
-  ros-humble-eigenpy \
-  libeigen3-dev
+  ros-humble-eigenpy
+sudo apt autoremove --purge -y
+rm -rf build install log
+
+sudo mkdir -p /etc/apt/keyrings
+curl http://robotpkg.openrobots.org/packages/debian/robotpkg.asc \
+  | sudo tee /etc/apt/keyrings/robotpkg.asc >/dev/null
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robotpkg.openrobots.org/packages/debian/pub $(lsb_release -cs) robotpkg" \
+  | sudo tee /etc/apt/sources.list.d/robotpkg.list
+
+sudo apt update
+sudo apt install -y \
+  robotpkg-pinocchio \
+  robotpkg-py310-pinocchio
 ```
 
-## 构建
-
-完整构建：
+构建：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -124,19 +202,27 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-日常联调推荐只构建核心包：
+### 虚拟环境
+
+优先使用 conda/mamba；Pinocchio 的 C++ 库、CMake 配置和 Python 模块都在同一个环境里，适合 Isaac、LeRobot 和算法实验
 
 ```bash
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select \
-  dm_hw \
-  dm_control_core \
-  dm_arm_description \
-  dm_ros_control
-source install/setup.bash
+mamba create -n dm-arm python=3.10 cmake ninja pinocchio -c conda-forge
+mamba activate dm-arm
+
+cmake -S cmake/standalone -B build/conda -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/conda
 ```
 
-说明：`src/infra/tsid` 体量较大，当前只做机械臂硬件接口联调时不必优先构建
+如果使用 Python `venv`，`pip` 通常只解决 Python 包，不能完整提供本项目需要的 C++ Pinocchio 开发文件；推荐仍然使用本机 robotpkg Pinocchio；只有需要在 venv 中 `import pinocchio` 时，才接入 robotpkg 的 Python 路径：
+
+```bash
+source .venv/bin/activate
+export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH
+
+cmake -S cmake/standalone -B build/venv -DCMAKE_BUILD_TYPE=Release
+cmake --build build/venv -j
+```
 
 ## 快速启动
 
@@ -447,7 +533,6 @@ sudo usermod -aG dialout $USER
 - ROS 2 Humble
 - ros2_control
 - Pinocchio
-- TSID
 
 ## 许可证
 

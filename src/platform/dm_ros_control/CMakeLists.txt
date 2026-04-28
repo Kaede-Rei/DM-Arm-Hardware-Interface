@@ -34,6 +34,8 @@ set(DEPENDENCIES
 
 # 必需依赖
 find_package(ament_cmake REQUIRED)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/dm_arm_core_targets.cmake)
+dm_arm_require_pinocchio()
 
 # 遍历所有依赖
 foreach(pkg IN LISTS DEPENDENCIES)
