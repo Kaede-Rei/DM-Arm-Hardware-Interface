@@ -118,7 +118,8 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
 
     gravity_feedforward_.assign(n, 0.0);
     nonlinear_feedforward_.assign(n, 0.0);
-    active_feedforward_.assign(n, 0.0);
+    model_feedforward_.assign(n, 0.0);
+    commanded_feedforward_.assign(n, 0.0);
     external_efforts_.assign(n, 0.0);
     dynamics_observation_.gravity.assign(n, 0.0);
     dynamics_observation_.nonlinear.assign(n, 0.0);
@@ -237,7 +238,8 @@ CallbackReturn DmHardwareInterface::on_activate(const rclcpp_lifecycle::State& p
             hw_commands_kd_[i] = joint_kd_[i];
         }
 
-        active_feedforward_[i] = 0.0;
+        model_feedforward_[i] = 0.0;
+        commanded_feedforward_[i] = 0.0;
         external_efforts_[i] = 0.0;
     }
 
@@ -294,7 +296,8 @@ std::vector<hardware_interface::StateInterface> DmHardwareInterface::export_stat
         state_interfaces.emplace_back(joint_names_[i], "motor_effort", &motor_efforts_[i]);
         state_interfaces.emplace_back(joint_names_[i], "gravity_effort", &gravity_feedforward_[i]);
         state_interfaces.emplace_back(joint_names_[i], "nonlinear_effort", &nonlinear_feedforward_[i]);
-        state_interfaces.emplace_back(joint_names_[i], "feedforward_effort", &active_feedforward_[i]);
+        state_interfaces.emplace_back(joint_names_[i], "model_feedforward_effort", &model_feedforward_[i]);
+        state_interfaces.emplace_back(joint_names_[i], "feedforward_effort", &commanded_feedforward_[i]);
         state_interfaces.emplace_back(joint_names_[i], "external_effort", &external_efforts_[i]);
     }
     return state_interfaces;
@@ -345,22 +348,23 @@ hardware_interface::return_type DmHardwareInterface::read(const rclcpp::Time& ti
         if(ok) {
             gravity_feedforward_ = dynamics_observation_.gravity;
             nonlinear_feedforward_ = dynamics_observation_.nonlinear;
-            active_feedforward_ = dynamics_observation_.active_feedforward;
-            external_efforts_ = dynamics_observation_.external_effort;
+            model_feedforward_ = dynamics_observation_.active_feedforward;
         }
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Failed to update dynamics observer with current joint states.");
             std::fill(gravity_feedforward_.begin(), gravity_feedforward_.end(), 0.0);
             std::fill(nonlinear_feedforward_.begin(), nonlinear_feedforward_.end(), 0.0);
-            std::fill(active_feedforward_.begin(), active_feedforward_.end(), 0.0);
-            std::fill(external_efforts_.begin(), external_efforts_.end(), 0.0);
+            std::fill(model_feedforward_.begin(), model_feedforward_.end(), 0.0);
         }
     }
     else {
         std::fill(gravity_feedforward_.begin(), gravity_feedforward_.end(), 0.0);
         std::fill(nonlinear_feedforward_.begin(), nonlinear_feedforward_.end(), 0.0);
-        std::fill(active_feedforward_.begin(), active_feedforward_.end(), 0.0);
-        std::fill(external_efforts_.begin(), external_efforts_.end(), 0.0);
+        std::fill(model_feedforward_.begin(), model_feedforward_.end(), 0.0);
+    }
+
+    for(size_t i = 0; i < joint_names_.size(); ++i) {
+        external_efforts_[i] = hw_efforts_[i] - commanded_feedforward_[i];
     }
 
     return hardware_interface::return_type::OK;
@@ -417,7 +421,7 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
 
     dm_control_core::JointImpedanceControllerInput input;
     input.state = bus_state_;
-    input.model_feedforward = active_feedforward_;
+    input.model_feedforward = model_feedforward_;
     input.dt = period.seconds();
 
     // TODO: kp/kd 暂未参与控制，由 config 中设置固定增益
@@ -431,6 +435,8 @@ hardware_interface::return_type DmHardwareInterface::write(const rclcpp::Time& t
         RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Joint impedance controller returned invalid command size.");
         return hardware_interface::return_type::ERROR;
     }
+
+    commanded_feedforward_ = output.command.effort;
 
     for(size_t i = 0; i < motor_bus_.size(); ++i) {
         if(!motor_bus_.write(i, output.command)) {

@@ -163,7 +163,8 @@ private:
 
     std::vector<double> gravity_feedforward_;
     std::vector<double> nonlinear_feedforward_;
-    std::vector<double> active_feedforward_;
+    std::vector<double> model_feedforward_;
+    std::vector<double> commanded_feedforward_;
     std::vector<double> external_efforts_;
     dm_control_core::DynamicsObservation dynamics_observation_;
 };

@@ -59,6 +59,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -79,6 +80,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -99,6 +101,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -119,6 +122,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -139,6 +143,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -159,6 +164,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
@@ -179,6 +185,7 @@
             <state_interface name="motor_effort"/>
             <state_interface name="gravity_effort"/>
             <state_interface name="nonlinear_effort"/>
+            <state_interface name="model_feedforward_effort"/>
             <state_interface name="feedforward_effort"/>
             <state_interface name="external_effort"/>
         </joint>
