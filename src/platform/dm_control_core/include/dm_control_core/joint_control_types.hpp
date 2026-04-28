@@ -15,7 +15,7 @@ namespace dm_control_core {
 enum class JointImpedanceMode {
     RIGID_HOLD,                     ///< 刚性保持模式
     COMPLIANT_HOLD,                 ///< 柔顺保持模式
-    TRACKING                        ///< 跟踪模式
+    TRACKING                        ///< 跟随命令模式
 };
 
 /**
