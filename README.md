@@ -244,7 +244,15 @@ cat build/venv/install_manifest.txt | xargs rm -fv
 
 ### Python 绑定
 
-提供了 `DmControlRuntime` 这个最小门面，封装了控制核心的主要功能以用于 Isaac、LeRobot 或其他 Python 环境；注意绑定前需要先 install cpp 动态链接库，然后绑定构建：
+`python_binding/` 提供了 `DmControlRuntime` 这个最小门面，封装 `dm_control_core` 中的关节阻抗控制和动力学观测，适合在 Isaac、LeRobot 或其他 Python 环境中直接调用控制核心
+
+绑定依赖 `pybind11`、Python 3.10 开发文件，以及前文同一环境中的 Pinocchio / Eigen / CMake 依赖；conda/mamba 环境推荐安装：
+
+```bash
+mamba install -c conda-forge pybind11
+```
+
+构建并安装绑定：
 
 ```bash
 cmake -S python_binding -B build/python_binding -G Ninja \
@@ -255,9 +263,122 @@ cmake --build build/python_binding
 cmake --install build/python_binding
 ```
 
-调用时：
+导出的 Python 模块名是 `dm_impedance`，主要入口是 `DmControlRuntime`：
 
 ```python
+from dm_impedance import DmControlRuntime, JointImpedanceMode
+
+joint_names = [
+    "joint1",
+    "joint2",
+    "joint3",
+    "joint4",
+    "joint5",
+    "joint6",
+    "gripper_left",
+]
+n = len(joint_names)
+
+runtime = DmControlRuntime()
+runtime.configure_controller(
+    joint_names=joint_names,
+    rigid_kp=[20.0] * n,
+    rigid_kd=[0.5] * n,
+    compliant_kp=[5.0] * n,
+    compliant_kd=[0.2] * n,
+    tracking_kp=[15.0] * n,
+    tracking_kd=[0.4] * n,
+    max_velocity=[0.0] * n,  # <= 0 表示不限制
+    max_effort=[0.0] * n,
+    min_kp=[0.0] * n,
+    max_kp=[500.0] * n,
+    min_kd=[0.0] * n,
+    max_kd=[10.0] * n,
+    use_model_feedforward=True,
+    use_command_effort=True,
+)
+
+position = [0.0] * n
+velocity = [0.0] * n
+effort = [0.0] * n
+motor_effort = [0.0] * n
+
+runtime.reset(position, velocity, effort, motor_effort)
+runtime.set_mode(JointImpedanceMode.TRACKING, position, velocity, effort, motor_effort)
+
+out = runtime.compute_position_velocity_command(
+    position=position,
+    velocity=velocity,
+    effort=effort,
+    motor_effort=motor_effort,
+    q_ref=[0.05] * n,
+    dq_ref=[0.0] * n,
+    model_feedforward=[0.0] * n,
+    dt=0.005,
+)
+
+mit = out["command"]
+print(mit["position"], mit["velocity"], mit["effort"], mit["kp"], mit["kd"])
+```
+
+#### Python 绑定接口
+
+`DmControlRuntime` 的所有向量参数都必须和 `joint_names` 等长，并按同一关节顺序排列；维度不匹配、未配置控制器或未配置动力学时会抛出 `RuntimeError`
+
+| 接口 | 作用 |
+|---|---|
+| `configure_controller(...)` | 配置关节顺序、三组阻抗增益、速度/力矩/增益限幅，以及是否叠加模型前馈和命令力矩 |
+| `configure_dynamics(urdf_path, joint_names)` | 从 URDF 配置动力学观测器，用于计算重力项和非线性项 |
+| `reset(position, velocity, effort, motor_effort)` | 重置控制器状态，并锁存当前保持位置 |
+| `set_mode(mode, position, velocity, effort, motor_effort)` | 切换 `RIGID_HOLD`、`COMPLIANT_HOLD` 或 `TRACKING` 模式 |
+| `observe(position, velocity, effort, enable_gravity_feedforward=True, enable_nonlinear_feedforward=False)` | 单独运行动力学观测，返回 `gravity`、`nonlinear`、`active_feedforward` 和 `external_effort` |
+| `compute_position_command(...)` | 输入位置目标 `q_ref` 和 `model_feedforward`，输出 MIT 命令 |
+| `compute_position_velocity_command(...)` | 输入位置目标 `q_ref`、速度目标 `dq_ref` 和 `model_feedforward`，输出 MIT 命令 |
+| `compute_impedance_command(...)` | 输入位置、速度、残差力矩和模型前馈，输出 MIT 命令 |
+| `compute_with_dynamics_position_command(...)` | 先用动力学观测生成 active feedforward，再计算位置命令 |
+
+可用枚举：
+
+| 枚举 | 成员 |
+|---|---|
+| `JointImpedanceMode` | `RIGID_HOLD`、`COMPLIANT_HOLD`、`TRACKING` |
+| `JointCommandMode` | `HOLD`、`POSITION`、`POSITION_VELOCITY`、`IMPEDANCE`、`VELOCITY`、`TORQUE` |
+| `JointCommandError` | `MISSING_POSITION`、`MISSING_VELOCITY`、`MISSING_EFFORT`、`INVALID_POSITION_SIZE`、`INVALID_VELOCITY_SIZE`、`INVALID_EFFORT_SIZE`、`INVALID_STATE_SIZE` |
+
+控制接口返回 `dict`，其中 `command` 是 MIT 模式命令：
+
+```python
+{
+    "valid": True,
+    "command": {
+        "position": [...],
+        "velocity": [...],
+        "effort": [...],
+        "kp": [...],
+        "kd": [...],
+    },
+}
+```
+
+动力学观测返回：
+
+```python
+{
+    "valid": True,
+    "gravity": [...],
+    "nonlinear": [...],
+    "active_feedforward": [...],
+    "external_effort": [...],
+}
+```
+
+`compute_with_dynamics_position_command()` 返回：
+
+```python
+{
+    "observation": {...},
+    "control": {...},
+}
 ```
 
 如需要在环境里卸载，则：
