@@ -210,8 +210,17 @@ source install/setup.bash
 mamba create -n dm-arm python=3.10 cmake ninja pinocchio -c conda-forge
 mamba activate dm-arm
 
-cmake -S cmake/standalone -B build/conda -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S cmake/standalone -B build/conda -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX"
 cmake --build build/conda
+cmake --install build/conda
+```
+
+如果需要卸载：
+
+```bash
+cat build/conda/install_manifest.txt | xargs rm -fv
 ```
 
 如果使用 Python `venv`，`pip` 通常只解决 Python 包，不能完整提供本项目需要的 C++ Pinocchio 开发文件；推荐仍然使用本机 robotpkg Pinocchio；只有需要在 venv 中 `import pinocchio` 时，才接入 robotpkg 的 Python 路径：
@@ -220,8 +229,41 @@ cmake --build build/conda
 source .venv/bin/activate
 export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH
 
-cmake -S cmake/standalone -B build/venv -DCMAKE_BUILD_TYPE=Release
+cmake -S cmake/standalone -B build/venv \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="$VIRTUAL_ENV"
 cmake --build build/venv -j
+cmake --install build/venv
+```
+
+如果需要卸载：
+
+```bash
+cat build/venv/install_manifest.txt | xargs rm -fv
+```
+
+### Python 绑定
+
+提供了 `DmControlRuntime` 这个最小门面，封装了控制核心的主要功能以用于 Isaac、LeRobot 或其他 Python 环境；注意绑定前需要先 install cpp 动态链接库，然后绑定构建：
+
+```bash
+cmake -S python_binding -B build/python_binding -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
+  -DPython3_EXECUTABLE="$(which python)"
+cmake --build build/python_binding
+cmake --install build/python_binding
+```
+
+调用时：
+
+```python
+```
+
+如需要在环境里卸载，则：
+
+```bash
+cat build/python_binding/install_manifest.txt | xargs rm -fv
 ```
 
 ## 快速启动

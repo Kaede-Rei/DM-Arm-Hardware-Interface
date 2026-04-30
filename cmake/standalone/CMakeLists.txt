@@ -34,3 +34,9 @@ if(DM_ARM_BUILD_TESTING)
     )
     add_test(NAME test_joint_impedance_controller COMMAND test_joint_impedance_controller)
 endif()
+
+install(TARGETS tl dm_hw dm_control_core
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
