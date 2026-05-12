@@ -1,10 +1,10 @@
-#include "dm_control_core/dm_motor_bus.hpp"
+#include "dm_damiao_adapter/dm_motor_bus.hpp"
 #include "dm_hw/serial_port.hpp"
 
 #include <stdexcept>
 #include <unistd.h>
 
-namespace dm_control_core {
+namespace dm_damiao_adapter {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
@@ -33,7 +33,7 @@ void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, con
  * @param startup_read_cycles 启动阶段状态读取次数
  * @param state 输出启动阶段平均后的关节状态
  */
-void DmMotorBus::activate(int startup_read_cycles, JointState& state) {
+void DmMotorBus::activate(int startup_read_cycles, dm_control_core::JointState& state) {
     for(size_t i = 0; i < motors_.size(); ++i) {
         damiao::DmControlMode dm_mode;
         if(!to_dm_control_mode(configs_[i].control_mode, dm_mode)) throw std::runtime_error("DmMotorBus unsupported control mode");
@@ -48,7 +48,7 @@ void DmMotorBus::activate(int startup_read_cycles, JointState& state) {
     state.effort.assign(n, 0.0);
     state.motor_effort.assign(n, 0.0);
 
-    JointState sample;
+    dm_control_core::JointState sample;
     sample.position.assign(n, 0.0);
     sample.velocity.assign(n, 0.0);
     sample.effort.assign(n, 0.0);
@@ -105,7 +105,7 @@ void DmMotorBus::cleanup() {
  * @param state 预分配状态缓冲，大小必须等于电机数量
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::read(bool refresh_state, JointState& state) noexcept {
+bool DmMotorBus::read(bool refresh_state, dm_control_core::JointState& state) noexcept {
     try {
         if(!motor_controller_) return false;
         if(state.position.size() != motors_.size()) return false;
@@ -130,7 +130,7 @@ bool DmMotorBus::read(bool refresh_state, JointState& state) noexcept {
  * @param command 关节侧命令
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::write(std::size_t index, const MitJointCommand& command) noexcept {
+bool DmMotorBus::write(std::size_t index, const dm_control_core::MitJointCommand& command) noexcept {
     try {
         if(!motor_controller_ || index >= motors_.size() || index >= configs_.size()) return false;
         if(index >= command.position.size() || index >= command.velocity.size() || index >= command.effort.size()) return false;
@@ -187,7 +187,7 @@ bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_
  * @param state 输出关节侧状态
  * @return 成功返回 true，失败返回 false
  */
-bool DmMotorBus::read_one(std::size_t index, bool refresh_state, JointState& state) noexcept {
+bool DmMotorBus::read_one(std::size_t index, bool refresh_state, dm_control_core::JointState& state) noexcept {
     try {
         if(index >= motors_.size() || index >= configs_.size()) return false;
         if(index >= state.position.size() || index >= state.velocity.size() || index >= state.effort.size()) return false;

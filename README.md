@@ -2,7 +2,7 @@
 
 面向达妙电机机械臂的 ROS 2 Humble 工作区；仓库包含机械臂描述、达妙底层通信、ROS 2 control 硬件插件、关节阻抗控制核心、Pinocchio 动力学前馈、假硬件联调和真机启动入口
 
-当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令；`dm_control_core`、`dm_hw` 和 `tl` 同时支持 ROS colcon 构建和普通 CMake 构建，方便在 Isaac、LeRobot 或其他虚拟环境中直接链接纯 C++ 控制核心
+当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令；`dm_control_core` 和 `tl` 支持 ROS colcon 构建和普通 CMake 构建，方便在 Isaac、LeRobot 或其他虚拟环境中直接链接纯 C++ 控制核心；达妙真机通信已放到 `dm_damiao_adapter`，避免控制核心直接依赖硬件 SDK
 
 ## 包结构
 
@@ -11,13 +11,21 @@ DM-Arm-Hardware-Interface/
 ├── cmake/
 │   └── dm_control_core.cmake          # 非 ROS 工程复用 dm_control_core 的 CMake 入口
 ├── src/
-│   ├── infra/
-│   │   └── tl/                        # tl::optional / tl::expected
-│   └── platform/
-│       ├── dm_arm_description/        # 机械臂 URDF、mesh、可视化模型
-│       ├── dm_control_core/           # ROS 无关控制核心与动力学封装
-│       ├── dm_hw/                     # 达妙串口、Motor、MotorControl 底层封装
-│       └── dm_ros_control/            # ros2_control SystemInterface 插件和 launch
+│   ├── external/
+│   │   └── tl/                        # 外部 header-only 基础库
+│   ├── contract/                      # 消息、服务、动作、单位、frame、错误码契约
+│   ├── desc_cfg/
+│   │   └── dm_arm_description/        # 机械臂 URDF、mesh、可视化模型
+│   ├── adapters/
+│   │   ├── dm_hw/                     # 达妙串口、Motor、MotorControl 底层封装
+│   │   ├── dm_damiao_adapter/         # 达妙电机总线适配
+│   │   └── dm_ros_control/            # ros2_control SystemInterface 插件和 launch
+│   ├── capabilities/
+│   │   └── dm_control_core/           # ROS/硬件无关控制核心与动力学封装
+│   ├── behavior/                      # 任务管理、状态机、决策逻辑
+│   ├── app_tools/
+│   │   └── ros_topic_plotter/         # 调试工具
+│   └── deployment/                    # bringup、运行模式、启动顺序
 ├── README.md
 ├── Tutorial.md
 └── LICENSE
@@ -29,7 +37,8 @@ DM-Arm-Hardware-Interface/
 |---|---|
 | `dm_arm_description` | 机械臂模型真源，提供 URDF 和网格资源 |
 | `dm_hw` | 达妙电机通信、控制模式、参数读写 |
-| `dm_control_core` | 纯 C++ 控制核心，包含阻抗控制、动力学观测、电机总线抽象 |
+| `dm_damiao_adapter` | 将控制核心的关节命令/状态对接到达妙电机 SDK |
+| `dm_control_core` | 纯 C++ 控制核心，包含阻抗控制和动力学观测 |
 | `dm_ros_control` | ROS 2 control 硬件插件，连接控制器、控制核心和真机 |
 | `tl` | `optional` / `expected` 基础依赖 |
 
@@ -43,7 +52,7 @@ dm_ros_control/DmHardwareInterface
         │
         ├── JointImpedanceController
         ├── DynamicsObserver / PinocchioDynamicsModel
-        └── DmMotorBus
+        └── dm_damiao_adapter/DmMotorBus
         ▼
 dm_hw::MotorControl
         ▼
@@ -63,13 +72,13 @@ tau = kp * (q_ref - q) + kd * (dq_ref - dq) + tau_ff
 - `q_ref / dq_ref` 来自 `JointTrajectoryController` 或硬件接口的命令模式转换
 - `kp / kd` 默认来自 `dm_ros_control/config/pd_config.yaml`
 - `tau_ff` 可由 Pinocchio 重力项或非线性项生成
-- 真机通信由 `DmMotorBus` 通过 `dm_hw` 完成
+- 真机通信由 `dm_damiao_adapter::DmMotorBus` 通过 `dm_hw` 完成
 
 ## 环境与构建
 
 构建组织原则：
 
-- `dm_control_core`、`dm_hw`、`tl` 使用同一套 CMake target 定义，支持 ROS 和非 ROS 环境复用
+- `dm_control_core`、`tl` 使用同一套 CMake target 定义，支持 ROS 和非 ROS 环境复用；达妙硬件接入通过 `dm_damiao_adapter` 单独组合
 - 动力学依赖只使用非 ROS Pinocchio；不要安装 `ros-humble-pinocchio`、`ros-humble-hpp-fcl`、`ros-humble-eigenpy`
 - CMake 查找 Pinocchio 的顺序是 `DM_ARM_PINOCCHIO_PREFIX`、当前 conda/mamba 的 `$CONDA_PREFIX`、`/opt/openrobots`
 - 找到 `/opt/ros` 下的 Pinocchio 时会直接报错，避免 ROS 版和非 ROS 版混用
@@ -477,7 +486,7 @@ ros2 topic echo /joint_states
 `kp/kd` 暂时使用默认增益；默认 PD 增益来自：
 
 ```text
-src/platform/dm_ros_control/config/pd_config.yaml
+src/adapters/dm_ros_control/config/pd_config.yaml
 ```
 
 运行时读取的是安装后的：
@@ -534,7 +543,7 @@ gripper_left
 `dm_control_core` 是 ROS 无关的控制核心；主要接口文档见：
 
 ```text
-src/platform/dm_control_core/README.md
+src/capabilities/dm_control_core/README.md
 ```
 
 核心类：
@@ -544,7 +553,6 @@ src/platform/dm_control_core/README.md
 | `JointImpedanceController` | 将上层关节命令转换为 MIT 位置、速度、力矩、`kp/kd` |
 | `DynamicsObserver` | 封装动力学观测，输出重力项、非线性项、当前 active feedforward |
 | `PinocchioDynamicsModel` | 构建 reduced model，计算 `g(q)`、`nle(q,dq)`、`M(q)` |
-| `DmMotorBus` | 达妙电机总线管理和关节/电机单位换算 |
 
 运行控制核心测试：
 
@@ -590,7 +598,7 @@ otherwise                          -> active_feedforward = 0
 构建核心包：
 
 ```bash
-colcon build --symlink-install --packages-select dm_hw dm_control_core dm_arm_description dm_ros_control
+colcon build --symlink-install --packages-select tl dm_hw dm_damiao_adapter dm_control_core dm_arm_description dm_ros_control
 ```
 
 运行控制核心测试：
@@ -691,8 +699,9 @@ sudo usermod -aG dialout $USER
 ## 参考
 
 - `Tutorial.md`
-- `src/platform/dm_control_core/README.md`
-- `src/platform/dm_hw/README.md`
+- `src/capabilities/dm_control_core/README.md`
+- `src/adapters/dm_hw/README.md`
+- `src/adapters/dm_damiao_adapter/README.md`
 - ROS 2 Humble
 - ros2_control
 - Pinocchio

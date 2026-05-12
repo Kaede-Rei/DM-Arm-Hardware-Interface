@@ -56,7 +56,7 @@ function(dm_arm_add_tl_target target_name)
     add_library(${target_name} INTERFACE)
     target_include_directories(${target_name}
         INTERFACE
-            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/infra/tl/include>
+            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/external/tl/include>
             $<INSTALL_INTERFACE:include>
     )
     target_compile_features(${target_name} INTERFACE cxx_std_17)
@@ -68,7 +68,7 @@ function(dm_arm_add_dm_hw_target target_name)
     endif()
 
     add_library(${target_name} SHARED
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_hw/src/clangd_provider.cpp
+        ${DM_ARM_SOURCE_DIR}/src/adapters/dm_hw/src/clangd_provider.cpp
     )
     set_target_properties(${target_name}
         PROPERTIES
@@ -77,9 +77,45 @@ function(dm_arm_add_dm_hw_target target_name)
     )
     target_include_directories(${target_name}
         PUBLIC
-            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/platform/dm_hw/include>
+            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/adapters/dm_hw/include>
             $<INSTALL_INTERFACE:include>
     )
+    target_compile_features(${target_name} PUBLIC cxx_std_17)
+endfunction()
+
+function(dm_arm_add_dm_damiao_adapter_target target_name)
+    if(TARGET ${target_name})
+        return()
+    endif()
+
+    if(NOT TARGET dm_hw::dm_hw AND NOT TARGET dm_hw)
+        dm_arm_add_dm_hw_target(dm_hw)
+    endif()
+    if(NOT TARGET dm_control_core::dm_control_core AND NOT TARGET dm_control_core)
+        dm_arm_add_dm_control_core_target(dm_control_core)
+    endif()
+
+    if(TARGET dm_hw::dm_hw)
+        set(_dm_arm_hw_target dm_hw::dm_hw)
+    else()
+        set(_dm_arm_hw_target dm_hw)
+    endif()
+
+    if(TARGET dm_control_core::dm_control_core)
+        set(_dm_arm_control_core_target dm_control_core::dm_control_core)
+    else()
+        set(_dm_arm_control_core_target dm_control_core)
+    endif()
+
+    add_library(${target_name} SHARED
+        ${DM_ARM_SOURCE_DIR}/src/adapters/dm_damiao_adapter/src/dm_motor_bus.cpp
+    )
+    target_include_directories(${target_name}
+        PUBLIC
+            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/adapters/dm_damiao_adapter/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(${target_name} PUBLIC ${_dm_arm_hw_target} ${_dm_arm_control_core_target})
     target_compile_features(${target_name} PUBLIC cxx_std_17)
 endfunction()
 
@@ -104,27 +140,16 @@ function(dm_arm_add_dm_control_core_target target_name)
     if(NOT TARGET tl::tl AND NOT TARGET tl)
         dm_arm_add_tl_target(tl)
     endif()
-    if(NOT TARGET dm_hw::dm_hw AND NOT TARGET dm_hw)
-        dm_arm_add_dm_hw_target(dm_hw)
-    endif()
-
     if(TARGET tl::tl)
         set(_dm_arm_tl_target tl::tl)
     else()
         set(_dm_arm_tl_target tl)
     endif()
 
-    if(TARGET dm_hw::dm_hw)
-        set(_dm_arm_hw_target dm_hw::dm_hw)
-    else()
-        set(_dm_arm_hw_target dm_hw)
-    endif()
-
     add_library(${target_name} SHARED
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/src/dm_motor_bus.cpp
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/src/dynamics_observer.cpp
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/src/joint_impedance_controller.cpp
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/src/pinocchio_dynamics_model.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/dynamics_observer.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/joint_impedance_controller.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/pinocchio_dynamics_model.cpp
     )
     set_target_properties(${target_name}
         PROPERTIES
@@ -133,10 +158,10 @@ function(dm_arm_add_dm_control_core_target target_name)
     )
     target_include_directories(${target_name}
         PUBLIC
-            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/include>
+            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/include>
             $<INSTALL_INTERFACE:include>
     )
-    target_link_libraries(${target_name} PUBLIC ${_dm_arm_hw_target} ${_dm_arm_tl_target})
+    target_link_libraries(${target_name} PUBLIC ${_dm_arm_tl_target})
     target_compile_features(${target_name} PUBLIC cxx_std_17)
     dm_arm_link_pinocchio(${target_name})
 endfunction()

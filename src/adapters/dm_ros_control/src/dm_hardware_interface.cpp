@@ -141,8 +141,8 @@ CallbackReturn DmHardwareInterface::on_init(const hardware_interface::HardwareIn
         }
 
         const auto mode = joint.parameters.at("control_mode");
-        if(mode == "MIT") motor_configs_[i].control_mode = dm_control_core::ControlMode::MIT;
-        else if(mode == "POS_VEL")motor_configs_[i].control_mode = dm_control_core::ControlMode::POS_VEL;
+        if(mode == "MIT") motor_configs_[i].control_mode = dm_damiao_adapter::ControlMode::MIT;
+        else if(mode == "POS_VEL")motor_configs_[i].control_mode = dm_damiao_adapter::ControlMode::POS_VEL;
         else {
             RCLCPP_ERROR(rclcpp::get_logger("DmHardwareInterface"), "Unknown control_mode '%s' for joint '%s'", mode.c_str(), joint.name.c_str());
             return hardware_interface::CallbackReturn::ERROR;

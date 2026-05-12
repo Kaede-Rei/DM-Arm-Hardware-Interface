@@ -30,6 +30,7 @@ set(DEPENDENCIES
     controller_manager
     tl
     dm_control_core
+    dm_damiao_adapter
 )
 
 # 必需依赖

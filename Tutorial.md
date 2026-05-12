@@ -43,7 +43,7 @@
 本教程对应的核心文件如下：
 
 ```text
-src/platform/dm_ros_control/
+src/adapters/dm_ros_control/
 ├── include/dm_ros_control/
 │   ├── dm_hardware_interface.hpp
 │   └── pinocchio_dynamics_model.hpp

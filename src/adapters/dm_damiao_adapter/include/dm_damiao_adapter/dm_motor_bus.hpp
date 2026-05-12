@@ -17,7 +17,7 @@ class Motor;
 class MotorControl;
 }
 
-namespace dm_control_core {
+namespace dm_damiao_adapter {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
@@ -60,7 +60,7 @@ public:
      * @param startup_read_cycles 启动时读取并平均的次数
      * @param state 输出启动后的关节状态
      */
-    void activate(int startup_read_cycles, JointState& state);
+    void activate(int startup_read_cycles, dm_control_core::JointState& state);
 
     /**
      * @brief 停用电机，先切回位置速度模式再失能
@@ -78,7 +78,7 @@ public:
      * @param state 预分配的状态缓冲，大小必须等于电机数量
      * @return 成功返回 true，失败返回 false；周期路径不向外抛异常
      */
-    bool read(bool refresh_state, JointState& state) noexcept;
+    bool read(bool refresh_state, dm_control_core::JointState& state) noexcept;
 
     /**
      * @brief 写入单个关节命令到电机
@@ -86,7 +86,7 @@ public:
      * @param command 关节侧命令
      * @return 成功返回 true，失败返回 false；周期路径不向外抛异常
      */
-    bool write(std::size_t index, const MitJointCommand& command) noexcept;
+    bool write(std::size_t index, const dm_control_core::MitJointCommand& command) noexcept;
 
     /**
      * @brief 获取当前 bus 管理的电机数量
@@ -110,7 +110,7 @@ private:
      * @param state 输出关节侧状态
      * @return 成功返回 true，失败返回 false
      */
-    bool read_one(std::size_t index, bool refresh_state, JointState& state) noexcept;
+    bool read_one(std::size_t index, bool refresh_state, dm_control_core::JointState& state) noexcept;
 
 private:
     std::shared_ptr<SerialPort> serial_;

@@ -16,7 +16,7 @@ namespace dm_control_core {
 
 /**
  * @brief 纯 C++ 关节空间阻抗控制核心
- * @note 该类不包含 ROS 头文件。当前实现对应达妙 MIT 模式语义：
+ * @note 该类不包含 ROS 头文件；当前实现对应达妙 MIT 模式语义：
  *       电机侧执行 Kp(q_ref-q)+Kd(dq_ref-dq)+tau_ff
  */
 class JointImpedanceController {
@@ -37,7 +37,7 @@ public:
      * @brief 切换控制模式
      * @param mode 目标控制模式
      * @param current_state 当前关节状态
-     * @note 切换到保持模式时会重新锁存当前关节位置，避免回拉旧保持点。
+     * @note 切换到保持模式时会重新锁存当前关节位置，避免回拉旧保持点
      */
     void set_mode(JointImpedanceMode mode, const JointState& current_state);
 

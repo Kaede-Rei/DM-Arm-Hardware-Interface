@@ -15,11 +15,6 @@ if(NOT TARGET tl::tl)
     add_library(tl::tl ALIAS tl)
 endif()
 
-if(NOT TARGET dm_hw::dm_hw)
-    dm_arm_add_dm_hw_target(dm_hw)
-    add_library(dm_hw::dm_hw ALIAS dm_hw)
-endif()
-
 if(NOT TARGET dm_control_core::dm_control_core)
     dm_arm_add_dm_control_core_target(dm_control_core)
     add_library(dm_control_core::dm_control_core ALIAS dm_control_core)

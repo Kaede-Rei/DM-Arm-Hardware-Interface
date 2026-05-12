@@ -17,7 +17,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(tl REQUIRED)
-find_package(dm_hw REQUIRED)
 
 set(DM_ARM_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../.." CACHE PATH "DM arm repository root")
 include(${DM_ARM_SOURCE_DIR}/cmake/dm_arm_core_targets.cmake)
@@ -36,7 +35,7 @@ install(DIRECTORY include/
     DESTINATION include
 )
 
-ament_export_dependencies(tl dm_hw Eigen3 pinocchio)
+ament_export_dependencies(tl Eigen3 pinocchio)
 ament_export_include_directories(include)
 
 if(BUILD_TESTING)

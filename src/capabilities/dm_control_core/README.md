@@ -1,6 +1,8 @@
 # dm_control_core 接口文档
 
-`dm_control_core` 是机械臂控制链中的 ROS 无关核心库；它不依赖 `rclcpp`、`hardware_interface` 或 ROS 消息，目标是把关节空间控制语义、动力学观测和达妙总线换算从 `dm_ros_control` 中分离出来，便于单元测试和后续仿真后端复用
+`dm_control_core` 是机械臂控制链中的 ROS 无关核心库；它不依赖 `rclcpp`、`hardware_interface`、ROS 消息或达妙硬件 SDK，目标是把关节空间控制语义和动力学观测从 `dm_ros_control` 中分离出来，便于单元测试和后续仿真后端复用
+
+达妙电机总线适配已经移到 `dm_damiao_adapter`，用于把本包的关节侧命令/状态类型对接到 `dm_hw`
 
 ## 模块组成
 
@@ -10,13 +12,11 @@ dm_control_core/
 │   ├── joint_control_types.hpp
 │   ├── joint_impedance_controller.hpp
 │   ├── dynamics_observer.hpp
-│   ├── pinocchio_dynamics_model.hpp
-│   └── dm_motor_bus.hpp
+│   └── pinocchio_dynamics_model.hpp
 ├── src/
 │   ├── joint_impedance_controller.cpp
 │   ├── dynamics_observer.cpp
-│   ├── pinocchio_dynamics_model.cpp
-│   └── dm_motor_bus.cpp
+│   └── pinocchio_dynamics_model.cpp
 └── test/
     └── test_joint_impedance_controller.cpp
 ```
@@ -28,7 +28,6 @@ dm_control_core/
 | `JointImpedanceController` | `joint_impedance_controller.hpp` | 上层关节命令到 MIT 命令的纯 C++ 转换 |
 | `DynamicsObserver` | `dynamics_observer.hpp` | 基于动力学模型生成重力、非线性和外力观测 |
 | `PinocchioDynamicsModel` | `pinocchio_dynamics_model.hpp` | 从 URDF 构建 reduced model 并计算动力学项 |
-| `DmMotorBus` | `dm_motor_bus.hpp` | 达妙串口总线管理、状态读取、命令写入和单位换算 |
 
 ## 数据类型
 
@@ -88,13 +87,7 @@ struct MitJointCommand {
 };
 ```
 
-`DmMotorBus` 在写入时会把关节侧位置、速度、力矩转换到电机侧：
-
-```text
-motor_position = joint_position * joint_to_motor_scale
-motor_velocity = joint_velocity * joint_to_motor_scale
-motor_tau      = joint_tau / joint_to_motor_scale
-```
+达妙电机侧单位换算由 `dm_damiao_adapter::DmMotorBus` 处理，控制核心只产生关节侧 `MitJointCommand`
 
 ## JointImpedanceController
 
@@ -252,36 +245,6 @@ model.copy_gravity_to(gravity_buffer);
 model.copy_nonlinear_effects_to(nonlinear_buffer);
 ```
 
-## DmMotorBus
-
-`DmMotorBus` 负责真实达妙硬件通信
-
-```cpp
-std::vector<DmMotorConfig> configs;
-configs.push_back({
-    "joint1",
-    1,
-    damiao::DM4310,
-    1.0,
-    ControlMode::MIT
-});
-
-DmMotorBus bus;
-bus.configure("/dev/ttyACM0", B921600, configs);
-
-JointState startup_state;
-bus.activate(5, startup_state);
-
-JointState state = startup_state;
-bool read_ok = bus.read(false, state);
-
-MitJointCommand command;
-// 填充 command.position / velocity / effort / kp / kd
-bool write_ok = bus.write(0, command);
-
-bus.deactivate();
-bus.cleanup();
-```
 
 注意：
 

@@ -13,8 +13,6 @@ endif()
 include(${DM_ARM_SOURCE_DIR}/cmake/dm_arm_core_targets.cmake)
 
 dm_arm_add_tl_target(tl)
-dm_arm_add_dm_hw_target(dm_hw)
-add_library(dm_hw::dm_hw ALIAS dm_hw)
 add_library(tl::tl ALIAS tl)
 dm_arm_add_dm_control_core_target(dm_control_core)
 add_library(dm_control_core::dm_control_core ALIAS dm_control_core)
@@ -25,7 +23,7 @@ if(DM_ARM_BUILD_TESTING)
     find_package(GTest REQUIRED)
 
     add_executable(test_joint_impedance_controller
-        ${DM_ARM_SOURCE_DIR}/src/platform/dm_control_core/test/test_joint_impedance_controller.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/test/test_joint_impedance_controller.cpp
     )
     target_link_libraries(test_joint_impedance_controller
         PRIVATE
@@ -35,7 +33,7 @@ if(DM_ARM_BUILD_TESTING)
     add_test(NAME test_joint_impedance_controller COMMAND test_joint_impedance_controller)
 endif()
 
-install(TARGETS tl dm_hw dm_control_core
+install(TARGETS tl dm_control_core
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
