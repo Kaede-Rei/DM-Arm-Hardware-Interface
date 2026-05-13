@@ -72,7 +72,7 @@ tau = kp * (q_ref - q) + kd * (dq_ref - dq) + tau_ff
 - `q_ref / dq_ref` 来自 `JointTrajectoryController` 或硬件接口的命令模式转换
 - `kp / kd` 默认来自 `dm_ros_control/config/pd_config.yaml`
 - `tau_ff` 可由 Pinocchio 重力项或非线性项生成
-- 真机通信由 `dm_damiao_adapter::DmMotorBus` 通过 `dm_hw` 完成
+- 真机通信由 `damiao::DmMotorBus` 通过 `dm_hw` 完成
 
 ## 环境与构建
 

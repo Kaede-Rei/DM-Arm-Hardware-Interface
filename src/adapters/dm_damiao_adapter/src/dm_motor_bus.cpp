@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <unistd.h>
 
-namespace dm_damiao_adapter {
+namespace damiao {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 

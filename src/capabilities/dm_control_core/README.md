@@ -87,7 +87,7 @@ struct MitJointCommand {
 };
 ```
 
-达妙电机侧单位换算由 `dm_damiao_adapter::DmMotorBus` 处理，控制核心只产生关节侧 `MitJointCommand`
+达妙电机侧单位换算由 `damiao::DmMotorBus` 处理，控制核心只产生关节侧 `MitJointCommand`
 
 ## JointImpedanceController
 

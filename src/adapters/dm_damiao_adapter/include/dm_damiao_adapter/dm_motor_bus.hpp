@@ -13,11 +13,9 @@
 class SerialPort;
 
 namespace damiao {
+
 class Motor;
 class MotorControl;
-}
-
-namespace dm_damiao_adapter {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 

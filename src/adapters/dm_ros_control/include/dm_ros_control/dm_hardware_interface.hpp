@@ -131,12 +131,12 @@ private:
     bool legacy_pd_fallback_{ true };
     dm_control_core::JointCommandMode command_mode_{ dm_control_core::JointCommandMode::IMPEDANCE };
 
-    dm_damiao_adapter::DmMotorBus motor_bus_;
+    damiao::DmMotorBus motor_bus_;
     dm_control_core::DynamicsObserver dynamics_observer_;
     dm_control_core::JointImpedanceController joint_impedance_controller_;
 
     std::vector<std::string> joint_names_;
-    std::vector<dm_damiao_adapter::DmMotorConfig> motor_configs_;
+    std::vector<damiao::DmMotorConfig> motor_configs_;
 
     // 过渡期使用的 PD 增益，从 YAML 加载，如果加载失败则使用默认值
     std::vector<double> joint_kp_;
