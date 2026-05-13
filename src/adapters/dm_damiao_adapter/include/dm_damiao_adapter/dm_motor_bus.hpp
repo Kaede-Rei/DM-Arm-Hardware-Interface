@@ -33,7 +33,7 @@ enum class ControlMode {
 struct DmMotorConfig {
     std::string joint_name;                ///< ROS 关节名称
     uint32_t motor_id;                     ///< 达妙电机 CAN ID
-    damiao::DmMotorType motor_type;        ///< 达妙电机型号
+    DmMotorType motor_type;        ///< 达妙电机型号
     double joint_to_motor_scale;           ///< 关节侧到电机侧的位置/速度比例
     ControlMode control_mode;              ///< 电机控制模式
 };
@@ -99,7 +99,7 @@ private:
      * @param dm_mode 输出达妙控制模式
      * @return 成功返回 true，未知模式返回 false
      */
-    bool to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_mode) const noexcept;
+    bool to_dm_control_mode(ControlMode mode, DmControlMode& dm_mode) const noexcept;
 
     /**
      * @brief 读取单个电机状态并换算到关节侧
@@ -112,8 +112,8 @@ private:
 
 private:
     std::shared_ptr<SerialPort> serial_;
-    std::shared_ptr<damiao::MotorControl> motor_controller_;
-    std::vector<std::shared_ptr<damiao::Motor>> motors_;
+    std::shared_ptr<MotorControl> motor_controller_;
+    std::vector<std::shared_ptr<Motor>> motors_;
     std::vector<DmMotorConfig> configs_;
 };
 

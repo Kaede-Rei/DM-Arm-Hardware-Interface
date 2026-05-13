@@ -17,12 +17,12 @@ namespace damiao {
 void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, const std::vector<DmMotorConfig>& configs) {
     configs_ = configs;
     serial_ = std::make_shared<SerialPort>(serial_port, baudrate);
-    motor_controller_ = std::make_shared<damiao::MotorControl>(serial_);
+    motor_controller_ = std::make_shared<MotorControl>(serial_);
     motors_.clear();
     motors_.reserve(configs_.size());
 
     for(const auto& config : configs_) {
-        auto motor = std::make_shared<damiao::Motor>(config.motor_type, config.motor_id, 0x00);
+        auto motor = std::make_shared<Motor>(config.motor_type, config.motor_id, 0x00);
         motor_controller_->add_motor(motor.get());
         motors_.push_back(motor);
     }
@@ -35,7 +35,7 @@ void DmMotorBus::configure(const std::string& serial_port, speed_t baudrate, con
  */
 void DmMotorBus::activate(int startup_read_cycles, dm_control_core::JointState& state) {
     for(size_t i = 0; i < motors_.size(); ++i) {
-        damiao::DmControlMode dm_mode;
+        DmControlMode dm_mode;
         if(!to_dm_control_mode(configs_[i].control_mode, dm_mode)) throw std::runtime_error("DmMotorBus unsupported control mode");
 
         motor_controller_->enable(*motors_[i]);
@@ -78,7 +78,7 @@ void DmMotorBus::activate(int startup_read_cycles, dm_control_core::JointState& 
  */
 void DmMotorBus::deactivate() {
     for(auto& motor : motors_) {
-        motor_controller_->switch_control_mode(*motor, damiao::DmControlMode::POS_VEL_MODE);
+        motor_controller_->switch_control_mode(*motor, DmControlMode::POS_VEL_MODE);
         motor_controller_->control_pos_vel(*motor, static_cast<float>(0.0f), static_cast<float>(1.0f));
     }
 
@@ -168,13 +168,13 @@ bool DmMotorBus::write(std::size_t index, const dm_control_core::MitJointCommand
  * @param dm_mode 输出达妙控制模式
  * @return 成功返回 true，未知模式返回 false
  */
-bool DmMotorBus::to_dm_control_mode(ControlMode mode, damiao::DmControlMode& dm_mode) const noexcept {
+bool DmMotorBus::to_dm_control_mode(ControlMode mode, DmControlMode& dm_mode) const noexcept {
     if(mode == ControlMode::MIT) {
-        dm_mode = damiao::DmControlMode::MIT_MODE;
+        dm_mode = DmControlMode::MIT_MODE;
         return true;
     }
     if(mode == ControlMode::POS_VEL) {
-        dm_mode = damiao::DmControlMode::POS_VEL_MODE;
+        dm_mode = DmControlMode::POS_VEL_MODE;
         return true;
     }
     return false;

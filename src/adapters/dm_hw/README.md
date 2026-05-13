@@ -63,9 +63,9 @@ ros2 run dm_hw test_damiao
 
 ### 1) 类型与枚举
 
-- `damiao::MotorId`：电机 ID 类型（`uint32_t`）
-- `damiao::DmMotorType`：电机型号枚举（如 `DM4310`、`DMH3510`）
-- `damiao::DmControlMode`：控制模式枚举
+- `MotorId`：电机 ID 类型（`uint32_t`）
+- `DmMotorType`：电机型号枚举（如 `DM4310`、`DMH3510`）
+- `DmControlMode`：控制模式枚举
   - `MIT_MODE`
   - `POS_VEL_MODE`
   - `VEL_MODE`
@@ -73,9 +73,9 @@ ros2 run dm_hw test_damiao
   - `POS_VEL_CSP_MODE`
   - `VEL_CSP_MODE`
   - `TORQUE_CSP_MODE`
-- `damiao::DmReg`：寄存器枚举（如 `CTRL_MODE`、`PMAX`、`UV_Value`）
+- `DmReg`：寄存器枚举（如 `CTRL_MODE`、`PMAX`、`UV_Value`）
 
-### 2) `damiao::Motor`
+### 2) `Motor`
 
 用于描述单个电机并缓存反馈/参数
 
@@ -101,7 +101,7 @@ ros2 run dm_hw test_damiao
   - `clear_param(...)`
   - `clear_all_params()`
 
-### 3) `damiao::MotorControl`
+### 3) `MotorControl`
 
 用于发送控制命令、接收反馈、读写寄存器
 
@@ -150,15 +150,15 @@ ros2 run dm_hw test_damiao
 
 int main() {
     auto serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
-    damiao::MotorControl control(serial);
+    MotorControl control(serial);
 
-    damiao::Motor motor(damiao::DMH3510, 0x01, 0x00);
+    Motor motor(DMH3510, 0x01, 0x00);
     control.add_motor(&motor);
 
     control.disable(motor);
     control.enable(motor);
 
-    control.switch_control_mode(motor, damiao::VEL_MODE);
+    control.switch_control_mode(motor, VEL_MODE);
     control.control_vel(motor, 1.0f);
 
     control.refresh_motor_status(motor);
