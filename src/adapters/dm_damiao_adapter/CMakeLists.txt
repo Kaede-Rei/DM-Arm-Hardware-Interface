@@ -19,7 +19,7 @@ find_package(ament_cmake REQUIRED)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/dm_arm_core_targets.cmake)
 dm_arm_require_pinocchio()
 find_package(dm_hw REQUIRED)
-find_package(dm_control_core REQUIRED)
+find_package(impedance_controller REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/dm_motor_bus.cpp
@@ -33,7 +33,7 @@ target_include_directories(${PROJECT_NAME}
 
 ament_target_dependencies(${PROJECT_NAME}
   dm_hw
-  dm_control_core
+  impedance_controller
 )
 
 install(TARGETS ${PROJECT_NAME}
@@ -48,7 +48,7 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-ament_export_dependencies(dm_hw dm_control_core)
+ament_export_dependencies(dm_hw impedance_controller)
 ament_export_include_directories(include)
 
 ament_package()

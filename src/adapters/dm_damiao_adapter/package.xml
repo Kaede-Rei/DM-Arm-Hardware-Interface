@@ -10,7 +10,7 @@
     <buildtool_depend>ament_cmake</buildtool_depend>
 
     <depend>dm_hw</depend>
-    <depend>dm_control_core</depend>
+    <depend>impedance_controller</depend>
 
     <export>
         <build_type>ament_cmake</build_type>

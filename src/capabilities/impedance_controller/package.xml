@@ -3,7 +3,7 @@
 <package format="3">
     <!-- ========================= 基本信息(必填) ========================= -->
     <!-- TODO: 包名必须与 CMakeLists.txt 中的 project() 完全一致 -->
-    <name>dm_control_core</name>
+    <name>impedance_controller</name>
     <version>0.0.1</version>
     <description>ROS-independent joint-space control and dynamics core for DM arm controllers.</description>
     <maintainer email="kaerei@foxmail.com">Kaede Rei</maintainer>

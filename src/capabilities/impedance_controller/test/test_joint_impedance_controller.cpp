@@ -1,4 +1,4 @@
-#include "dm_control_core/joint_impedance_controller.hpp"
+#include "impedance_controller/joint_impedance_controller.hpp"
 
 #include <gtest/gtest.h>
 
@@ -10,14 +10,14 @@
 
 namespace {
 
-using dm_control_core::JointCommand;
-using dm_control_core::JointCommandError;
-using dm_control_core::JointCommandMode;
-using dm_control_core::JointImpedanceController;
-using dm_control_core::JointImpedanceControllerConfig;
-using dm_control_core::JointImpedanceControllerInput;
-using dm_control_core::JointImpedanceMode;
-using dm_control_core::JointState;
+using impedance_controller::JointCommand;
+using impedance_controller::JointCommandError;
+using impedance_controller::JointCommandMode;
+using impedance_controller::JointImpedanceController;
+using impedance_controller::JointImpedanceControllerConfig;
+using impedance_controller::JointImpedanceControllerInput;
+using impedance_controller::JointImpedanceMode;
+using impedance_controller::JointState;
 
 JointImpedanceControllerConfig make_config(std::size_t n = 2) {
     JointImpedanceControllerConfig config;

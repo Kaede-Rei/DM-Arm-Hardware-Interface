@@ -29,7 +29,7 @@ set(DEPENDENCIES
     pluginlib
     controller_manager
     tl
-    dm_control_core
+    impedance_controller
     dm_damiao_adapter
 )
 

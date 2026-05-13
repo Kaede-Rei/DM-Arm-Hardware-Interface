@@ -28,7 +28,7 @@
     <depend>controller_manager</depend>
     <depend>yaml-cpp</depend>
     <depend>tl</depend>
-    <depend>dm_control_core</depend>
+    <depend>impedance_controller</depend>
     <depend>dm_damiao_adapter</depend>
 
     <!-- TODO: 如果提供 launch 文件，通常需要这些 -->

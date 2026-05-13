@@ -1,9 +1,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "dm_control_core/dynamics_observer.hpp"
-#include "dm_control_core/joint_impedance_controller.hpp"
-#include "dm_control_core/joint_control_types.hpp"
+#include "impedance_controller/dynamics_observer.hpp"
+#include "impedance_controller/joint_impedance_controller.hpp"
+#include "impedance_controller/joint_control_types.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -13,20 +13,20 @@ namespace py = pybind11;
 
 namespace {
 
-using dm_control_core::DynamicsObservation;
-using dm_control_core::DynamicsObserver;
-using dm_control_core::JointCommand;
-using dm_control_core::JointCommandError;
-using dm_control_core::JointCommandLimits;
-using dm_control_core::JointCommandMode;
-using dm_control_core::JointControlLayout;
-using dm_control_core::JointImpedanceController;
-using dm_control_core::JointImpedanceControllerConfig;
-using dm_control_core::JointImpedanceControllerInput;
-using dm_control_core::JointImpedanceGains;
-using dm_control_core::JointImpedanceMode;
-using dm_control_core::JointState;
-using dm_control_core::MitJointCommand;
+using impedance_controller::DynamicsObservation;
+using impedance_controller::DynamicsObserver;
+using impedance_controller::JointCommand;
+using impedance_controller::JointCommandError;
+using impedance_controller::JointCommandLimits;
+using impedance_controller::JointCommandMode;
+using impedance_controller::JointControlLayout;
+using impedance_controller::JointImpedanceController;
+using impedance_controller::JointImpedanceControllerConfig;
+using impedance_controller::JointImpedanceControllerInput;
+using impedance_controller::JointImpedanceGains;
+using impedance_controller::JointImpedanceMode;
+using impedance_controller::JointState;
+using impedance_controller::MitJointCommand;
 
 const char* command_error_to_string(JointCommandError error) {
     switch(error) {
@@ -98,7 +98,7 @@ py::dict observation_to_dict(const DynamicsObservation& observation) {
     return result;
 }
 
-py::dict output_to_dict(const dm_control_core::JointImpedanceControllerOutput& output) {
+py::dict output_to_dict(const impedance_controller::JointImpedanceControllerOutput& output) {
     py::dict result;
     result["valid"] = output.valid;
     result["command"] = mit_command_to_dict(output.command);
@@ -441,7 +441,7 @@ private:
 }  // namespace
 
 PYBIND11_MODULE(dm_impedance, m) {
-    m.doc() = "Python binding for dm_control_core";
+    m.doc() = "Python binding for impedance_controller";
     m.attr("__version__") = VERSION_INFO;
 
     py::enum_<JointImpedanceMode>(m, "JointImpedanceMode")

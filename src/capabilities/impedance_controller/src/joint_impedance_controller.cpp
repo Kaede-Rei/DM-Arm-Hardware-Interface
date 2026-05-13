@@ -1,9 +1,9 @@
-#include "dm_control_core/joint_impedance_controller.hpp"
+#include "impedance_controller/joint_impedance_controller.hpp"
 
 #include <cmath>
 #include <stdexcept>
 
-namespace dm_control_core {
+namespace impedance_controller {
 
 // ! ========================= 接 口 类 方 法 / 函 数 实 现 ========================= ! //
 

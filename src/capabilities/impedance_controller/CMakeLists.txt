@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(dm_control_core)
+project(impedance_controller)
 
 if(NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 99)
@@ -21,7 +21,7 @@ find_package(tl REQUIRED)
 set(DM_ARM_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../.." CACHE PATH "DM arm repository root")
 include(${DM_ARM_SOURCE_DIR}/cmake/dm_arm_core_targets.cmake)
 
-dm_arm_add_dm_control_core_target(${PROJECT_NAME})
+dm_arm_add_impedance_controller_target(${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME}
     EXPORT export_${PROJECT_NAME}

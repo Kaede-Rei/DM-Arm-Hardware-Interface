@@ -15,7 +15,7 @@ if(NOT DM_ARM_SOURCE_DIR)
     get_filename_component(DM_ARM_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 endif()
 
-include(${DM_ARM_SOURCE_DIR}/cmake/dm_control_core.cmake)
+include(${DM_ARM_SOURCE_DIR}/cmake/impedance_controller.cmake)
 
 pybind11_add_module(dm_impedance
     src/bindings.cpp
@@ -23,7 +23,7 @@ pybind11_add_module(dm_impedance
 
 target_link_libraries(dm_impedance
     PRIVATE
-        dm_control_core::dm_control_core
+        impedance_controller::impedance_controller
 )
 
 target_compile_features(dm_impedance

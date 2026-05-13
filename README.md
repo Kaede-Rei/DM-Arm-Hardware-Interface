@@ -2,14 +2,14 @@
 
 面向达妙电机机械臂的 ROS 2 Humble 工作区；仓库包含机械臂描述、达妙底层通信、ROS 2 control 硬件插件、关节阻抗控制核心、Pinocchio 动力学前馈、假硬件联调和真机启动入口
 
-当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令；`dm_control_core` 和 `tl` 支持 ROS colcon 构建和普通 CMake 构建，方便在 Isaac、LeRobot 或其他虚拟环境中直接链接纯 C++ 控制核心；达妙真机通信已放到 `dm_damiao_adapter`，避免控制核心直接依赖硬件 SDK
+当前控制链路以 `ros2_control` 为主干，上层使用 `joint_trajectory_controller/JointTrajectoryController` 输出关节位置和速度目标，硬件接口将目标转换为达妙 MIT 或 POS_VEL 命令；`impedance_controller` 和 `tl` 支持 ROS colcon 构建和普通 CMake 构建，方便在 Isaac、LeRobot 或其他虚拟环境中直接链接纯 C++ 控制核心；达妙真机通信已放到 `dm_damiao_adapter`，避免控制核心直接依赖硬件 SDK
 
 ## 包结构
 
 ```text
 DM-Arm-Hardware-Interface/
 ├── cmake/
-│   └── dm_control_core.cmake          # 非 ROS 工程复用 dm_control_core 的 CMake 入口
+│   └── impedance_controller.cmake          # 非 ROS 工程复用 impedance_controller 的 CMake 入口
 ├── src/
 │   ├── external/
 │   │   └── tl/                        # 外部 header-only 基础库
@@ -21,7 +21,7 @@ DM-Arm-Hardware-Interface/
 │   │   ├── dm_damiao_adapter/         # 达妙电机总线适配
 │   │   └── dm_ros_control/            # ros2_control SystemInterface 插件和 launch
 │   ├── capabilities/
-│   │   └── dm_control_core/           # ROS/硬件无关控制核心与动力学封装
+│   │   └── impedance_controller/           # ROS/硬件无关控制核心与动力学封装
 │   ├── behavior/                      # 任务管理、状态机、决策逻辑
 │   ├── app_tools/
 │   │   └── ros_topic_plotter/         # 调试工具
@@ -38,7 +38,7 @@ DM-Arm-Hardware-Interface/
 | `dm_arm_description` | 机械臂模型真源，提供 URDF 和网格资源 |
 | `dm_hw` | 达妙电机通信、控制模式、参数读写 |
 | `dm_damiao_adapter` | 将控制核心的关节命令/状态对接到达妙电机 SDK |
-| `dm_control_core` | 纯 C++ 控制核心，包含阻抗控制和动力学观测 |
+| `impedance_controller` | 纯 C++ 控制核心，包含阻抗控制和动力学观测 |
 | `dm_ros_control` | ROS 2 control 硬件插件，连接控制器、控制核心和真机 |
 | `tl` | `optional` / `expected` 基础依赖 |
 
@@ -78,7 +78,7 @@ tau = kp * (q_ref - q) + kd * (dq_ref - dq) + tau_ff
 
 构建组织原则：
 
-- `dm_control_core`、`tl` 使用同一套 CMake target 定义，支持 ROS 和非 ROS 环境复用；达妙硬件接入通过 `dm_damiao_adapter` 单独组合
+- `impedance_controller`、`tl` 使用同一套 CMake target 定义，支持 ROS 和非 ROS 环境复用；达妙硬件接入通过 `dm_damiao_adapter` 单独组合
 - 动力学依赖只使用非 ROS Pinocchio；不要安装 `ros-humble-pinocchio`、`ros-humble-hpp-fcl`、`ros-humble-eigenpy`
 - CMake 查找 Pinocchio 的顺序是 `DM_ARM_PINOCCHIO_PREFIX`、当前 conda/mamba 的 `$CONDA_PREFIX`、`/opt/openrobots`
 - 找到 `/opt/ros` 下的 Pinocchio 时会直接报错，避免 ROS 版和非 ROS 版混用
@@ -149,8 +149,8 @@ cmake --build build/native -j
 
 ```cmake
 set(DM_ARM_SOURCE_DIR /path/to/DM-Arm-Hardware-Interface)
-include(${DM_ARM_SOURCE_DIR}/cmake/dm_control_core.cmake)
-target_link_libraries(your_target PRIVATE dm_control_core::dm_control_core)
+include(${DM_ARM_SOURCE_DIR}/cmake/impedance_controller.cmake)
+target_link_libraries(your_target PRIVATE impedance_controller::impedance_controller)
 ```
 
 ### 本机 ROS
@@ -253,7 +253,7 @@ cat build/venv/install_manifest.txt | xargs rm -fv
 
 ### Python 绑定
 
-`python_binding/` 提供了 `DmControlRuntime` 这个最小门面，封装 `dm_control_core` 中的关节阻抗控制和动力学观测，适合在 Isaac、LeRobot 或其他 Python 环境中直接调用控制核心
+`python_binding/` 提供了 `DmControlRuntime` 这个最小门面，封装 `impedance_controller` 中的关节阻抗控制和动力学观测，适合在 Isaac、LeRobot 或其他 Python 环境中直接调用控制核心
 
 绑定依赖 `pybind11`、Python 3.10 开发文件，以及前文同一环境中的 Pinocchio / Eigen / CMake 依赖；conda/mamba 环境推荐安装：
 
@@ -411,7 +411,7 @@ ros2 launch dm_ros_control dm_ros_control.launch.py \
   use_rviz:=true
 ```
 
-假硬件模式使用 `mock_components/GenericSystem`，不会加载 `DmHardwareInterface`，也不会读取串口或运行 `dm_control_core` 的真机路径
+假硬件模式使用 `mock_components/GenericSystem`，不会加载 `DmHardwareInterface`，也不会读取串口或运行 `impedance_controller` 的真机路径
 
 检查控制器：
 
@@ -538,12 +538,12 @@ gripper_left
 - `feedforward_effort`
 - `external_effort`
 
-## dm_control_core
+## impedance_controller
 
-`dm_control_core` 是 ROS 无关的控制核心；主要接口文档见：
+`impedance_controller` 是 ROS 无关的控制核心；主要接口文档见：
 
 ```text
-src/capabilities/dm_control_core/README.md
+src/capabilities/impedance_controller/README.md
 ```
 
 核心类：
@@ -558,8 +558,8 @@ src/capabilities/dm_control_core/README.md
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select dm_control_core
-colcon test --packages-select dm_control_core --event-handlers console_direct+
+colcon build --symlink-install --packages-select impedance_controller
+colcon test --packages-select impedance_controller --event-handlers console_direct+
 ```
 
 ## 动力学前馈
@@ -585,26 +585,26 @@ otherwise                          -> active_feedforward = 0
 
 推荐按风险从低到高测试：
 
-1. `dm_control_core` 单元测试：验证命令语义、限幅、前馈叠加和非法输入处理
+1. `impedance_controller` 单元测试：验证命令语义、限幅、前馈叠加和非法输入处理
 2. `use_fake_hardware:=true`：验证 URDF、控制器、话题、RViz，不碰真机
 3. 真机 `enable_write:=false`：验证串口打开、状态读取、动力学观测，但不下发周期写命令
 4. 真机小幅轨迹：低 `kp/kd`、低速度、小范围单关节，再扩展到多关节
 5. 动力学前馈：先重力项，再评估是否需要非线性项
 
-注意：`use_fake_hardware:=true` 不覆盖 `DmHardwareInterface` 和 `dm_control_core` 真机路径如果要在完整硬件插件内做闭环仿真，需要后续增加 `SimDmMotorBus` 或等价仿真后端
+注意：`use_fake_hardware:=true` 不覆盖 `DmHardwareInterface` 和 `impedance_controller` 真机路径如果要在完整硬件插件内做闭环仿真，需要后续增加 `SimDmMotorBus` 或等价仿真后端
 
 ## 常用命令
 
 构建核心包：
 
 ```bash
-colcon build --symlink-install --packages-select tl dm_hw dm_damiao_adapter dm_control_core dm_arm_description dm_ros_control
+colcon build --symlink-install --packages-select tl dm_hw dm_damiao_adapter impedance_controller dm_arm_description dm_ros_control
 ```
 
 运行控制核心测试：
 
 ```bash
-colcon test --packages-select dm_control_core --event-handlers console_direct+
+colcon test --packages-select impedance_controller --event-handlers console_direct+
 ```
 
 查看控制器：
@@ -699,7 +699,7 @@ sudo usermod -aG dialout $USER
 ## 参考
 
 - `Tutorial.md`
-- `src/capabilities/dm_control_core/README.md`
+- `src/capabilities/impedance_controller/README.md`
 - `src/adapters/dm_hw/README.md`
 - `src/adapters/dm_damiao_adapter/README.md`
 - ROS 2 Humble

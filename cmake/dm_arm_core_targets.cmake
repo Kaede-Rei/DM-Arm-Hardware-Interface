@@ -91,8 +91,8 @@ function(dm_arm_add_dm_damiao_adapter_target target_name)
     if(NOT TARGET dm_hw::dm_hw AND NOT TARGET dm_hw)
         dm_arm_add_dm_hw_target(dm_hw)
     endif()
-    if(NOT TARGET dm_control_core::dm_control_core AND NOT TARGET dm_control_core)
-        dm_arm_add_dm_control_core_target(dm_control_core)
+    if(NOT TARGET impedance_controller::impedance_controller AND NOT TARGET impedance_controller)
+        dm_arm_add_impedance_controller_target(impedance_controller)
     endif()
 
     if(TARGET dm_hw::dm_hw)
@@ -101,10 +101,10 @@ function(dm_arm_add_dm_damiao_adapter_target target_name)
         set(_dm_arm_hw_target dm_hw)
     endif()
 
-    if(TARGET dm_control_core::dm_control_core)
-        set(_dm_arm_control_core_target dm_control_core::dm_control_core)
+    if(TARGET impedance_controller::impedance_controller)
+        set(_dm_arm_control_core_target impedance_controller::impedance_controller)
     else()
-        set(_dm_arm_control_core_target dm_control_core)
+        set(_dm_arm_control_core_target impedance_controller)
     endif()
 
     add_library(${target_name} SHARED
@@ -132,7 +132,7 @@ function(dm_arm_link_pinocchio target_name)
     endif()
 endfunction()
 
-function(dm_arm_add_dm_control_core_target target_name)
+function(dm_arm_add_impedance_controller_target target_name)
     if(TARGET ${target_name})
         return()
     endif()
@@ -147,9 +147,9 @@ function(dm_arm_add_dm_control_core_target target_name)
     endif()
 
     add_library(${target_name} SHARED
-        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/dynamics_observer.cpp
-        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/joint_impedance_controller.cpp
-        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/src/pinocchio_dynamics_model.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/src/dynamics_observer.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/src/joint_impedance_controller.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/src/pinocchio_dynamics_model.cpp
     )
     set_target_properties(${target_name}
         PROPERTIES
@@ -158,7 +158,7 @@ function(dm_arm_add_dm_control_core_target target_name)
     )
     target_include_directories(${target_name}
         PUBLIC
-            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/include>
+            $<BUILD_INTERFACE:${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/include>
             $<INSTALL_INTERFACE:include>
     )
     target_link_libraries(${target_name} PUBLIC ${_dm_arm_tl_target})

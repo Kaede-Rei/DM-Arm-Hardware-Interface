@@ -1,6 +1,6 @@
-#include "dm_control_core/dynamics_observer.hpp"
+#include "impedance_controller/dynamics_observer.hpp"
 
-namespace dm_control_core {
+namespace impedance_controller {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 

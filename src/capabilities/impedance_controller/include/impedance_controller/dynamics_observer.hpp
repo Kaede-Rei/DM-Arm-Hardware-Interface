@@ -1,11 +1,11 @@
 #pragma once
 
-#include "dm_control_core/pinocchio_dynamics_model.hpp"
+#include "impedance_controller/pinocchio_dynamics_model.hpp"
 
 #include <memory>
 #include <vector>
 
-namespace dm_control_core {
+namespace impedance_controller {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 

@@ -1,14 +1,14 @@
-# dm_control_core 接口文档
+# impedance_controller 接口文档
 
-`dm_control_core` 是机械臂控制链中的 ROS 无关核心库；它不依赖 `rclcpp`、`hardware_interface`、ROS 消息或达妙硬件 SDK，目标是把关节空间控制语义和动力学观测从 `dm_ros_control` 中分离出来，便于单元测试和后续仿真后端复用
+`impedance_controller` 是机械臂控制链中的 ROS 无关核心库；它不依赖 `rclcpp`、`hardware_interface`、ROS 消息或达妙硬件 SDK，目标是把关节空间控制语义和动力学观测从 `dm_ros_control` 中分离出来，便于单元测试和后续仿真后端复用
 
 达妙电机总线适配已经移到 `dm_damiao_adapter`，用于把本包的关节侧命令/状态类型对接到 `dm_hw`
 
 ## 模块组成
 
 ```text
-dm_control_core/
-├── include/dm_control_core/
+impedance_controller/
+├── include/impedance_controller/
 │   ├── joint_control_types.hpp
 │   ├── joint_impedance_controller.hpp
 │   ├── dynamics_observer.hpp
@@ -275,6 +275,6 @@ model.copy_nonlinear_effects_to(nonlinear_buffer);
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select dm_control_core
-colcon test --packages-select dm_control_core --event-handlers console_direct+
+colcon build --symlink-install --packages-select impedance_controller
+colcon test --packages-select impedance_controller --event-handlers console_direct+
 ```

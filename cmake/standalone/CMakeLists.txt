@@ -14,8 +14,8 @@ include(${DM_ARM_SOURCE_DIR}/cmake/dm_arm_core_targets.cmake)
 
 dm_arm_add_tl_target(tl)
 add_library(tl::tl ALIAS tl)
-dm_arm_add_dm_control_core_target(dm_control_core)
-add_library(dm_control_core::dm_control_core ALIAS dm_control_core)
+dm_arm_add_impedance_controller_target(impedance_controller)
+add_library(impedance_controller::impedance_controller ALIAS impedance_controller)
 
 option(DM_ARM_BUILD_TESTING "Build non-ROS unit tests." OFF)
 if(DM_ARM_BUILD_TESTING)
@@ -23,17 +23,17 @@ if(DM_ARM_BUILD_TESTING)
     find_package(GTest REQUIRED)
 
     add_executable(test_joint_impedance_controller
-        ${DM_ARM_SOURCE_DIR}/src/capabilities/dm_control_core/test/test_joint_impedance_controller.cpp
+        ${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/test/test_joint_impedance_controller.cpp
     )
     target_link_libraries(test_joint_impedance_controller
         PRIVATE
-            dm_control_core
+            impedance_controller
             GTest::gtest_main
     )
     add_test(NAME test_joint_impedance_controller COMMAND test_joint_impedance_controller)
 endif()
 
-install(TARGETS tl dm_control_core
+install(TARGETS tl impedance_controller
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

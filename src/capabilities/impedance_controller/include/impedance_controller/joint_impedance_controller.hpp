@@ -1,12 +1,12 @@
 #pragma once
 
-#include "dm_control_core/joint_control_types.hpp"
+#include "impedance_controller/joint_control_types.hpp"
 #include "tl/expected.hpp"
 
 #include <cstddef>
 #include <vector>
 
-namespace dm_control_core {
+namespace impedance_controller {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 

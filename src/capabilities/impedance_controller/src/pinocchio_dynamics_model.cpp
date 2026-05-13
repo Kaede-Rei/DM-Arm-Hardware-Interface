@@ -1,4 +1,4 @@
-#include "dm_control_core/pinocchio_dynamics_model.hpp"
+#include "impedance_controller/pinocchio_dynamics_model.hpp"
 
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
@@ -7,7 +7,7 @@
 
 #include <unordered_set>
 
-namespace dm_control_core {
+namespace impedance_controller {
 
 // ! ========================= 宏 定 义 ========================= ! //
 
