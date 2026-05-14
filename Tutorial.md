@@ -43,17 +43,32 @@
 本教程对应的核心文件如下：
 
 ```text
+src/core/impedance_controller/
+├── include/impedance_controller/
+│   ├── dynamics_observer.hpp
+│   ├── joint_impedance_controller.hpp
+│   └── pinocchio_dynamics_model.hpp
+└── src/
+    ├── dynamics_observer.cpp
+    ├── joint_impedance_controller.cpp
+    └── pinocchio_dynamics_model.cpp
+
+src/adapters/dm_damiao_adapter/
+├── include/dm_damiao_adapter/
+│   └── dm_motor_bus.hpp
+└── src/
+    └── dm_motor_bus.cpp
+
 src/adapters/dm_ros_control/
 ├── include/dm_ros_control/
-│   ├── dm_hardware_interface.hpp
-│   └── pinocchio_dynamics_model.hpp
+│   └── dm_hardware_interface.hpp
 ├── src/
-│   ├── dm_hardware_interface.cpp
-│   └── pinocchio_dynamics_model.cpp
+│   └── dm_hardware_interface.cpp
 ├── urdf/
 │   └── dm_arm_ros_control.urdf.xacro
 ├── config/
-│   └── controllers.yaml
+│   ├── controllers.yaml
+│   └── pd_config.yaml
 └── launch/
     ├── dm_ros_control.launch.py
     └── dm_ros_control_rviz.launch.py
@@ -61,17 +76,27 @@ src/adapters/dm_ros_control/
 
 职责划分如下：
 
-- `pinocchio_dynamics_model.*`
+- `impedance_controller/pinocchio_dynamics_model.*`
   - 负责从 URDF 建模
   - 负责 reduced model 构造
   - 负责周期更新 `q / dq`
   - 负责输出 `g(q)`、`nle(q, dq)`、`M(q)`
 
-- `dm_hardware_interface.*`
+- `impedance_controller/dynamics_observer.*`
+  - 负责封装动力学观测
+  - 负责选择重力项或非线性项作为 active feedforward
+  - 负责输出 `external_effort`
+
+- `dm_damiao_adapter/dm_motor_bus.*`
+  - 负责达妙电机串口/CAN 通信
+  - 负责关节侧和电机侧单位换算
+  - 负责把 `MitJointCommand` 写入真实电机
+
+- `dm_ros_control/dm_hardware_interface.*`
   - 负责解析 `ros2_control` 参数
   - 负责读取电机反馈状态
-  - 负责在 `read()` 中更新动力学模型
-  - 负责在 `write()` 中把前馈扭矩叠加到 MIT 控制命令里
+  - 负责在 `read()` 中更新动力学观测
+  - 负责在 `write()` 中调用控制核心并把命令交给 `dm_damiao_adapter`
 
 - `dm_arm_ros_control.urdf.xacro`
   - 负责把硬件参数和动力学开关传给 `DmHardwareInterface`
@@ -96,17 +121,18 @@ src/adapters/dm_ros_control/
 ```bash
 sudo apt update
 
-# Pinocchio + FCL + Eigen + eigenpy
+# 基础依赖
 sudo apt install -y \
-  ros-humble-pinocchio \
-  ros-humble-hpp-fcl \
-  ros-humble-eigenpy \
   libeigen3-dev \
   libboost-python-dev
 
 # 可选：用于一些可视化实验
 pip install meshcat
 ```
+
+本项目的 C++ 动力学链路使用非 ROS Pinocchio，优先使用 robotpkg、conda/mamba 或显式 `DM_ARM_PINOCCHIO_PREFIX`
+
+不要安装 `ros-humble-pinocchio`、`ros-humble-hpp-fcl`、`ros-humble-eigenpy` 作为本项目的 C++ Pinocchio 来源
 
 ### 2.2 可选：安装 TSID
 
@@ -143,9 +169,7 @@ source /opt/ros/humble/setup.bash
 colcon build --executor sequential \
   --symlink-install \
   --cmake-args \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_PYTHON_INTERFACE=ON \
-  -DPINOCCHIO_USE_HPP_FCL=ON
+  -DCMAKE_BUILD_TYPE=Release
 
 source install/setup.bash
 ```
@@ -153,8 +177,8 @@ source install/setup.bash
 说明：
 
 - `--executor sequential`：降低并行编译带来的内存压力
-- `-DBUILD_PYTHON_INTERFACE=ON`：如果工作空间里包含 TSID / Pinocchio Python 接口需求，可保留
-- `-DPINOCCHIO_USE_HPP_FCL=ON`：允许 Pinocchio 配合 FCL 进行相关支持
+- `python_binding/` 默认有 `COLCON_IGNORE`，不会作为 `dm_impedance` 参与 colcon 构建
+- 如果需要 Python 绑定，请使用 README 中的独立 CMake 流程
 
 ---
 
@@ -281,7 +305,7 @@ nle(q, dq) = C(q, dq)·dq + g(q)
 这就是之前“开关重力补偿几乎没差别”的核心原因之一：
 
 - `update()` 一直失败
-- `_gravity_feedforward_` 始终没被正确更新
+- `model_feedforward_` 始终没被正确更新
 - 最终喂给 MIT 的 `tau_ff` 实际上接近零
 
 ### 6.2 当前项目的实际做法：reduced model
@@ -411,18 +435,19 @@ M(q)
 ### 8.1 第一步：从电机读真实状态
 
 ```cpp
-if(_refresh_state_in_read_) {
-    _motor_controller_->refresh_motor_status(*_motors_[i]);
-}
+motor_bus_.read(refresh_state_in_read_, bus_state_);
 
-_hw_positions_[i] = _motors_[i]->get_position() / scale;
-_hw_velocities_[i] = _motors_[i]->get_velocity() / scale;
+hw_positions_[i] = bus_state_.position[i];
+hw_velocities_[i] = bus_state_.velocity[i];
+hw_efforts_[i] = bus_state_.effort[i];
+motor_efforts_[i] = bus_state_.motor_effort[i];
 ```
 
 含义是：
 
-- 电机侧位置 / 速度反馈
-- 经 `joint_to_motor_scale` 还原到关节空间
+- `DmHardwareInterface` 不再直接操作达妙电机对象
+- 电机侧位置 / 速度 / 力矩反馈由 `dm_damiao_adapter::DmMotorBus` 读取
+- `DmMotorBus` 经 `joint_to_motor_scale` 还原到关节空间
 - 存入 `_hw_positions_ / _hw_velocities_`
 
 所以，从 `JointTrajectoryController` 的角度看，它接触到的始终是 **关节空间状态**，不是电机编码器原始量
@@ -430,11 +455,18 @@ _hw_velocities_[i] = _motors_[i]->get_velocity() / scale;
 ### 8.2 第二步：用当前关节状态更新动力学模型
 
 ```cpp
-if(_enable_dynamics_ && _dynamics_model_) {
-    const bool ok = _dynamics_model_->update(_hw_positions_, _hw_velocities_);
+if(enable_dynamics_) {
+    const bool ok = dynamics_observer_.observe(
+        hw_positions_,
+        hw_velocities_,
+        hw_efforts_,
+        enable_gravity_feedforward_,
+        enable_nonlinear_feedforward_,
+        dynamics_observation_);
     if(ok) {
-        _gravity_feedforward_ = _dynamics_model_->get_gravity_std();
-        _nonlinear_feedforward_ = _dynamics_model_->get_nonlinear_effects_std();
+        gravity_feedforward_ = dynamics_observation_.gravity;
+        nonlinear_feedforward_ = dynamics_observation_.nonlinear;
+        model_feedforward_ = dynamics_observation_.active_feedforward;
     }
 }
 ```
@@ -465,26 +497,20 @@ if(_enable_dynamics_ && _dynamics_model_) {
 当前 `write()` 中，核心部分是：
 
 ```cpp
-double tau_feedforward = 0.0;
-if(_enable_dynamics_) {
-    if(_enable_nonlinear_feedforward_) {
-        tau_feedforward = _nonlinear_feedforward_[i];
-    } else if(_enable_gravity_feedforward_) {
-        tau_feedforward = _gravity_feedforward_[i];
-    }
-}
+JointImpedanceControllerInput input;
+input.state = bus_state_;
+input.model_feedforward = model_feedforward_;
+input.dt = period.seconds();
+
+const auto output = joint_impedance_controller_.update(input);
 ```
 
-然后在 MIT 分支中调用：
+然后将控制核心输出交给达妙适配器：
 
 ```cpp
-_motor_controller_->control_mit(
-    *_motors_[i],
-    static_cast<float>(_kp_),
-    static_cast<float>(_kd_),
-    static_cast<float>(cmd_motor),
-    static_cast<float>(cmd_vel_motor),
-    static_cast<float>(tau_feedforward));
+for(size_t i = 0; i < motor_bus_.size(); ++i) {
+    motor_bus_.write(i, output.command);
+}
 ```
 
 ### 9.1 这里的物理含义
@@ -497,8 +523,9 @@ MIT 控制命令本质上包含三部分：
 
 当前控制器不是“只靠误差纠正”，而是：
 
-- 先由 `tau_feedforward` 提供一部分理论所需扭矩
-- 再由 `kp / kd` 去处理模型误差、剩余误差和外扰
+- 先由 `DynamicsObserver` 生成 `model_feedforward`
+- 再由 `JointImpedanceController` 组合位置、速度、命令力矩和模型前馈
+- 最后由 `dm_damiao_adapter::DmMotorBus` 完成电机侧换算和下发
 
 ### 9.2 为什么前馈只在 MIT 模式下更自然
 
@@ -587,11 +614,12 @@ state_interfaces:
 
 - `serial_port`
 - `baudrate`
-- `kp`
-- `kd`
 - `enable_write`
 - `refresh_state_in_read`
 - `startup_read_cycles`
+- `command_mode`
+- `legacy_feedforward_enabled`
+- `legacy_pd_fallback`
 - `enable_dynamics`
 - `enable_gravity_feedforward`
 - `enable_nonlinear_feedforward`
@@ -607,7 +635,7 @@ state_interfaces:
 ```bash
 cd ~/your_ws
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select dm_hw dm_arm_description dm_ros_control
+colcon build --symlink-install --packages-select tl dm_hw impedance_controller dm_damiao_adapter dm_arm_description dm_ros_control
 source install/setup.bash
 ```
 
@@ -618,8 +646,8 @@ ros2 launch dm_ros_control dm_ros_control.launch.py \
   use_fake_hardware:=false \
   serial_port:=/dev/ttyACM0 \
   baudrate:=921600 \
-  kp:=38.0 \
-  kd:=1.5 \
+  command_mode:=impedance \
+  legacy_pd_fallback:=true \
   enable_dynamics:=true \
   enable_gravity_feedforward:=true \
   enable_nonlinear_feedforward:=false
@@ -632,8 +660,8 @@ ros2 launch dm_ros_control dm_ros_control_rviz.launch.py \
   use_fake_hardware:=false \
   serial_port:=/dev/ttyACM0 \
   baudrate:=921600 \
-  kp:=38.0 \
-  kd:=1.5 \
+  command_mode:=impedance \
+  legacy_pd_fallback:=true \
   enable_dynamics:=true \
   enable_gravity_feedforward:=true \
   enable_nonlinear_feedforward:=false
@@ -672,8 +700,8 @@ ros2 launch dm_ros_control dm_ros_control.launch.py \
   use_fake_hardware:=false \
   serial_port:=/dev/ttyACM0 \
   baudrate:=921600 \
-  kp:=38.0 \
-  kd:=1.5 \
+  command_mode:=impedance \
+  legacy_pd_fallback:=true \
   enable_dynamics:=true \
   enable_gravity_feedforward:=false \
   enable_nonlinear_feedforward:=true
@@ -702,12 +730,12 @@ ros2 launch dm_ros_control dm_ros_control.launch.py \
 ```cpp
 RCLCPP_INFO_THROTTLE(
     rclcpp::get_logger("DmHardwareInterface"),
-    *rclcpp::get_clock(),
+    *get_clock(),
     1000,
     "g_ff: [%.3f, %.3f, %.3f]",
-    _gravity_feedforward_[0],
-    _gravity_feedforward_[1],
-    _gravity_feedforward_[2]);
+    gravity_feedforward_[0],
+    gravity_feedforward_[1],
+    gravity_feedforward_[2]);
 ```
 
 如果在不同姿态下：

@@ -9,19 +9,20 @@
 ```text
 DM-Arm-Hardware-Interface/
 ├── cmake/
-│   └── impedance_controller.cmake          # 非 ROS 工程复用 impedance_controller 的 CMake 入口
+│   └── dm_control_core.cmake          # 非 ROS 工程复用 impedance_controller 的 CMake 入口
 ├── src/
 │   ├── external/
-│   │   └── tl/                        # 外部 header-only 基础库
+│   │   ├── tl/                        # 外部 header-only 基础库
+│   │   └── dm_hw/                     # 达妙串口、Motor、MotorControl 底层封装
 │   ├── contract/                      # 消息、服务、动作、单位、frame、错误码契约
 │   ├── desc_cfg/
 │   │   └── dm_arm_description/        # 机械臂 URDF、mesh、可视化模型
 │   ├── adapters/
-│   │   ├── dm_hw/                     # 达妙串口、Motor、MotorControl 底层封装
 │   │   ├── dm_damiao_adapter/         # 达妙电机总线适配
 │   │   └── dm_ros_control/            # ros2_control SystemInterface 插件和 launch
-│   ├── capabilities/
+│   ├── core/
 │   │   └── impedance_controller/           # ROS/硬件无关控制核心与动力学封装
+│   ├── capabilities/                  # 后续能力服务入口
 │   ├── behavior/                      # 任务管理、状态机、决策逻辑
 │   ├── app_tools/
 │   │   └── ros_topic_plotter/         # 调试工具
@@ -72,7 +73,7 @@ tau = kp * (q_ref - q) + kd * (dq_ref - dq) + tau_ff
 - `q_ref / dq_ref` 来自 `JointTrajectoryController` 或硬件接口的命令模式转换
 - `kp / kd` 默认来自 `dm_ros_control/config/pd_config.yaml`
 - `tau_ff` 可由 Pinocchio 重力项或非线性项生成
-- 真机通信由 `damiao::DmMotorBus` 通过 `dm_hw` 完成
+- 真机通信由 `dm_damiao_adapter::DmMotorBus` 通过 `dm_hw` 完成
 
 ## 环境与构建
 
@@ -149,7 +150,7 @@ cmake --build build/native -j
 
 ```cmake
 set(DM_ARM_SOURCE_DIR /path/to/DM-Arm-Hardware-Interface)
-include(${DM_ARM_SOURCE_DIR}/cmake/impedance_controller.cmake)
+include(${DM_ARM_SOURCE_DIR}/cmake/dm_control_core.cmake)
 target_link_libraries(your_target PRIVATE impedance::impedance_controller)
 ```
 
@@ -211,6 +212,10 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
+默认 colcon 工作区只构建 ROS 运行链路和核心 C++ 包，`python_binding/` 下有 `COLCON_IGNORE`，不会被识别成 `dm_impedance` 包
+
+如果临时移除 `COLCON_IGNORE`，`colcon build` 会把 `python_binding` 当作普通 CMake 包编译，并可能尝试把扩展安装到系统 Python 目录；常规 ROS 构建不要这么做
+
 ### 虚拟环境
 
 优先使用 conda/mamba；Pinocchio 的 C++ 库、CMake 配置和 Python 模块都在同一个环境里，适合 Isaac、LeRobot 和算法实验
@@ -271,6 +276,8 @@ cmake -S python_binding -B build/python_binding -G Ninja \
 cmake --build build/python_binding
 cmake --install build/python_binding
 ```
+
+这个流程只用于独立 Python 环境，不走默认 `colcon build`
 
 导出的 Python 模块名是 `dm_impedance`，主要入口是 `DmControlRuntime`：
 
@@ -700,7 +707,7 @@ sudo usermod -aG dialout $USER
 
 - `Tutorial.md`
 - `src/core/impedance_controller/README.md`
-- `src/adapters/dm_hw/README.md`
+- `src/external/dm_hw/README.md`
 - `src/adapters/dm_damiao_adapter/README.md`
 - ROS 2 Humble
 - ros2_control
