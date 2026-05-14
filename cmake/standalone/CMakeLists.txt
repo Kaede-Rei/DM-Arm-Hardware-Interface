@@ -23,7 +23,7 @@ if(DM_ARM_BUILD_TESTING)
     find_package(GTest REQUIRED)
 
     add_executable(test_joint_impedance_controller
-        ${DM_ARM_SOURCE_DIR}/src/capabilities/impedance_controller/test/test_joint_impedance_controller.cpp
+        ${DM_ARM_SOURCE_DIR}/src/core/impedance_controller/test/test_joint_impedance_controller.cpp
     )
     target_link_libraries(test_joint_impedance_controller
         PRIVATE

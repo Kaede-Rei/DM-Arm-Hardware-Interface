@@ -543,7 +543,7 @@ gripper_left
 `impedance_controller` 是 ROS 无关的控制核心；主要接口文档见：
 
 ```text
-src/capabilities/impedance_controller/README.md
+src/core/impedance_controller/README.md
 ```
 
 核心类：
@@ -699,7 +699,7 @@ sudo usermod -aG dialout $USER
 ## 参考
 
 - `Tutorial.md`
-- `src/capabilities/impedance_controller/README.md`
+- `src/core/impedance_controller/README.md`
 - `src/adapters/dm_hw/README.md`
 - `src/adapters/dm_damiao_adapter/README.md`
 - ROS 2 Humble
