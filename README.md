@@ -150,7 +150,7 @@ cmake --build build/native -j
 ```cmake
 set(DM_ARM_SOURCE_DIR /path/to/DM-Arm-Hardware-Interface)
 include(${DM_ARM_SOURCE_DIR}/cmake/impedance_controller.cmake)
-target_link_libraries(your_target PRIVATE impedance_controller::impedance_controller)
+target_link_libraries(your_target PRIVATE impedance::impedance_controller)
 ```
 
 ### 本机 ROS

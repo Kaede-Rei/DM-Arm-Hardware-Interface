@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace impedance_controller {
+namespace impedance {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 

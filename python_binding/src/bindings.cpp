@@ -13,20 +13,20 @@ namespace py = pybind11;
 
 namespace {
 
-using impedance_controller::DynamicsObservation;
-using impedance_controller::DynamicsObserver;
-using impedance_controller::JointCommand;
-using impedance_controller::JointCommandError;
-using impedance_controller::JointCommandLimits;
-using impedance_controller::JointCommandMode;
-using impedance_controller::JointControlLayout;
-using impedance_controller::JointImpedanceController;
-using impedance_controller::JointImpedanceControllerConfig;
-using impedance_controller::JointImpedanceControllerInput;
-using impedance_controller::JointImpedanceGains;
-using impedance_controller::JointImpedanceMode;
-using impedance_controller::JointState;
-using impedance_controller::MitJointCommand;
+using impedance::DynamicsObservation;
+using impedance::DynamicsObserver;
+using impedance::JointCommand;
+using impedance::JointCommandError;
+using impedance::JointCommandLimits;
+using impedance::JointCommandMode;
+using impedance::JointControlLayout;
+using impedance::JointImpedanceController;
+using impedance::JointImpedanceControllerConfig;
+using impedance::JointImpedanceControllerInput;
+using impedance::JointImpedanceGains;
+using impedance::JointImpedanceMode;
+using impedance::JointState;
+using impedance::MitJointCommand;
 
 const char* command_error_to_string(JointCommandError error) {
     switch(error) {
@@ -98,7 +98,7 @@ py::dict observation_to_dict(const DynamicsObservation& observation) {
     return result;
 }
 
-py::dict output_to_dict(const impedance_controller::JointImpedanceControllerOutput& output) {
+py::dict output_to_dict(const impedance::JointImpedanceControllerOutput& output) {
     py::dict result;
     result["valid"] = output.valid;
     result["command"] = mit_command_to_dict(output.command);

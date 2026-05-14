@@ -23,7 +23,7 @@ pybind11_add_module(dm_impedance
 
 target_link_libraries(dm_impedance
     PRIVATE
-        impedance_controller::impedance_controller
+        impedance::impedance_controller
 )
 
 target_compile_features(dm_impedance

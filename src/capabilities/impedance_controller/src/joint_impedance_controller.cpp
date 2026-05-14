@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace impedance_controller {
+namespace impedance {
 
 // ! ========================= 接 口 类 方 法 / 函 数 实 现 ========================= ! //
 

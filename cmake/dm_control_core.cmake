@@ -2,7 +2,7 @@
 # 使用方式：
 #   set(DM_ARM_SOURCE_DIR /path/to/DM-Arm-Hardware-Interface)
 #   include(${DM_ARM_SOURCE_DIR}/cmake/impedance_controller.cmake)
-#   target_link_libraries(your_target PRIVATE impedance_controller::impedance_controller)
+#   target_link_libraries(your_target PRIVATE impedance::impedance_controller)
 
 if(NOT DM_ARM_SOURCE_DIR)
     get_filename_component(DM_ARM_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
@@ -15,7 +15,7 @@ if(NOT TARGET tl::tl)
     add_library(tl::tl ALIAS tl)
 endif()
 
-if(NOT TARGET impedance_controller::impedance_controller)
+if(NOT TARGET impedance::impedance_controller)
     dm_arm_add_impedance_controller_target(impedance_controller)
-    add_library(impedance_controller::impedance_controller ALIAS impedance_controller)
+    add_library(impedance::impedance_controller ALIAS impedance_controller)
 endif()

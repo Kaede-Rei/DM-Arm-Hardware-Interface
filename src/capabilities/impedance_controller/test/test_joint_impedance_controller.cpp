@@ -10,14 +10,14 @@
 
 namespace {
 
-using impedance_controller::JointCommand;
-using impedance_controller::JointCommandError;
-using impedance_controller::JointCommandMode;
-using impedance_controller::JointImpedanceController;
-using impedance_controller::JointImpedanceControllerConfig;
-using impedance_controller::JointImpedanceControllerInput;
-using impedance_controller::JointImpedanceMode;
-using impedance_controller::JointState;
+using impedance::JointCommand;
+using impedance::JointCommandError;
+using impedance::JointCommandMode;
+using impedance::JointImpedanceController;
+using impedance::JointImpedanceControllerConfig;
+using impedance::JointImpedanceControllerInput;
+using impedance::JointImpedanceMode;
+using impedance::JointState;
 
 JointImpedanceControllerConfig make_config(std::size_t n = 2) {
     JointImpedanceControllerConfig config;

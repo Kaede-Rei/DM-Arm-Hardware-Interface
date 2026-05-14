@@ -15,7 +15,7 @@ include(${DM_ARM_SOURCE_DIR}/cmake/dm_arm_core_targets.cmake)
 dm_arm_add_tl_target(tl)
 add_library(tl::tl ALIAS tl)
 dm_arm_add_impedance_controller_target(impedance_controller)
-add_library(impedance_controller::impedance_controller ALIAS impedance_controller)
+add_library(impedance::impedance_controller ALIAS impedance_controller)
 
 option(DM_ARM_BUILD_TESTING "Build non-ROS unit tests." OFF)
 if(DM_ARM_BUILD_TESTING)

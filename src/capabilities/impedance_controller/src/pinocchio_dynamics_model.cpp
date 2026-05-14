@@ -7,7 +7,7 @@
 
 #include <unordered_set>
 
-namespace impedance_controller {
+namespace impedance {
 
 // ! ========================= 宏 定 义 ========================= ! //
 

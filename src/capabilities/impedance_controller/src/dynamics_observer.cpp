@@ -1,6 +1,6 @@
 #include "impedance_controller/dynamics_observer.hpp"
 
-namespace impedance_controller {
+namespace impedance {
 
 // ! ========================= 接 口 类 / 函 数 实 现 ========================= ! //
 
