@@ -1,6 +1,6 @@
 #pragma once
 
-#include "serial_port.hpp"
+#include "dm_hw/serial_port.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>

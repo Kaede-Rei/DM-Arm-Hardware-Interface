@@ -1,6 +1,10 @@
 #pragma once
 
 #include <termios.h>
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <stdexcept>
 #include <sys/select.h>
 #include <string>
 #include <string.h>
@@ -78,8 +82,7 @@ private:
 
         fd_ = open(port.c_str(), O_RDWR | O_NOCTTY);
         if(fd_ < 0) {
-            printf("Open serial port %s failed\n", port.c_str());
-            exit(-1);
+            throw std::runtime_error("Failed to open serial port: " + port);
         }
 
         struct termios option;

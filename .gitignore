@@ -1,9 +1,9 @@
 build/
 install/
 log/
-.vscode/
+docs/
 
+.vscode/
 .VSCodeCounter/
 
-plan.md
 .codex
