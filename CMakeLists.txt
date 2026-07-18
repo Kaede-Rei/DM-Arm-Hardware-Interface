@@ -17,6 +17,7 @@ include(CMakePackageConfigHelpers)
 
 add_library(dm_arm_core
     src/core/joints_ctrller.cpp
+    src/core/joint_actuator_mapper.cpp
 )
 
 add_library(dm_arm::core ALIAS dm_arm_core)
