@@ -10,7 +10,7 @@ option(DM_ARM_BUILD_ROS2 "Build ROS 2 integration" OFF)
 option(DM_ARM_BUILD_PYTHON "Build Python binding" OFF)
 option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" OFF)
 option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" OFF)
-option(DM_ARM_BUILD_TOOLS "Build development tools" ON)
+option(DM_ARM_BUILD_TOOLS "Build development tools" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -22,18 +22,11 @@ add_library(dm_arm_core
 
 add_library(dm_arm::core ALIAS dm_arm_core)
 
-file(
-    GLOB THIRD_LIB_INCLUDE_DIRS
-    CONFIGURE_DEPENDS
-    LIST_DIRECTORIES true
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/*/include"
-)
-
 target_include_directories(dm_arm_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_lib/tl/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        ${THIRD_LIB_INCLUDE_DIRS}
 )
 
 target_compile_features(dm_arm_core PUBLIC cxx_std_17)
@@ -41,3 +34,46 @@ target_compile_features(dm_arm_core PUBLIC cxx_std_17)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dm_arm_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+configure_package_config_file(
+    cmake/dm_arm_hardware_interfaceConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfig.cmake
+    INSTALL_DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/dm_arm_hardware_interface
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(
+    TARGETS dm_arm_core
+    EXPORT dm_arm_targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    EXPORT dm_arm_targets
+    FILE dm_arm_targets.cmake
+    NAMESPACE dm_arm::
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/dm_arm_hardware_interface
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfigVersion.cmake
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/dm_arm_hardware_interface
+)
