@@ -184,6 +184,7 @@ private:
     float state_q = 0;
     float state_dq = 0;
     float state_tau = 0;
+    uint64_t state_seq = 0;
     LimitParam limit_param{};
     DmMotorType motor_type;
 
@@ -221,6 +222,7 @@ public:
         this->state_q = q;
         this->state_dq = dq;
         this->state_tau = tau;
+        ++this->state_seq;
     }
 
     DmMotorType get_motor_type() const { return this->motor_type; }
@@ -254,6 +256,8 @@ public:
      * @return motor torque 电机实际输出扭矩
      */
     float get_tau() const { return this->state_tau; }
+
+    uint64_t get_state_seq() const { return this->state_seq; }
 
     /**
      * @brief get limit param 获取电机限制参数
@@ -344,10 +348,11 @@ public:
      * @brief 使能电机
      * @param motor 电机对象
      */
-    void enable(const Motor& motor) {
-        control_cmd(motor.get_slave_id(), 0xFC);
+    bool enable(const Motor& motor) {
+        const bool sent = control_cmd(motor.get_slave_id(), 0xFC);
         usleep(100000); // 100ms
         this->receive();
+        return sent;
     }
 
     /**
@@ -366,23 +371,32 @@ public:
      * @brief 刷新电机状态
      * @param motor 电机对象
      */
-    void refresh_motor_status(const Motor& motor) {
+    bool refresh_motor_status(const Motor& motor) {
         uint32_t id = 0x7FF;
         uint8_t can_low = motor.get_slave_id() & 0xff; // id low 8 bit
         uint8_t can_high = (motor.get_slave_id() >> 8) & 0xff; //id high 8 bit
         std::array<uint8_t, 8> data_buf = { can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00 };
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
-        this->receive();
+        const uint64_t previous_seq = motor.get_state_seq();
+        const ssize_t sent = serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
+        if(sent != static_cast<ssize_t>(sizeof(CanSendFrame))) return false;
+
+        constexpr int status_receive_attempts = 3;
+        for(int attempt = 0; attempt < status_receive_attempts; ++attempt) {
+            this->receive();
+            if(motor.get_state_seq() != previous_seq) return true;
+        }
+        return false;
     }
     /**
      * @brief 失能电机
      * @param motor 电机对象
      */
-    void disable(const Motor& motor) {
-        control_cmd(motor.get_slave_id(), 0xFD);
+    bool disable(const Motor& motor) {
+        const bool sent = control_cmd(motor.get_slave_id(), 0xFD);
         usleep(100000);
         this->receive();
+        return sent;
     }
 
     /**
@@ -404,7 +418,7 @@ public:
      * @param dq 速度
      * @param tau 扭矩
      */
-    void control_mit(Motor& motor, float kp, float kd, float q, float dq, float tau) {
+    bool control_mit(Motor& motor, float kp, float kd, float q, float dq, float tau, bool receive_feedback = true) {
         // 位置、速度和扭矩采用线性映射的关系将浮点型数据转换成有符号的定点数据
         static auto float_to_uint = [](float x, float xmin, float xmax, uint8_t bits) -> uint16_t {
             x = std::clamp(x, xmin, xmax);
@@ -435,8 +449,9 @@ public:
         data_buf[7] = tau_uint & 0xff;
 
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
-        this->receive();
+        const ssize_t sent = serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
+        if(receive_feedback) this->receive();
+        return sent == static_cast<ssize_t>(sizeof(CanSendFrame));
     }
 
     /**
@@ -559,8 +574,8 @@ public:
     /**
      * @brief 接收并解析电机 CAN 反馈数据
      */
-    void receive() {
-        if(!serial_->recv_frame(reinterpret_cast<uint8_t*>(&receive_data), 0xAA, sizeof(CanReceiveFrame))) return;
+    bool receive() {
+        if(!serial_->recv_frame(reinterpret_cast<uint8_t*>(&receive_data), 0xAA, sizeof(CanReceiveFrame))) return false;
 
         if(receive_data.cmd == 0x11 && receive_data.frame_end == 0x55) // receive success
         {
@@ -579,7 +594,7 @@ public:
             if(receive_data.can_id != 0x00)   //make sure the motor id is not 0x00
             {
                 if(motors.find(receive_data.can_id) == motors.end()) {
-                    return;
+                    return false;
                 }
 
                 auto m = motors[receive_data.can_id];
@@ -593,7 +608,7 @@ public:
             {
                 uint32_t slave_id = data[0] & 0x0f;
                 if(motors.find(slave_id) == motors.end()) {
-                    return;
+                    return false;
                 }
                 auto m = motors[slave_id];
                 LimitParam limit_param_receive = m->get_limit_param();
@@ -602,7 +617,7 @@ public:
                 float receive_tau = uint_to_float(tau_uint, -limit_param_receive.tau_max, limit_param_receive.tau_max, 12);
                 m->receive_data(receive_q, receive_dq, receive_tau);
             }
-            return;
+            return true;
         }
         else if(receive_data.cmd == 0x01) // receive fail
         {
@@ -620,6 +635,7 @@ public:
         {
             /* code */
         }
+        return false;
     }
 
     void receive_param() {
@@ -781,10 +797,11 @@ public:
     }
 
 private:
-    void control_cmd(MotorId id, uint8_t cmd) {
+    bool control_cmd(MotorId id, uint8_t cmd) {
         std::array<uint8_t, 8> data_buf = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd };
         send_data.modify(id, data_buf.data());
-        serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame));
+        return serial_->send((uint8_t*)&send_data, sizeof(CanSendFrame)) ==
+            static_cast<ssize_t>(sizeof(CanSendFrame));
     }
 
     void write_motor_param(Motor& motor, uint8_t reg_id, const uint8_t data[4]) {

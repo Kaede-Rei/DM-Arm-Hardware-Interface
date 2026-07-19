@@ -1,5 +1,4 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/dm_arm_targets.cmake")
-
 check_required_components(dm_arm_hardware_interface)

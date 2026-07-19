@@ -1,0 +1,93 @@
+# 关节配置
+joints:
+  names: [joint1, joint2, joint3, joint4, joint5, joint6] # 关节名称
+
+# 运行时配置
+runtime:
+  ctrl_frequency_hz: 200.0      # 控制频率
+  cmd_timeout_s: 0.10           # 命令超时时间
+  state_timeout_s: 0.05         # 状态超时时间
+  startup_read_cycles: 5        # 启动时读取周期数
+  write_enabled: false          # 写入是否启用
+  refresh_state_in_read: false  # 在读取时刷新状态
+# 限幅配置
+limits:
+  min_pos: [-1.99, 0.05, 0.05, -1.90, -1.52, -3.09] # 关节最小位置
+  max_pos: [1.99, 3.09, 4.66, 1.52, 1.52, 3.09]     # 关节最大位置
+  max_vel: [0.20, 0.20, 0.20, 0.30, 0.30, 0.30]     # 关节最大速度
+  max_acc: [0.50, 0.50, 0.50, 0.80, 0.80, 0.80]     # 关节最大加速度
+  max_effort: [5.0, 5.0, 5.0, 2.0, 2.0, 2.0]        # 关节最大力矩
+  max_kp: [20.0, 20.0, 20.0, 15.0, 15.0, 15.0]      # 关节最大位置增益
+  max_kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]            # 关节最大速度增益
+
+# 映射配置
+mapping:
+  pos_ratio: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]             # 位置比例
+  tor_ratio: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]             # 力矩比例
+  direction: [1, 1, 1, 1, 1, 1]                         # 关节方向
+  joint_zero_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]     # 关节零点偏移
+  actuator_zero_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # 执行器零点偏移
+
+# 控制器配置
+controller:
+  allow_full_cmd: false                       # 是否允许完整命令
+  # 刚性保持增益参数
+  rigid_hold:
+    kp: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]  # 比例增益（位置）
+    kd: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02]  # 微分增益（速度）
+  # 刚性跟踪增益参数
+  rigid_tracking:
+    kp: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]  # 比例增益（位置）
+    kd: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02]  # 微分增益（速度）
+  # 柔性保持增益参数
+  compliant_hold:
+    kp: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0]        # 比例增益（位置）
+    kd: [0.10, 0.10, 0.10, 0.08, 0.08, 0.08]  # 微分增益（速度）
+  # 柔性拖拽增益参数
+  compliant_drag:
+    kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]        # 比例增益（位置）
+    kd: [0.15, 0.15, 0.15, 0.10, 0.10, 0.10]  # 微分增益（速度）
+  # 柔性跟踪增益参数
+  compliant_tracking:
+    kp: [5.0, 5.0, 5.0, 4.0, 4.0, 4.0]        # 比例增益（位置）
+    kd: [0.10, 0.10, 0.10, 0.08, 0.08, 0.08]  # 微分增益（速度）
+
+# 硬件配置
+damiao:
+  serial_port: /dev/ttyACM0   # 串口设备
+  baudrate: 921600            # 波特率
+  stop_kp: 3.0                # 安全停止时的比例增益
+  stop_kd: 0.10               # 安全停止时的微分增益
+  stop_cycles: 5              # 安全停止时的通信周期数
+  # 执行器配置
+  actuators:
+    - name: actuator1         # 执行器名称
+      joint_name: joint1      # 关联的关节名称
+      motor_id: 1             # 执行器ID
+      master_id: 0            # 主机ID
+      motor_type: DM4340      # 执行器类型
+    - name: actuator2
+      joint_name: joint2
+      motor_id: 2
+      master_id: 0
+      motor_type: DM4340
+    - name: actuator3
+      joint_name: joint3
+      motor_id: 3
+      master_id: 0
+      motor_type: DM4340
+    - name: actuator4
+      joint_name: joint4
+      motor_id: 4
+      master_id: 0
+      motor_type: DM4310
+    - name: actuator5
+      joint_name: joint5
+      motor_id: 5
+      master_id: 0
+      motor_type: DM4310
+    - name: actuator6
+      joint_name: joint6
+      motor_id: 6
+      master_id: 0
+      motor_type: DM4310
