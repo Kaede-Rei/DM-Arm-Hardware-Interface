@@ -11,6 +11,39 @@ namespace dm_arm {
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
 /**
+ * @brief 关节控制器生命周期状态
+ */
+enum class JointCtrllerState {
+    UNCONFIGURED,    ///< 关节控制器未配置
+    CONFIGURED,      ///< 关节控制器已配置
+    INITIALIZED,     ///< 关节控制器已初始化
+};
+
+/**
+ * @brief 关节控制器错误类型
+ */
+enum class JointCtrllerErr {
+    OK,                         ///< 关节控制器正常
+
+    NOT_CONFIGURED,             ///< 关节控制器未配置
+    NOT_INITIALIZED,            ///< 关节控制器未初始化
+    ALREADY_INITIALIZED,        ///< 关节控制器已初始化
+
+    INVALID_CFG,                ///< 关节控制器配置无效
+    INVALID_STATE,              ///< 关节状态无效
+    INVALID_DT,                 ///< 时间步长无效
+    INVALID_MODEL_FEEDFORWARD,  ///< 模型前馈力矩无效
+    INVALID_IMPEDANCE_MODE,     ///< 关节阻抗模式无效
+
+    INVALID_CMD_SIZE,           ///< 关节参考命令大小无效
+    INVALID_CMD_VALUE,          ///< 关节参考命令数值无效
+    INVALID_FULL_CMD,           ///< 关节完整控制命令无效
+
+    CMD_NOT_ALLOWED_IN_MODE,    ///< 当前阻抗模式不允许设置关节参考命令
+    FULL_CMD_NOT_ALLOWED,       ///< 不允许直接设置关节完整控制命令
+};
+
+/**
  * @brief 关节控制器配置
  */
 struct JointCtrllerCfg {

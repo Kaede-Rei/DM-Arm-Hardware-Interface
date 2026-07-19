@@ -3,6 +3,7 @@ install/
 log/
 docs/
 
+.agents/
 .cache/
 .vscode/
 .VSCodeCounter/
