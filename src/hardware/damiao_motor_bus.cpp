@@ -364,17 +364,17 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::validate_cfg(const DamiaoBusCfg&
         cfg.startup_read_cycles == 0 || cfg.stop_cycles == 0 ||
         !std::isfinite(cfg.stop_kp) || !std::isfinite(cfg.stop_kd) ||
         cfg.stop_kp < 0.0 || cfg.stop_kp > 500.0 || cfg.stop_kd < 0.0 || cfg.stop_kd > 5.0) {
-        return tl::make_unexpected(MotorBusErr::INVALID_CMD);
+        return tl::make_unexpected(MotorBusErr::INVALID_CFG);
     }
 
     std::vector<std::uint32_t> motor_ids;
     motor_ids.reserve(cfg.actuators.size());
     for(const auto& actuator : cfg.actuators) {
         if(actuator.name.empty() || actuator.joint_name.empty() || actuator.motor_id == 0 || !parse_motor_type(actuator.motor_type)) {
-            return tl::make_unexpected(MotorBusErr::INVALID_CMD);
+            return tl::make_unexpected(MotorBusErr::INVALID_CFG);
         }
         if(std::find(motor_ids.begin(), motor_ids.end(), actuator.motor_id) != motor_ids.end()) {
-            return tl::make_unexpected(MotorBusErr::INVALID_CMD);
+            return tl::make_unexpected(MotorBusErr::INVALID_CFG);
         }
         motor_ids.push_back(actuator.motor_id);
     }
@@ -429,7 +429,7 @@ tl::expected<damiao::DmMotorType, MotorBusErr> DamiaoMotorBus::parse_motor_type(
     if(value == "DMH6215") return damiao::DMH6215;
     if(value == "DMG6220") return damiao::DMG6220;
     if(value == "DMJH11") return damiao::DMJH11;
-    return tl::make_unexpected(MotorBusErr::INVALID_CMD);
+    return tl::make_unexpected(MotorBusErr::INVALID_CFG);
 }
 
 /**

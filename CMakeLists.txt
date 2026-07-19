@@ -14,6 +14,15 @@ option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" OFF)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+find_package(yaml-cpp REQUIRED)
+if(TARGET yaml-cpp::yaml-cpp)
+    set(DM_ARM_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+elseif(TARGET yaml-cpp)
+    set(DM_ARM_YAML_CPP_TARGET yaml-cpp)
+else()
+    message(FATAL_ERROR "yaml-cpp was found, but no supported CMake target is available")
+endif()
+
 set(DM_ARM_TL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/tl/include")
 set(DM_ARM_DAMIAO_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/damiao/include")
 
@@ -35,7 +44,11 @@ target_compile_features(dm_arm_core PUBLIC cxx_std_17)
 add_library(dm_arm_config src/config/config.cpp)
 add_library(dm_arm::config ALIAS dm_arm_config)
 set_target_properties(dm_arm_config PROPERTIES EXPORT_NAME config)
-target_link_libraries(dm_arm_config PUBLIC dm_arm_core)
+target_link_libraries(dm_arm_config
+    PUBLIC
+        dm_arm_core
+        ${DM_ARM_YAML_CPP_TARGET}
+)
 target_include_directories(dm_arm_config
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -47,7 +60,7 @@ if(DM_ARM_BUILD_DAMIAO)
     add_library(dm_arm_damiao src/hardware/damiao_motor_bus.cpp)
     add_library(dm_arm::damiao ALIAS dm_arm_damiao)
     set_target_properties(dm_arm_damiao PROPERTIES EXPORT_NAME damiao)
-    target_link_libraries(dm_arm_damiao PUBLIC dm_arm_config)
+    target_link_libraries(dm_arm_damiao PUBLIC dm_arm_core)
     target_include_directories(dm_arm_damiao
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -12,6 +12,7 @@ enum class MotorBusErr {
     NOT_CONFIGURED,
     NOT_CONNECTED,
     NOT_ACTIVE,
+    INVALID_CFG,
     OPEN_FAILED,
     READ_FAILED,
     WRITE_FAILED,

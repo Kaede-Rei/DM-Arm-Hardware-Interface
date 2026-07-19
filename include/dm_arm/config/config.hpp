@@ -14,106 +14,99 @@ namespace dm_arm {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
-constexpr std::size_t DM_ARM_JOINTS_COUNT = 6;  ///< 关节数量
+constexpr std::size_t DM_ARM_JOINTS_COUNT = 6;  ///< DM-Arm 主链关节数量
 
 /**
- * @brief 运行时配置
+ * @brief Robot 运行时配置
  */
 struct RuntimeCfg {
-    double ctrl_frequency_hz{ 200.0 };      ///< 控制频率
-    double cmd_timeout_s{ 0.1 };            ///< 命令超时时间
-    double state_timeout_s{ 0.05 };         ///< 状态超时时间
-    std::size_t startup_read_cycles{ 5 };   ///< 启动时读取周期数
-    bool write_enabled{ false };            ///< 写入是否启用
-    bool refresh_state_in_read{ false };    ///< 在读取时刷新状态
+    double ctrl_frequency_hz{ 200.0 };  ///< 控制循环频率
+    double cmd_timeout_s{ 0.1 };        ///< 上层命令超时
+    double state_timeout_s{ 0.05 };     ///< 硬件状态超时
+    bool write_enabled{ false };        ///< 是否允许下发执行器命令
 };
 
 /**
- * @brief 关节限制配置
+ * @brief Joint 侧软件限制
  */
 struct JointLimitCfg {
-    JointVector min_pos;       ///< 关节最小位置限制
-    JointVector max_pos;       ///< 关节最大位置限制
-    JointVector max_vel;       ///< 关节最大速度限制
-    JointVector max_acc;       ///< 关节最大加速度限制
-    JointVector max_effort;    ///< 关节最大力矩限制
-    JointVector max_kp;        ///< 关节最大位置增益限制
-    JointVector max_kd;        ///< 关节最大速度增益限制
+    JointVector min_pos;       ///< 最小位置，rad
+    JointVector max_pos;       ///< 最大位置，rad
+    JointVector max_vel;       ///< 最大速度，rad/s
+    JointVector max_acc;       ///< 最大加速度，rad/s^2
+    JointVector max_effort;    ///< 最大关节力矩，N·m
+    JointVector max_kp;        ///< 最大 Joint 侧 kp
+    JointVector max_kd;        ///< 最大 Joint 侧 kd
 };
 
 /**
- * @brief 达妙电机配置
+ * @brief 单个达妙执行器的文本配置
  */
 struct DamiaoActuatorCfg {
     std::string name;              ///< 执行器名称
     std::string joint_name;        ///< 关联关节名称
     std::uint32_t motor_id{ 0 };   ///< 电机 ID
     std::uint32_t master_id{ 0 };  ///< 主站 ID
-    std::string motor_type;        ///< 电机型号
+    std::string motor_type;        ///< 达妙 SDK 电机型号名称
 };
 
 /**
  * @brief 达妙总线配置
  */
 struct DamiaoBusCfg {
-    std::string serial_port{ "/dev/ttyACM0" };       ///< 串口设备路径
-    int baudrate{ 921600 };                          ///< 串口波特率
-    bool refresh_state_in_read{ false };             ///< 在读取时刷新状态
-    std::size_t startup_read_cycles{ 5 };            ///< 启动时读取周期数
-    double stop_kp{ 3.0 };                           ///< 停止命令位置增益
-    double stop_kd{ 0.1 };                           ///< 停止命令速度增益
-    std::size_t stop_cycles{ 5 };                    ///< 停止命令发送周期数
-    std::vector<DamiaoActuatorCfg> actuators;        ///< 达妙执行器列表
+    std::string serial_port{ "/dev/ttyACM0" };  ///< 串口设备
+    int baudrate{ 921600 };                     ///< 波特率
+    bool refresh_state_in_read{ false };        ///< read() 是否主动逐轴查询
+    std::size_t startup_read_cycles{ 5 };       ///< 激活后用于确认状态的读取次数
+    double stop_kp{ 3.0 };                      ///< 停止保持的执行器侧 kp
+    double stop_kd{ 0.1 };                      ///< 停止保持的执行器侧 kd
+    std::size_t stop_cycles{ 5 };               ///< 停止保持命令发送次数
+    std::vector<DamiaoActuatorCfg> actuators;   ///< 执行器列表
 };
 
 /**
- * @brief 机器人完整配置
+ * @brief 当前 DM-Arm 的完整静态配置
  */
 struct RobotCfg {
-    std::vector<std::string> joint_names;    ///< 关节名称列表
-    RuntimeCfg runtime;                      ///< 运行时配置
-    JointCtrllerCfg ctrller;                 ///< 关节控制器配置
-    JointActuatorMapCfg mapper;              ///< 关节执行器映射配置
-    JointLimitCfg limits;                    ///< 关节限制配置
-    DamiaoBusCfg damiao;                     ///< 达妙总线配置
+    std::vector<std::string> joint_names;  ///< 固定的 Joint 顺序
+    RuntimeCfg runtime;                    ///< Robot 运行参数
+    JointCtrllerCfg ctrller;               ///< Joint 控制器参数
+    JointActuatorMapCfg mapper;             ///< Joint/Actuator 映射
+    JointLimitCfg limits;                  ///< Joint 软件限制
+    DamiaoBusCfg damiao;                   ///< 达妙后端参数
 };
 
 /**
- * @brief 配置错误码
+ * @brief 配置加载错误码
  */
 enum class ConfigErrc {
-    FILE_OPEN_FAILED,           ///< 配置文件打开失败
-    SYNTAX_ERROR,               ///< 配置语法错误
-    MISSING_FIELD,              ///< 缺少必要字段
-    INVALID_VALUE,              ///< 配置值非法
-    INVALID_SIZE,               ///< 配置数组长度非法
-    DUPLICATE_NAME,             ///< 名称重复
-    DUPLICATE_MOTOR_ID,         ///< 电机 ID 重复
-    INVALID_MOTOR_TYPE,         ///< 电机型号非法
-    ACTUATOR_LIMIT_EXCEEDED,    ///< 映射后的执行器限制超出电机范围
+    FILE_OPEN_FAILED,     ///< 配置文件无法打开
+    SYNTAX_ERROR,         ///< YAML 语法错误
+    MISSING_FIELD,        ///< 缺少必需字段
+    INVALID_VALUE,        ///< 字段值或模块配置无效
+    INVALID_SIZE,         ///< 数组长度不一致
+    DUPLICATE_NAME,       ///< Joint/Actuator 名称重复
+    DUPLICATE_MOTOR_ID,   ///< 电机 ID 重复
 };
 
 /**
- * @brief 配置错误信息
+ * @brief 配置加载错误信息
  */
 struct ConfigErr {
-    ConfigErrc code{ ConfigErrc::INVALID_VALUE };    ///< 配置错误码
-    std::string message;                             ///< 配置错误描述
+    ConfigErrc code{ ConfigErrc::INVALID_VALUE };
+    std::string message;
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
 /**
- * @brief 加载机器人配置
- * @param path 配置文件路径
- * @return tl::expected<RobotCfg, ConfigErr> 机器人配置
+ * @brief 使用 yaml-cpp 加载完整机器人配置
+ * @param path YAML 文件路径
  */
 tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path);
 
 /**
- * @brief 验证机器人配置
- * @param cfg 机器人配置
- * @return tl::expected<void, ConfigErr>
+ * @brief 验证与具体 SDK 型号表无关的跨模块配置关系
  */
 tl::expected<void, ConfigErr> validate_robot_cfg(const RobotCfg& cfg);
 

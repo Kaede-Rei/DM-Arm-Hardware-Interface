@@ -7,9 +7,7 @@ runtime:
   ctrl_frequency_hz: 200.0      # 控制频率
   cmd_timeout_s: 0.10           # 命令超时时间
   state_timeout_s: 0.05         # 状态超时时间
-  startup_read_cycles: 5        # 启动时读取周期数
   write_enabled: false          # 写入是否启用
-  refresh_state_in_read: false  # 在读取时刷新状态
 # 限幅配置
 limits:
   min_pos: [-1.99, 0.05, 0.05, -1.90, -1.52, -3.09] # 关节最小位置
@@ -54,11 +52,13 @@ controller:
 
 # 硬件配置
 damiao:
-  serial_port: /dev/ttyACM0   # 串口设备
-  baudrate: 921600            # 波特率
-  stop_kp: 3.0                # 安全停止时的比例增益
-  stop_kd: 0.10               # 安全停止时的微分增益
-  stop_cycles: 5              # 安全停止时的通信周期数
+  serial_port: /dev/ttyACM0     # 串口设备
+  baudrate: 921600              # 波特率
+  refresh_state_in_read: false  # read() 是否主动逐轴查询
+  startup_read_cycles: 5        # 激活后状态确认读取次数
+  stop_kp: 3.0                  # 安全停止时的比例增益
+  stop_kd: 0.10                 # 安全停止时的微分增益
+  stop_cycles: 5                # 安全停止时的通信周期数
   # 执行器配置
   actuators:
     - name: actuator1         # 执行器名称
