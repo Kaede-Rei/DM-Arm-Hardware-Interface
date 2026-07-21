@@ -4,11 +4,20 @@ joints:
 
 # 运行时配置
 runtime:
-  ctrl_frequency_hz: 200.0      # 控制频率
-  cmd_timeout_s: 0.10           # 命令超时时间
-  state_timeout_s: 0.05         # 状态超时时间
-  write_enabled: false          # 写入是否启用
-# 限幅配置
+  ctrl_frequency_hz: 200.0       # Robot cycle 目标频率
+  write_enabled: false           # 真机确认前保持 false
+  model_feedforward_mode: NONE   # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+
+# 安全策略
+safety:
+  cmd_timeout_s: 0.10                   # 跟踪模式收到过命令后允许的最大命令年龄
+  state_timeout_s: 0.05                 # 两帧合法硬件状态之间允许的最大间隔
+  max_dt_s: 0.02                        # Safety 接受的最大控制周期
+  numeric_tolerance: 1.0e-6             # 只处理浮点舍入级轻微越界
+  require_all_actuators_online: true    # 是否要求所有执行器在线
+  require_all_actuators_enabled: true   # 是否要求所有执行器使能
+
+# Joint 侧安全限制
 limits:
   min_pos: [-1.99, 0.05, 0.05, -1.90, -1.52, -3.09] # 关节最小位置
   max_pos: [1.99, 3.09, 4.66, 1.52, 1.52, 3.09]     # 关节最大位置
@@ -17,6 +26,7 @@ limits:
   max_effort: [5.0, 5.0, 5.0, 2.0, 2.0, 2.0]        # 关节最大力矩
   max_kp: [20.0, 20.0, 20.0, 15.0, 15.0, 15.0]      # 关节最大位置增益
   max_kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]            # 关节最大速度增益
+  pos_margin: [0.03, 0.03, 0.03, 0.03, 0.03, 0.03]  # 命令位置距离硬限位的边距
 
 # 映射配置
 mapping:

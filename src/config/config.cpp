@@ -33,17 +33,17 @@ public:
      * @param code 错误码
      * @param message 错误信息
      */
-    ConfigLoadException(ConfigErrc code, std::string message)
+    ConfigLoadException(ConfigErr code, std::string message)
         : std::runtime_error(std::move(message)), code_(code) {}
 
     /**
      * @brief 获取错误码
      * @return 错误码
      */
-    ConfigErrc code() const noexcept { return code_; }
+    ConfigErr code() const noexcept { return code_; }
 
 private:
-    ConfigErrc code_;   ///< 错误码
+    ConfigErr code_;   ///< 错误码
 };
 
 /**
@@ -52,8 +52,8 @@ private:
  * @param message 错误信息
  * @return 配置加载错误
  */
-ConfigErr make_err(ConfigErrc code, std::string message) {
-    return ConfigErr{ code, std::move(message) };
+ConfigErrInfo make_err(ConfigErr code, std::string message) {
+    return ConfigErrInfo{ code, std::move(message) };
 }
 
 /**
@@ -62,7 +62,7 @@ ConfigErr make_err(ConfigErrc code, std::string message) {
  * @param message 错误信息
  * @return 配置加载错误
  */
-tl::expected<void, ConfigErr> fail(ConfigErrc code, std::string message) {
+tl::expected<void, ConfigErrInfo> fail(ConfigErr code, std::string message) {
     return tl::make_unexpected(make_err(code, std::move(message)));
 }
 
@@ -89,12 +89,12 @@ YAML::Node require_map(const YAML::Node& parent, const char* key, const char* co
     const YAML::Node node = parent[key];
     if(!node) {
         throw ConfigLoadException(
-            ConfigErrc::MISSING_FIELD,
+            ConfigErr::MISSING_FIELD,
             std::string(context) + ": missing field '" + key + "'");
     }
     if(!node.IsMap()) {
         throw ConfigLoadException(
-            ConfigErrc::INVALID_VALUE,
+            ConfigErr::INVALID_VALUE,
             yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a map");
     }
     return node;
@@ -112,12 +112,12 @@ YAML::Node require_sequence(const YAML::Node& parent, const char* key, const cha
     const YAML::Node node = parent[key];
     if(!node) {
         throw ConfigLoadException(
-            ConfigErrc::MISSING_FIELD,
+            ConfigErr::MISSING_FIELD,
             std::string(context) + ": missing field '" + key + "'");
     }
     if(!node.IsSequence()) {
         throw ConfigLoadException(
-            ConfigErrc::INVALID_VALUE,
+            ConfigErr::INVALID_VALUE,
             yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a sequence");
     }
     return node;
@@ -137,7 +137,7 @@ T require_as(const YAML::Node& parent, const char* key, const char* context) {
     const YAML::Node node = parent[key];
     if(!node) {
         throw ConfigLoadException(
-            ConfigErrc::MISSING_FIELD,
+            ConfigErr::MISSING_FIELD,
             std::string(context) + ": missing field '" + key + "'");
     }
 
@@ -146,7 +146,7 @@ T require_as(const YAML::Node& parent, const char* key, const char* context) {
     }
     catch(const YAML::BadConversion&) {
         throw ConfigLoadException(
-            ConfigErrc::INVALID_VALUE,
+            ConfigErr::INVALID_VALUE,
             yaml_location(node.Mark()) + std::string(context) + "." + key + " has an invalid type or value");
     }
 }
@@ -166,6 +166,24 @@ JointImpedanceGains load_gains(
     gains.kp = require_as<JointVector>(mode, "kp", mode_name);
     gains.kd = require_as<JointVector>(mode, "kd", mode_name);
     return gains;
+}
+
+/**
+ * @brief 解析模型前馈策略
+ */
+ModelFeedforwardMode load_model_feedforward_mode(const YAML::Node& runtime) {
+    const std::string value =
+        require_as<std::string>(runtime, "model_feedforward_mode", "runtime");
+
+    if(value == "NONE") return ModelFeedforwardMode::NONE;
+    if(value == "GRAVITY") return ModelFeedforwardMode::GRAVITY;
+    if(value == "FULL_INVERSE_DYNAMICS") {
+        return ModelFeedforwardMode::FULL_INVERSE_DYNAMICS;
+    }
+
+    throw ConfigLoadException(
+        ConfigErr::INVALID_VALUE,
+        "runtime.model_feedforward_mode must be NONE, GRAVITY or FULL_INVERSE_DYNAMICS");
 }
 
 /**
@@ -202,14 +220,14 @@ std::array<const JointImpedanceGains*, 5> all_gains(const JointCtrllerCfg& cfg) 
 /**
  * @brief 使用 yaml-cpp 加载完整机器人配置
  * @param path YAML 文件路径
- * @return 配置加载结果，成功时包含 RobotCfg，失败时包含 ConfigErr
+ * @return 配置加载结果，成功时包含 RobotCfg，失败时包含 ConfigErrInfo
  */
-tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path) {
+tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
     try {
         const YAML::Node root = YAML::LoadFile(path);
         if(!root || !root.IsMap()) {
             return tl::make_unexpected(make_err(
-                ConfigErrc::SYNTAX_ERROR,
+                ConfigErr::SYNTAX_ERROR,
                 "configuration root must be a YAML map"));
         }
 
@@ -220,18 +238,28 @@ tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path) {
 
         const YAML::Node runtime = require_map(root, "runtime", "root");
         cfg.runtime.ctrl_frequency_hz = require_as<double>(runtime, "ctrl_frequency_hz", "runtime");
-        cfg.runtime.cmd_timeout_s = require_as<double>(runtime, "cmd_timeout_s", "runtime");
-        cfg.runtime.state_timeout_s = require_as<double>(runtime, "state_timeout_s", "runtime");
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
+        cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
+
+        const YAML::Node safety = require_map(root, "safety", "root");
+        cfg.safety.cmd_timeout_s = require_as<double>(safety, "cmd_timeout_s", "safety");
+        cfg.safety.state_timeout_s = require_as<double>(safety, "state_timeout_s", "safety");
+        cfg.safety.max_dt_s = require_as<double>(safety, "max_dt_s", "safety");
+        cfg.safety.numeric_tolerance = require_as<double>(safety, "numeric_tolerance", "safety");
+        cfg.safety.require_all_actuators_online =
+            require_as<bool>(safety, "require_all_actuators_online", "safety");
+        cfg.safety.require_all_actuators_enabled =
+            require_as<bool>(safety, "require_all_actuators_enabled", "safety");
 
         const YAML::Node limits = require_map(root, "limits", "root");
-        cfg.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
-        cfg.limits.max_pos = require_as<JointVector>(limits, "max_pos", "limits");
-        cfg.limits.max_vel = require_as<JointVector>(limits, "max_vel", "limits");
-        cfg.limits.max_acc = require_as<JointVector>(limits, "max_acc", "limits");
-        cfg.limits.max_effort = require_as<JointVector>(limits, "max_effort", "limits");
-        cfg.limits.max_kp = require_as<JointVector>(limits, "max_kp", "limits");
-        cfg.limits.max_kd = require_as<JointVector>(limits, "max_kd", "limits");
+        cfg.safety.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
+        cfg.safety.limits.max_pos = require_as<JointVector>(limits, "max_pos", "limits");
+        cfg.safety.limits.max_vel = require_as<JointVector>(limits, "max_vel", "limits");
+        cfg.safety.limits.max_acc = require_as<JointVector>(limits, "max_acc", "limits");
+        cfg.safety.limits.max_effort = require_as<JointVector>(limits, "max_effort", "limits");
+        cfg.safety.limits.max_kp = require_as<JointVector>(limits, "max_kp", "limits");
+        cfg.safety.limits.max_kd = require_as<JointVector>(limits, "max_kd", "limits");
+        cfg.safety.limits.pos_margin = require_as<JointVector>(limits, "pos_margin", "limits");
 
         const YAML::Node mapping = require_map(root, "mapping", "root");
         cfg.mapper.pos_ratio = require_as<ActuatorVector>(mapping, "pos_ratio", "mapping");
@@ -263,7 +291,7 @@ tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path) {
             const YAML::Node item = actuators[i];
             if(!item.IsMap()) {
                 throw ConfigLoadException(
-                    ConfigErrc::INVALID_VALUE,
+                    ConfigErr::INVALID_VALUE,
                     yaml_location(item.Mark()) + "damiao.actuators[" + std::to_string(i) + "] must be a map");
             }
 
@@ -279,6 +307,7 @@ tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path) {
 
         cfg.ctrller.joints_count = cfg.joint_names.size();
         cfg.mapper.joints_count = cfg.joint_names.size();
+        cfg.safety.joints_count = cfg.joint_names.size();
 
         auto validated = validate_robot_cfg(cfg);
         if(!validated) return tl::make_unexpected(validated.error());
@@ -289,134 +318,179 @@ tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path) {
     }
     catch(const YAML::BadFile&) {
         return tl::make_unexpected(make_err(
-            ConfigErrc::FILE_OPEN_FAILED,
+            ConfigErr::FILE_OPEN_FAILED,
             "failed to open configuration file: " + path));
     }
     catch(const YAML::ParserException& error) {
         return tl::make_unexpected(make_err(
-            ConfigErrc::SYNTAX_ERROR,
+            ConfigErr::SYNTAX_ERROR,
             yaml_location(error.mark) + error.msg));
     }
     catch(const YAML::Exception& error) {
         return tl::make_unexpected(make_err(
-            ConfigErrc::INVALID_VALUE,
+            ConfigErr::INVALID_VALUE,
             yaml_location(error.mark) + error.msg));
     }
     catch(const std::exception& error) {
-        return tl::make_unexpected(make_err(ConfigErrc::INVALID_VALUE, error.what()));
+        return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, error.what()));
     }
 }
 
 /**
- * @brief 验证机器人配置的有效性
+ * @brief 验证 Robot 控制闭环所需的通用配置
  * @param cfg 机器人配置
- * @return 如果配置有效，则返回空值，否则返回 ConfigErr
+ * @return 如果配置有效，则返回空值，否则返回 ConfigErrInfo
  */
-tl::expected<void, ConfigErr> validate_robot_cfg(const RobotCfg& cfg) {
+tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
     const std::size_t n = cfg.joint_names.size();
     if(n != DM_ARM_JOINTS_COUNT) {
-        return fail(ConfigErrc::INVALID_SIZE, "DM-Arm main chain requires exactly 6 joints");
+        return fail(ConfigErr::INVALID_SIZE,
+            "DM-Arm main chain requires exactly 6 joints");
     }
 
-    const auto size_is_n = [n](const auto& values) { return values.size() == n; };
-    if(!size_is_n(cfg.limits.min_pos) || !size_is_n(cfg.limits.max_pos) ||
-        !size_is_n(cfg.limits.max_vel) || !size_is_n(cfg.limits.max_acc) ||
-        !size_is_n(cfg.limits.max_effort) || !size_is_n(cfg.limits.max_kp) ||
-        !size_is_n(cfg.limits.max_kd) || cfg.damiao.actuators.size() != n) {
-        return fail(ConfigErrc::INVALID_SIZE, "all joint arrays and actuator entries must have length 6");
+    const auto size_is_n = [n](const auto& values) {
+        return values.size() == n;
+        };
+    const auto& limits = cfg.safety.limits;
+    if(!size_is_n(limits.min_pos) || !size_is_n(limits.max_pos) ||
+        !size_is_n(limits.max_vel) || !size_is_n(limits.max_acc) ||
+        !size_is_n(limits.max_effort) || !size_is_n(limits.max_kp) ||
+        !size_is_n(limits.max_kd) || !size_is_n(limits.pos_margin)) {
+        return fail(ConfigErr::INVALID_SIZE,
+            "all Safety joint arrays must have length 6");
     }
 
-    if(cfg.ctrller.joints_count != n || cfg.mapper.joints_count != n) {
-        return fail(ConfigErrc::INVALID_SIZE, "controller and mapper joints_count must match joint_names");
+    if(cfg.ctrller.joints_count != n ||
+        cfg.mapper.joints_count != n ||
+        cfg.safety.joints_count != n) {
+        return fail(ConfigErr::INVALID_SIZE,
+            "controller, mapper and safety joints_count must match joint_names");
     }
 
     if(!std::isfinite(cfg.runtime.ctrl_frequency_hz) ||
-        !std::isfinite(cfg.runtime.cmd_timeout_s) ||
-        !std::isfinite(cfg.runtime.state_timeout_s) ||
-        cfg.runtime.ctrl_frequency_hz <= 0.0 ||
-        cfg.runtime.cmd_timeout_s <= 0.0 ||
-        cfg.runtime.state_timeout_s <= 0.0) {
-        return fail(ConfigErrc::INVALID_VALUE, "runtime frequency and timeouts must be finite and positive");
+        cfg.runtime.ctrl_frequency_hz <= 0.0) {
+        return fail(ConfigErr::INVALID_VALUE,
+            "runtime.ctrl_frequency_hz must be finite and positive");
     }
-
-    if(cfg.damiao.serial_port.empty() || cfg.damiao.baudrate <= 0 ||
-        cfg.damiao.startup_read_cycles == 0 || cfg.damiao.stop_cycles == 0 ||
-        !std::isfinite(cfg.damiao.stop_kp) || !std::isfinite(cfg.damiao.stop_kd) ||
-        cfg.damiao.stop_kp < 0.0 || cfg.damiao.stop_kd < 0.0) {
-        return fail(ConfigErrc::INVALID_VALUE, "invalid Damiao bus or stop configuration");
+    const double nominal_dt = 1.0 / cfg.runtime.ctrl_frequency_hz;
+    if(cfg.safety.max_dt_s < nominal_dt) {
+        return fail(ConfigErr::INVALID_VALUE,
+            "safety.max_dt_s must not be smaller than the nominal control period");
     }
 
     std::set<std::string> joint_names;
-    std::set<std::string> actuator_names;
-    std::set<std::uint32_t> motor_ids;
-    for(std::size_t i = 0; i < n; ++i) {
-        if(cfg.joint_names[i].empty() || !joint_names.insert(cfg.joint_names[i]).second) {
-            return fail(ConfigErrc::DUPLICATE_NAME, "joint names must be non-empty and unique");
-        }
-
-        const auto& actuator = cfg.damiao.actuators[i];
-        if(actuator.name.empty() || !actuator_names.insert(actuator.name).second) {
-            return fail(ConfigErrc::DUPLICATE_NAME, "actuator names must be non-empty and unique");
-        }
-        if(actuator.joint_name != cfg.joint_names[i]) {
-            return fail(ConfigErrc::INVALID_VALUE,
-                "actuator order/joint_name must match joint_names at index " + std::to_string(i));
-        }
-        if(actuator.motor_id == 0 || !motor_ids.insert(actuator.motor_id).second) {
-            return fail(ConfigErrc::DUPLICATE_MOTOR_ID, "motor IDs must be non-zero and unique");
-        }
-        if(actuator.motor_type.empty()) {
-            return fail(ConfigErrc::MISSING_FIELD,
-                "motor_type must not be empty at index " + std::to_string(i));
+    for(const auto& joint_name : cfg.joint_names) {
+        if(joint_name.empty() || !joint_names.insert(joint_name).second) {
+            return fail(ConfigErr::DUPLICATE_NAME,
+                "joint names must be non-empty and unique");
         }
     }
 
-    const std::array<const JointVector*, 7> limit_vectors = {
-        &cfg.limits.min_pos,
-        &cfg.limits.max_pos,
-        &cfg.limits.max_vel,
-        &cfg.limits.max_acc,
-        &cfg.limits.max_effort,
-        &cfg.limits.max_kp,
-        &cfg.limits.max_kd,
+    const std::array<const JointVector*, 8> limit_vectors = {
+        &limits.min_pos,
+        &limits.max_pos,
+        &limits.max_vel,
+        &limits.max_acc,
+        &limits.max_effort,
+        &limits.max_kp,
+        &limits.max_kd,
+        &limits.pos_margin,
     };
     for(const auto* values : limit_vectors) {
         if(!finite_vector(*values)) {
-            return fail(ConfigErrc::INVALID_VALUE, "joint limits contain NaN or Inf");
+            return fail(ConfigErr::INVALID_VALUE,
+                "Safety joint limits contain NaN or Inf");
         }
     }
 
     JointActuatorMapper mapper;
     if(!mapper.configure(cfg.mapper)) {
-        return fail(ConfigErrc::INVALID_VALUE, "invalid Joint/Actuator mapping");
+        return fail(ConfigErr::INVALID_VALUE,
+            "invalid Joint/Actuator mapping");
     }
 
     JointCtrller ctrller;
     if(!ctrller.configure(cfg.ctrller)) {
-        return fail(ConfigErrc::INVALID_VALUE, "invalid Joint controller gains");
+        return fail(ConfigErr::INVALID_VALUE,
+            "invalid Joint controller gains");
+    }
+
+    Safety safety;
+    if(!safety.configure(cfg.safety)) {
+        return fail(ConfigErr::INVALID_VALUE,
+            "invalid Safety configuration");
     }
 
     for(const auto* gains : all_gains(cfg.ctrller)) {
         if(gains->kp.size() != n || gains->kd.size() != n) {
-            return fail(ConfigErrc::INVALID_SIZE, "every impedance gain vector must have length 6");
+            return fail(ConfigErr::INVALID_SIZE,
+                "every impedance gain vector must have length 6");
         }
     }
 
     for(std::size_t i = 0; i < n; ++i) {
-        if(cfg.limits.min_pos[i] >= cfg.limits.max_pos[i] ||
-            cfg.limits.max_vel[i] <= 0.0 || cfg.limits.max_acc[i] <= 0.0 ||
-            cfg.limits.max_effort[i] <= 0.0 || cfg.limits.max_kp[i] < 0.0 ||
-            cfg.limits.max_kd[i] < 0.0) {
-            return fail(ConfigErrc::INVALID_VALUE,
-                "invalid Joint limit at index " + std::to_string(i));
-        }
-
         for(const auto* gains : all_gains(cfg.ctrller)) {
-            if(gains->kp[i] > cfg.limits.max_kp[i] ||
-                gains->kd[i] > cfg.limits.max_kd[i]) {
-                return fail(ConfigErrc::INVALID_VALUE,
-                    "controller gain exceeds configured Joint limit at index " + std::to_string(i));
+            if(gains->kp[i] > limits.max_kp[i] ||
+                gains->kd[i] > limits.max_kd[i]) {
+                return fail(ConfigErr::INVALID_VALUE,
+                    "controller gain exceeds configured Safety limit at index " +
+                    std::to_string(i));
             }
+        }
+    }
+
+    return {};
+}
+
+/**
+ * @brief 验证完整机器人配置，包括当前 Damiao 后端字段
+ * @param cfg 机器人配置
+ * @return 如果配置有效，则返回空值，否则返回 ConfigErrInfo
+ */
+tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
+    const auto core_valid = validate_robot_core_cfg(cfg);
+    if(!core_valid) {
+        return tl::make_unexpected(core_valid.error());
+    }
+
+    const std::size_t n = cfg.joint_names.size();
+    if(cfg.damiao.actuators.size() != n) {
+        return fail(ConfigErr::INVALID_SIZE,
+            "Damiao actuator entries must have length 6");
+    }
+
+    if(cfg.damiao.serial_port.empty() || cfg.damiao.baudrate <= 0 ||
+        cfg.damiao.startup_read_cycles == 0 || cfg.damiao.stop_cycles == 0 ||
+        !std::isfinite(cfg.damiao.stop_kp) ||
+        !std::isfinite(cfg.damiao.stop_kd) ||
+        cfg.damiao.stop_kp < 0.0 || cfg.damiao.stop_kd < 0.0) {
+        return fail(ConfigErr::INVALID_VALUE,
+            "invalid Damiao bus or stop configuration");
+    }
+
+    std::set<std::string> actuator_names;
+    std::set<std::uint32_t> motor_ids;
+    for(std::size_t i = 0; i < n; ++i) {
+        const auto& actuator = cfg.damiao.actuators[i];
+        if(actuator.name.empty() ||
+            !actuator_names.insert(actuator.name).second) {
+            return fail(ConfigErr::DUPLICATE_NAME,
+                "actuator names must be non-empty and unique");
+        }
+        if(actuator.joint_name != cfg.joint_names[i]) {
+            return fail(ConfigErr::INVALID_VALUE,
+                "actuator order/joint_name must match joint_names at index " +
+                std::to_string(i));
+        }
+        if(actuator.motor_id == 0 ||
+            !motor_ids.insert(actuator.motor_id).second) {
+            return fail(ConfigErr::DUPLICATE_MOTOR_ID,
+                "motor IDs must be non-zero and unique");
+        }
+        if(actuator.motor_type.empty()) {
+            return fail(ConfigErr::MISSING_FIELD,
+                "motor_type must not be empty at index " +
+                std::to_string(i));
         }
     }
 

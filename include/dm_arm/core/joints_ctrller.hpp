@@ -96,6 +96,14 @@ public:
     tl::expected<void, JointCtrllerErr> initialize(const JointState& state);
 
     /**
+     * @brief 复位运行时状态并回到 CONFIGURED
+     *
+     * reset 只清除初始化状态和当前命令，不重新读取配置
+     * 后续必须再次调用 initialize()
+     */
+    void reset() noexcept;
+
+    /**
      * @brief 设置关节阻抗模式
      * @param mode 关节阻抗模式
      * @param state 当前关节状态

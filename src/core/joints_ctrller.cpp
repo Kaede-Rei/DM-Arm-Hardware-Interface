@@ -93,6 +93,27 @@ tl::expected<void, JointCtrllerErr> JointCtrller::initialize(const JointState& s
     return {};
 }
 
+void JointCtrller::reset() noexcept {
+    if(state_ == JointCtrllerState::UNCONFIGURED) {
+        return;
+    }
+
+    hold_pos_.assign(cfg_.joints_count, 0.0);
+    fallback_pos_.assign(cfg_.joints_count, 0.0);
+    cur_cmd_ = JointPosCmd{};
+
+    full_cmd_.pos.assign(cfg_.joints_count, 0.0);
+    full_cmd_.vel.assign(cfg_.joints_count, 0.0);
+    full_cmd_.tor.assign(cfg_.joints_count, 0.0);
+    full_cmd_.kp.assign(cfg_.joints_count, 0.0);
+    full_cmd_.kd.assign(cfg_.joints_count, 0.0);
+
+    impedance_mode_ = JointImpedanceMode::RIGID_HOLD;
+    has_cmd_ = false;
+    has_full_cmd_ = false;
+    state_ = JointCtrllerState::CONFIGURED;
+}
+
 /**
  * @brief 设置关节阻抗模式
  * @param mode 关节阻抗模式

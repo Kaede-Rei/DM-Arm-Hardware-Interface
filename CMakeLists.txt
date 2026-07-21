@@ -29,6 +29,7 @@ set(DM_ARM_DAMIAO_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/damiao/incl
 add_library(dm_arm_core
     src/core/joints_ctrller.cpp
     src/core/joint_actuator_mapper.cpp
+    src/core/safety.cpp
 )
 add_library(dm_arm::core ALIAS dm_arm_core)
 set_target_properties(dm_arm_core PROPERTIES EXPORT_NAME core)
@@ -56,6 +57,22 @@ target_include_directories(dm_arm_config
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+add_library(dm_arm_robot src/robot.cpp)
+add_library(dm_arm::robot ALIAS dm_arm_robot)
+set_target_properties(dm_arm_robot PROPERTIES EXPORT_NAME robot)
+target_link_libraries(dm_arm_robot
+    PUBLIC
+        dm_arm_core
+        dm_arm_config
+)
+target_include_directories(dm_arm_robot
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${DM_ARM_TL_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_features(dm_arm_robot PUBLIC cxx_std_17)
+
 if(DM_ARM_BUILD_DAMIAO)
     add_library(dm_arm_damiao src/hardware/damiao_motor_bus.cpp)
     add_library(dm_arm::damiao ALIAS dm_arm_damiao)
@@ -70,7 +87,7 @@ if(DM_ARM_BUILD_DAMIAO)
     )
 endif()
 
-foreach(target dm_arm_core dm_arm_config)
+foreach(target dm_arm_core dm_arm_config dm_arm_robot)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
@@ -79,7 +96,7 @@ if(TARGET dm_arm_damiao AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dm_arm_damiao PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-set(DM_ARM_INSTALL_TARGETS dm_arm_core dm_arm_config)
+set(DM_ARM_INSTALL_TARGETS dm_arm_core dm_arm_config dm_arm_robot)
 if(TARGET dm_arm_damiao)
     list(APPEND DM_ARM_INSTALL_TARGETS dm_arm_damiao)
 endif()

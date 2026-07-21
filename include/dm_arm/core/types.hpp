@@ -23,6 +23,15 @@ enum class JointImpedanceMode {
 };
 
 /**
+ * @brief 模型前馈策略
+ */
+enum class ModelFeedforwardMode {
+    NONE,                   ///< 不使用模型前馈
+    GRAVITY,                ///< 重力补偿 g(q)
+    FULL_INVERSE_DYNAMICS,  ///< 完整逆动力学前馈
+};
+
+/**
  * @brief 关节状态
  *
  * 所有数据均位于关节侧：

@@ -4,6 +4,7 @@
 
 #include "dm_arm/core/joint_actuator_mapper.hpp"
 #include "dm_arm/core/joints_ctrller.hpp"
+#include "dm_arm/core/safety.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,23 +21,11 @@ constexpr std::size_t DM_ARM_JOINTS_COUNT = 6;  ///< DM-Arm 主链关节数量
  * @brief Robot 运行时配置
  */
 struct RuntimeCfg {
-    double ctrl_frequency_hz{ 200.0 };  ///< 控制循环频率
-    double cmd_timeout_s{ 0.1 };        ///< 上层命令超时
-    double state_timeout_s{ 0.05 };     ///< 硬件状态超时
-    bool write_enabled{ false };        ///< 是否允许下发执行器命令
-};
-
-/**
- * @brief Joint 侧软件限制
- */
-struct JointLimitCfg {
-    JointVector min_pos;       ///< 最小位置，rad
-    JointVector max_pos;       ///< 最大位置，rad
-    JointVector max_vel;       ///< 最大速度，rad/s
-    JointVector max_acc;       ///< 最大加速度，rad/s^2
-    JointVector max_effort;    ///< 最大关节力矩，N·m
-    JointVector max_kp;        ///< 最大 Joint 侧 kp
-    JointVector max_kd;        ///< 最大 Joint 侧 kd
+    double ctrl_frequency_hz{ 200.0 };                 ///< 控制循环频率
+    bool write_enabled{ false };                       ///< 是否允许下发执行器命令
+    ModelFeedforwardMode model_feedforward_mode{       ///< 模型前馈策略
+        ModelFeedforwardMode::NONE
+    };
 };
 
 /**
@@ -72,14 +61,14 @@ struct RobotCfg {
     RuntimeCfg runtime;                    ///< Robot 运行参数
     JointCtrllerCfg ctrller;               ///< Joint 控制器参数
     JointActuatorMapCfg mapper;             ///< Joint/Actuator 映射
-    JointLimitCfg limits;                  ///< Joint 软件限制
+    SafetyCfg safety;                      ///< Joint/Actuator 安全配置
     DamiaoBusCfg damiao;                   ///< 达妙后端参数
 };
 
 /**
  * @brief 配置加载错误码
  */
-enum class ConfigErrc {
+enum class ConfigErr {
     FILE_OPEN_FAILED,     ///< 配置文件无法打开
     SYNTAX_ERROR,         ///< YAML 语法错误
     MISSING_FIELD,        ///< 缺少必需字段
@@ -92,8 +81,8 @@ enum class ConfigErrc {
 /**
  * @brief 配置加载错误信息
  */
-struct ConfigErr {
-    ConfigErrc code{ ConfigErrc::INVALID_VALUE };
+struct ConfigErrInfo {
+    ConfigErr code{ ConfigErr::INVALID_VALUE };
     std::string message;
 };
 
@@ -103,12 +92,17 @@ struct ConfigErr {
  * @brief 使用 yaml-cpp 加载完整机器人配置
  * @param path YAML 文件路径
  */
-tl::expected<RobotCfg, ConfigErr> load_robot_cfg(const std::string& path);
+tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path);
 
 /**
- * @brief 验证与具体 SDK 型号表无关的跨模块配置关系
+ * @brief 验证 Robot 控制闭环所需的通用配置
  */
-tl::expected<void, ConfigErr> validate_robot_cfg(const RobotCfg& cfg);
+tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg);
+
+/**
+ * @brief 验证完整配置，包括当前 YAML 中的 Damiao 后端字段
+ */
+tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg);
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //
 
