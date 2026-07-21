@@ -6,15 +6,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(DM_ARM_BUILD_ROS2 "Build ROS 2 integration" OFF)
-option(DM_ARM_BUILD_PYTHON "Build Python binding" OFF)
-option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" OFF)
+option(DM_ARM_BUILD_TERMINAL "Build terminal main application" ON)
+option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" ON)
 option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" OFF)
+option(DM_ARM_BUILD_PYTHON "Build Python binding" OFF)
+option(DM_ARM_BUILD_ROS2 "Build ROS 2 integration" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 find_package(yaml-cpp REQUIRED)
+find_package(Threads REQUIRED)
 if(TARGET yaml-cpp::yaml-cpp)
     set(DM_ARM_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
 elseif(TARGET yaml-cpp)
@@ -94,6 +96,29 @@ foreach(target dm_arm_core dm_arm_config dm_arm_robot)
 endforeach()
 if(TARGET dm_arm_damiao AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dm_arm_damiao PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(DM_ARM_BUILD_TERMINAL)
+    add_executable(dm_arm_terminal app/dm_arm_terminal.cpp)
+    target_link_libraries(dm_arm_terminal
+        PRIVATE
+            dm_arm_robot
+            dm_arm_config
+            Threads::Threads
+    )
+    target_compile_features(dm_arm_terminal PRIVATE cxx_std_17)
+    if(TARGET dm_arm_damiao)
+        target_link_libraries(dm_arm_terminal PRIVATE dm_arm_damiao)
+        target_compile_definitions(dm_arm_terminal PRIVATE DM_ARM_CLI_HAS_DAMIAO=1)
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(dm_arm_terminal PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    install(TARGETS dm_arm_terminal
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 endif()
 
 set(DM_ARM_INSTALL_TARGETS dm_arm_core dm_arm_config dm_arm_robot)

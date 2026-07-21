@@ -94,8 +94,9 @@ tl::expected<void, RobotFault> Robot::configure(const RobotCfg& cfg, std::unique
 
 /**
  * @brief 连接、使能并用真实状态初始化控制器
+ * @return 成功返回空 expected，失败返回 RobotFault
  */
-tl::expected<void, RobotFault> Robot::activate(TimePoint now) {
+tl::expected<void, RobotFault> Robot::activate() {
     if(state_ == RobotState::UNCONFIGURED) {
         return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
     }
@@ -164,9 +165,12 @@ tl::expected<void, RobotFault> Robot::activate(TimePoint now) {
     has_state_ = true;
     has_completed_cycle_ = false;
     has_external_cmd_ = false;
-    last_cycle_time_ = now;
-    last_state_time_ = now;
-    last_cmd_time_ = now;
+
+    const TimePoint activated_at = Clock::now();
+    last_cycle_time_ = activated_at;
+    last_state_time_ = activated_at;
+    last_cmd_time_ = activated_at;
+
     last_fault_.reset();
     state_ = RobotState::ACTIVE;
     return {};
@@ -271,7 +275,6 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
     const double dt = has_completed_cycle_
         ? seconds_between(now, last_cycle_time_)
         : nominal_dt;
-    const double state_age_s = seconds_between(now, last_state_time_);
 
     const auto actuator_state = motor_bus_->read();
     if(!actuator_state) {
@@ -281,6 +284,9 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
         enter_fault(fault, SafetyAction::DISABLE);
         return tl::make_unexpected(fault);
     }
+
+    const TimePoint state_received_at = Clock::now();
+    const double state_age_s = has_completed_cycle_ ? seconds_between(state_received_at, last_state_time_) : 0.0;
 
     const auto joint_state = mapper_.to_joint_state(actuator_state.value());
     if(!joint_state) {
@@ -350,7 +356,7 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
     has_state_ = true;
     has_completed_cycle_ = true;
     last_cycle_time_ = now;
-    last_state_time_ = now;
+    last_state_time_ = state_received_at;
 
     RobotCycleOutput output;
     output.actuator_state = actuator_state_;
@@ -402,9 +408,9 @@ tl::expected<void, RobotFault> Robot::reset_fault() {
         return tl::make_unexpected(make_fault(RobotErr::NOT_FAULTED));
     }
 
-    const auto disabled = motor_bus_->deactivate();
-    if(!disabled && disabled.error() != MotorBusErr::NOT_CONNECTED) {
-        const RobotFault fault = make_bus_fault(RobotErr::MOTOR_BUS_DEACTIVATE_FAILED, disabled.error());
+    const auto recovered = motor_bus_->recover();
+    if(!recovered) {
+        const RobotFault fault = make_bus_fault(RobotErr::MOTOR_BUS_RECOVER_FAILED, recovered.error());
         last_fault_ = fault;
         return tl::make_unexpected(fault);
     }

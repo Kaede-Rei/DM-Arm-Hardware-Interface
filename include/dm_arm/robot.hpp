@@ -56,6 +56,7 @@ enum class RobotErr {
     MOTOR_BUS_READ_FAILED,       ///< MotorBus read() 失败
     MOTOR_BUS_WRITE_FAILED,      ///< MotorBus write() 失败
     MOTOR_BUS_DEACTIVATE_FAILED, ///< MotorBus deactivate() 失败
+    MOTOR_BUS_RECOVER_FAILED,    ///< MotorBus recover() 失败
 
     MAPPER_FAILED,              ///< 关节/执行器映射失败
     CTRLLER_FAILED,             ///< 控制器失败
@@ -126,10 +127,9 @@ public:
 
     /**
      * @brief 连接、使能并用真实状态初始化控制器
-     * @param now 当前时间点
      * @return 成功返回空 expected，失败返回 RobotFault
      */
-    tl::expected<void, RobotFault> activate(TimePoint now = Clock::now());
+    tl::expected<void, RobotFault> activate();
 
     /**
      * @brief 设置跟踪参考命令

@@ -178,20 +178,32 @@ tl::expected<ActuatorState, MotorBusErr> DamiaoMotorBus::read() {
  * @return 如果激活成功，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::activate() {
-    if(!connected_ || !motor_ctrl_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+    if(!connected_ || !motor_ctrl_ || !serial_) {
+        return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+    }
     if(active_) return {};
 
     try {
+        serial_->flush_input();
+        std::fill(enabled_.begin(), enabled_.end(), 0);
+
         for(std::size_t i = 0; i < motors_.size(); ++i) {
-            if(!motor_ctrl_->enable(*motors_[i])) {
+            if(!motor_ctrl_->disable(*motors_[i])) {
                 disable_enabled_noexcept();
-                return tl::make_unexpected(MotorBusErr::WRITE_FAILED);
+                return tl::make_unexpected(MotorBusErr::DISABLE_FAILED);
             }
-            enabled_[i] = 1;
+
+            serial_->flush_input();
             if(!motor_ctrl_->switch_control_mode(*motors_[i], damiao::MIT_MODE)) {
                 disable_enabled_noexcept();
-                return tl::make_unexpected(MotorBusErr::WRITE_FAILED);
+                return tl::make_unexpected(MotorBusErr::MODE_SWITCH_FAILED);
             }
+
+            if(!motor_ctrl_->enable(*motors_[i])) {
+                disable_enabled_noexcept();
+                return tl::make_unexpected(MotorBusErr::ENABLE_FAILED);
+            }
+            enabled_[i] = 1;
         }
 
         active_ = true;
@@ -203,7 +215,8 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::activate() {
 
         for(std::size_t cycle = 0; cycle < cfg_.startup_read_cycles; ++cycle) {
             auto sample = read_impl(true);
-            if(!sample || std::any_of(sample->online.begin(), sample->online.end(), [](std::uint8_t value) { return value == 0; })) {
+            if(!sample || std::any_of(sample->online.begin(), sample->online.end(),
+                [](std::uint8_t value) { return value == 0; })) {
                 disable_enabled_noexcept();
                 return tl::make_unexpected(MotorBusErr::ACTUATOR_OFFLINE);
             }
@@ -227,13 +240,13 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::activate() {
         auto stopped = stop();
         if(!stopped) {
             disable_enabled_noexcept();
-            return tl::make_unexpected(stopped.error());
+            return tl::make_unexpected(MotorBusErr::STOP_FAILED);
         }
         return {};
     }
     catch(...) {
         disable_enabled_noexcept();
-        return tl::make_unexpected(MotorBusErr::WRITE_FAILED);
+        return tl::make_unexpected(MotorBusErr::ENABLE_FAILED);
     }
 }
 
@@ -296,52 +309,82 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::stop() {
  * @return 如果停用成功，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::deactivate() {
-    if(!connected_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
-
-    MotorBusErr first_error = MotorBusErr::WRITE_FAILED;
-    bool failed = false;
-    if(active_) {
-        auto stopped = stop();
-        if(!stopped) {
-            first_error = stopped.error();
-            failed = true;
-        }
+    if(!connected_ || !motor_ctrl_) {
+        return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
     }
 
+    bool stop_failed = false;
+    if(active_) {
+        const auto stopped = stop();
+        stop_failed = !stopped;
+    }
+
+    bool disable_failed = false;
     try {
         for(std::size_t i = 0; i < motors_.size(); ++i) {
-            if(enabled_[i] && !motor_ctrl_->disable(*motors_[i])) {
-                if(!failed) first_error = MotorBusErr::WRITE_FAILED;
-                failed = true;
+            if(!motor_ctrl_->disable(*motors_[i])) {
+                disable_failed = true;
             }
-            enabled_[i] = 0;
+            if(i < enabled_.size()) enabled_[i] = 0;
         }
+        if(serial_) serial_->flush_input();
     }
     catch(...) {
-        if(!failed) first_error = MotorBusErr::WRITE_FAILED;
-        failed = true;
+        disable_failed = true;
     }
 
     active_ = false;
     last_state_.enabled = enabled_;
-    if(failed) return tl::make_unexpected(first_error);
+
+    if(disable_failed) {
+        return tl::make_unexpected(MotorBusErr::DISABLE_FAILED);
+    }
+    if(stop_failed) {
+        return tl::make_unexpected(MotorBusErr::STOP_FAILED);
+    }
     return {};
+}
+
+/**
+ * @brief 在 FAULT 后重建达妙通信状态
+ * @return 如果恢复成功，则返回空的 tl::expected，否则返回错误码
+ */
+tl::expected<void, MotorBusErr> DamiaoMotorBus::recover() {
+    if(!configured_) {
+        return tl::make_unexpected(MotorBusErr::NOT_CONFIGURED);
+    }
+
+    release_connection_noexcept(true);
+
+    const auto connected = connect();
+    if(!connected) {
+        return tl::make_unexpected(connected.error());
+    }
+
+    try {
+        for(std::size_t i = 0; i < motors_.size(); ++i) {
+            if(!motor_ctrl_->disable(*motors_[i])) {
+                release_connection_noexcept(true);
+                return tl::make_unexpected(MotorBusErr::DISABLE_FAILED);
+            }
+            enabled_[i] = 0;
+        }
+        if(serial_) serial_->flush_input();
+        active_ = false;
+        last_state_.enabled = enabled_;
+        return {};
+    }
+    catch(...) {
+        release_connection_noexcept(true);
+        return tl::make_unexpected(MotorBusErr::RECOVER_FAILED);
+    }
 }
 
 /**
  * @brief 清理 DamiaoMotorBus 的资源
  */
 void DamiaoMotorBus::cleanup() noexcept {
-    disable_enabled_noexcept();
-    motors_.clear();
-    motor_ctrl_.reset();
-    serial_.reset();
-    online_.clear();
-    enabled_.clear();
-    last_state_ = ActuatorState{};
-    connected_ = false;
-    active_ = false;
-    configured_ = false;
+    release_connection_noexcept(false);
 }
 
 /**
@@ -438,17 +481,39 @@ tl::expected<damiao::DmMotorType, MotorBusErr> DamiaoMotorBus::parse_motor_type(
 void DamiaoMotorBus::disable_enabled_noexcept() noexcept {
     if(!motor_ctrl_) {
         active_ = false;
+        std::fill(enabled_.begin(), enabled_.end(), 0);
         return;
     }
     try {
-        for(std::size_t i = 0; i < motors_.size() && i < enabled_.size(); ++i) {
-            if(enabled_[i]) motor_ctrl_->disable(*motors_[i]);
-            enabled_[i] = 0;
+        for(std::size_t i = 0; i < motors_.size(); ++i) {
+            (void)motor_ctrl_->disable(*motors_[i]);
+            if(i < enabled_.size()) enabled_[i] = 0;
         }
+        if(serial_) serial_->flush_input();
     }
     catch(...) {
     }
     active_ = false;
+}
+
+/**
+ * @brief 释放连接资源
+ * @param keep_config 是否保留配置
+ */
+void DamiaoMotorBus::release_connection_noexcept(bool keep_config) noexcept {
+    disable_enabled_noexcept();
+    motors_.clear();
+    motor_ctrl_.reset();
+    serial_.reset();
+    online_.clear();
+    enabled_.clear();
+    last_state_ = ActuatorState{};
+    connected_ = false;
+    active_ = false;
+    if(!keep_config) {
+        cfg_ = DamiaoBusCfg{};
+        configured_ = false;
+    }
 }
 
 } // namespace dm_arm

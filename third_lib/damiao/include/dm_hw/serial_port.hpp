@@ -76,6 +76,17 @@ public:
         timeout_.tv_usec = (timeout_ms % 1000) * 1000;
     }
 
+    /**
+     * @brief 清空内核串口输入缓冲和本地帧拼接队列
+     */
+    void flush_input() noexcept {
+        if(fd_ >= 0) {
+            (void)tcflush(fd_, TCIFLUSH);
+        }
+        std::queue<uint8_t> empty;
+        recv_queue.swap(empty);
+    }
+
 private:
     void init(std::string port, speed_t baudrate) {
         int ret;

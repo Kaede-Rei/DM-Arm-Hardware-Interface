@@ -21,6 +21,12 @@ enum class MotorBusErr {
     ACTUATOR_OFFLINE,
     ACTUATOR_FAULT,
     TIMEOUT,
+
+    ENABLE_FAILED,
+    MODE_SWITCH_FAILED,
+    STOP_FAILED,
+    DISABLE_FAILED,
+    RECOVER_FAILED,
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
@@ -35,6 +41,7 @@ public:
     virtual tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) = 0;
     virtual tl::expected<void, MotorBusErr> stop() = 0;
     virtual tl::expected<void, MotorBusErr> deactivate() = 0;
+    virtual tl::expected<void, MotorBusErr> recover() = 0;
 
     virtual void cleanup() noexcept = 0;
     virtual std::size_t size() const noexcept = 0;

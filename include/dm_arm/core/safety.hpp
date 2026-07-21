@@ -88,6 +88,7 @@ struct SafetyCfg {
     double state_timeout_s{ 0.05 };             ///< 状态超时
     double max_dt_s{ 0.02 };                    ///< 允许的最大控制周期
     double numeric_tolerance{ 1.0e-6 };         ///< 浮点误差级越界容差
+    double state_vel_fault_ratio{ 1.5 };         ///< 实测速度硬故障阈值相对 max_vel 的倍数
 
     bool require_all_actuators_online{ true };  ///< ACTIVE 时要求所有执行器在线
     bool require_all_actuators_enabled{ true }; ///< ACTIVE 时要求所有执行器已使能

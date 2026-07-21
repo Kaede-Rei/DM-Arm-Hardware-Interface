@@ -246,6 +246,9 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.safety.state_timeout_s = require_as<double>(safety, "state_timeout_s", "safety");
         cfg.safety.max_dt_s = require_as<double>(safety, "max_dt_s", "safety");
         cfg.safety.numeric_tolerance = require_as<double>(safety, "numeric_tolerance", "safety");
+        cfg.safety.state_vel_fault_ratio = safety["state_vel_fault_ratio"]
+            ? require_as<double>(safety, "state_vel_fault_ratio", "safety")
+            : 1.5;
         cfg.safety.require_all_actuators_online =
             require_as<bool>(safety, "require_all_actuators_online", "safety");
         cfg.safety.require_all_actuators_enabled =

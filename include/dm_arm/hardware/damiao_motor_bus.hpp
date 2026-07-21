@@ -61,6 +61,11 @@ public:
      */
     tl::expected<void, MotorBusErr> deactivate() override;
     /**
+     * @brief 清理旧串口/协议状态并恢复到已连接、未使能状态
+     * @return 如果恢复成功，则返回空的 tl::expected，否则返回错误码
+     */
+    tl::expected<void, MotorBusErr> recover() override;
+    /**
      * @brief 清理 DamiaoMotorBus 的资源
      */
     void cleanup() noexcept override;
@@ -99,6 +104,11 @@ private:
      * @brief 失能已经使能的电机，忽略异常
      */
     void disable_enabled_noexcept() noexcept;
+    /**
+     * @brief 释放串口与电机对象，但可选择保留配置
+     * @param keep_config 是否保留配置
+     */
+    void release_connection_noexcept(bool keep_config) noexcept;
 
 private:
     DamiaoBusCfg cfg_;                      ///< DamiaoMotorBus 的配置参数

@@ -108,8 +108,10 @@ tl::expected<void, SafetyFault> Safety::check_state(
         if(joint_state.pos[i] > cfg_.limits.max_pos[i] + tolerance) {
             return tl::make_unexpected(fault(SafetyErr::JOINT_POS_LIMIT, i, joint_state.pos[i], cfg_.limits.max_pos[i]));
         }
-        if(std::abs(joint_state.vel[i]) > cfg_.limits.max_vel[i] + tolerance) {
-            return tl::make_unexpected(fault(SafetyErr::JOINT_VEL_LIMIT, i, joint_state.vel[i], cfg_.limits.max_vel[i]));
+        const double state_vel_fault_limit =
+            cfg_.limits.max_vel[i] * cfg_.state_vel_fault_ratio;
+        if(std::abs(joint_state.vel[i]) > state_vel_fault_limit + tolerance) {
+            return tl::make_unexpected(fault(SafetyErr::JOINT_VEL_LIMIT, i, joint_state.vel[i], state_vel_fault_limit));
         }
     }
 
@@ -261,6 +263,7 @@ SafetyAction Safety::action_for(SafetyErr err) const noexcept {
         case SafetyErr::CMD_KD_LIMIT:
         case SafetyErr::CMD_POS_STEP_LIMIT:
         case SafetyErr::CMD_VEL_STEP_LIMIT:
+        case SafetyErr::JOINT_VEL_LIMIT:
             return SafetyAction::STOP_HOLD;
 
         case SafetyErr::NOT_CONFIGURED:
@@ -272,7 +275,6 @@ SafetyAction Safety::action_for(SafetyErr err) const noexcept {
         case SafetyErr::NON_FINITE_JOINT_STATE:
         case SafetyErr::NON_FINITE_ACTUATOR_STATE:
         case SafetyErr::JOINT_POS_LIMIT:
-        case SafetyErr::JOINT_VEL_LIMIT:
         case SafetyErr::ACTUATOR_OFFLINE:
         case SafetyErr::ACTUATOR_NOT_ENABLED:
         case SafetyErr::ACTUATOR_FAULT:
@@ -338,7 +340,8 @@ tl::expected<void, SafetyFault> Safety::validate_cfg(const SafetyCfg& cfg) const
     if(!std::isfinite(cfg.cmd_timeout_s) || cfg.cmd_timeout_s <= 0.0 ||
         !std::isfinite(cfg.state_timeout_s) || cfg.state_timeout_s <= 0.0 ||
         !std::isfinite(cfg.max_dt_s) || cfg.max_dt_s <= 0.0 ||
-        !std::isfinite(cfg.numeric_tolerance) || cfg.numeric_tolerance < 0.0) {
+        !std::isfinite(cfg.numeric_tolerance) || cfg.numeric_tolerance < 0.0 ||
+        !std::isfinite(cfg.state_vel_fault_ratio) || cfg.state_vel_fault_ratio < 1.0) {
         return tl::make_unexpected(fault(SafetyErr::INVALID_CFG));
     }
 
