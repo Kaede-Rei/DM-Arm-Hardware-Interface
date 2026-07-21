@@ -60,7 +60,7 @@ struct RobotCfg {
     std::vector<std::string> joint_names;  ///< 固定的 Joint 顺序
     RuntimeCfg runtime;                    ///< Robot 运行参数
     JointCtrllerCfg ctrller;               ///< Joint 控制器参数
-    JointActuatorMapCfg mapper;             ///< Joint/Actuator 映射
+    JointActuatorMapCfg mapper;            ///< Joint/Actuator 映射
     SafetyCfg safety;                      ///< Joint/Actuator 安全配置
     DamiaoBusCfg damiao;                   ///< 达妙后端参数
 };
@@ -82,8 +82,8 @@ enum class ConfigErr {
  * @brief 配置加载错误信息
  */
 struct ConfigErrInfo {
-    ConfigErr code{ ConfigErr::INVALID_VALUE };
-    std::string message;
+    ConfigErr code{ ConfigErr::INVALID_VALUE }; ///< 错误码
+    std::string message;                        ///< 消息
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //

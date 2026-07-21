@@ -10,7 +10,7 @@ runtime:
 
 # 安全策略
 safety:
-  cmd_timeout_s: 0.10                   # 跟踪模式收到过命令后允许的最大命令年龄
+  cmd_timeout_s: 0.10                   # 跟踪模式收到过命令后允许的最大命令超时时间
   state_timeout_s: 0.05                 # 两帧合法硬件状态之间允许的最大间隔
   max_dt_s: 0.02                        # Safety 接受的最大控制周期
   numeric_tolerance: 1.0e-6             # 只处理浮点舍入级轻微越界
