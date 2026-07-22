@@ -495,12 +495,12 @@ public:
         ModelFeedforwardFn feedforward;
         if(cfg_.runtime.model_feedforward_mode != ModelFeedforwardMode::NONE) {
             if(backend_ != "fake") {
-                std::cerr << "当前尚未实现真实 Dynamics，真机后端只允许 NONE 前馈模式。\n";
+                std::cerr << "当前尚未实现真实 Dynamics，真机后端只允许 NONE 前馈模式\n";
                 return false;
             }
             std::cout << "[提示] Fake 后端使用零向量模拟 "
                 << to_string(cfg_.runtime.model_feedforward_mode)
-                << " 前馈回调，仅测试 API 接线。\n";
+                << " 前馈回调，仅测试 API 接线\n";
             feedforward = [](ModelFeedforwardMode,
                 const JointState& state,
                 double) -> tl::expected<JointVector, ModelFeedforwardErr> {
@@ -529,7 +529,7 @@ public:
                     exit_.store(true);
                     break;
                 }
-                std::cout << "输入无效。\n";
+                std::cout << "输入无效\n";
                 continue;
             }
             handle_menu(*choice);
@@ -558,7 +558,7 @@ private:
             << " config : " << config_path_display_ << '\n'
             << "==============================================\n";
         if(backend_ == "damiao") {
-            std::cout << "[危险] 当前是真机后端。切换模式和发送命令前必须确认机械臂已支撑、限位和零位正确。\n";
+            std::cout << "[危险] 当前是真机后端；切换模式和发送命令前必须确认机械臂已支撑、限位和零位正确\n";
         }
     }
 
@@ -608,7 +608,7 @@ private:
             case 17: inject_fake_fault(); break;
             case 18: clear_fake_faults(); break;
             case 19: run_api_demo(); break;
-            default: std::cout << "未知菜单项。\n"; break;
+            default: std::cout << "未知菜单项\n"; break;
         }
     }
 
@@ -623,7 +623,7 @@ private:
         clear_stream_locked();
         last_output_.reset();
         auto_cycle_.store(true);
-        std::cout << "activate() 成功，后台 cycle() 已启动。\n";
+        std::cout << "activate() 成功，后台 cycle() 已启动\n";
     }
 
     void deactivate() {
@@ -637,7 +637,7 @@ private:
             print_fault(result.error());
             return;
         }
-        std::cout << "deactivate() 成功。\n";
+        std::cout << "deactivate() 成功\n";
     }
 
     void reset_fault() {
@@ -651,7 +651,7 @@ private:
             print_fault(result.error());
             return;
         }
-        std::cout << "reset_fault() 成功，Robot 回到 INACTIVE。\n";
+        std::cout << "reset_fault() 成功，Robot 回到 INACTIVE\n";
     }
 
     void switch_mode() {
@@ -662,7 +662,7 @@ private:
             << "5 COMPLIANT_TRACKING\n";
         const auto value = read_int("模式: ");
         if(!value || *value < 1 || *value > 5) {
-            std::cout << "模式输入无效。\n";
+            std::cout << "模式输入无效\n";
             return;
         }
         const JointImpedanceMode mode = static_cast<JointImpedanceMode>(*value - 1);
@@ -675,10 +675,10 @@ private:
             print_fault(result.error());
             return;
         }
-        // Robot::set_impedance_mode() 会把 Safety 命令历史重置到当前实测状态。
-        // 清除旧周期输出，保证下一段轨迹使用同一参考基准。
+        // Robot::set_impedance_mode() 会把 Safety 命令历史重置到当前实测状态
+        // 清除旧周期输出，保证下一段轨迹使用同一参考基准
         last_output_.reset();
-        std::cout << "模式已切换为 " << to_string(mode) << "。\n";
+        std::cout << "模式已切换为 " << to_string(mode) << "\n";
     }
 
     void set_safe_absolute_target() {
@@ -686,17 +686,17 @@ private:
         if(!target) return;
         const auto scale = read_double("速度比例 (0, 1]，建议 0.3~1.0: ");
         if(!scale || *scale <= 0.0 || *scale > 1.0) {
-            std::cout << "速度比例无效。\n";
+            std::cout << "速度比例无效\n";
             return;
         }
 
         std::lock_guard<std::mutex> lock(robot_mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "Robot 不是 ACTIVE。\n";
+            std::cout << "Robot 不是 ACTIVE\n";
             return;
         }
         if(!is_tracking_mode(robot_.get_impedance_mode())) {
-            std::cout << "请先切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING。\n";
+            std::cout << "请先切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING\n";
             return;
         }
         if(!target_inside_soft_limits(*target)) return;
@@ -709,17 +709,17 @@ private:
         if(!delta) return;
         const auto scale = read_double("速度比例 (0, 1]，建议 0.3~1.0: ");
         if(!scale || *scale <= 0.0 || *scale > 1.0) {
-            std::cout << "速度比例无效。\n";
+            std::cout << "速度比例无效\n";
             return;
         }
 
         std::lock_guard<std::mutex> lock(robot_mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "Robot 不是 ACTIVE。\n";
+            std::cout << "Robot 不是 ACTIVE\n";
             return;
         }
         if(!is_tracking_mode(robot_.get_impedance_mode())) {
-            std::cout << "请先切换到 Tracking 模式。\n";
+            std::cout << "请先切换到 Tracking 模式\n";
             return;
         }
 
@@ -771,30 +771,30 @@ private:
 
         std::lock_guard<std::mutex> lock(robot_mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "Robot 不是 ACTIVE。\n";
+            std::cout << "Robot 不是 ACTIVE\n";
             return;
         }
         stream_.kind = StreamKind::FULL_CMD;
         stream_.full_cmd = JointCtrlCmd{ *pos, *vel, *tor, *kp, *kd };
-        std::cout << "已排队 set_full_cmd()。若 controller.allow_full_cmd=false，会返回预期错误。\n";
+        std::cout << "已排队 set_full_cmd()；若 controller.allow_full_cmd=false，会返回预期错误\n";
     }
 
     void queue_joint_command(JointCmd cmd, StreamKind kind) {
         std::lock_guard<std::mutex> lock(robot_mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "Robot 不是 ACTIVE。\n";
+            std::cout << "Robot 不是 ACTIVE\n";
             return;
         }
         stream_.kind = kind;
         stream_.joint_cmd = std::move(cmd);
-        std::cout << "命令已排队并会在每个控制周期重复发送。明显跳变会由 Safety 拒绝。\n";
+        std::cout << "命令已排队并会在每个控制周期重复发送；明显跳变会由 Safety 拒绝\n";
     }
 
     void cancel_stream_and_hold() {
         std::lock_guard<std::mutex> lock(robot_mutex_);
         clear_stream_locked();
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "输入流已清除。Robot 当前不是 ACTIVE。\n";
+            std::cout << "输入流已清除；Robot 当前不是 ACTIVE\n";
             return;
         }
         const auto result = robot_.set_impedance_mode(JointImpedanceMode::RIGID_HOLD);
@@ -803,7 +803,7 @@ private:
             print_fault(result.error());
             return;
         }
-        std::cout << "输入流已清除，并切换到 RIGID_HOLD。\n";
+        std::cout << "输入流已清除，并切换到 RIGID_HOLD\n";
     }
 
     void toggle_auto_cycle() {
@@ -812,12 +812,12 @@ private:
 
         if(state != RobotState::ACTIVE) {
             auto_cycle_.store(false);
-            std::cout << "Robot 当前不是 ACTIVE。无需预先启动 cycle()；activate() 成功后会自动启动后台周期。\n";
+            std::cout << "Robot 当前不是 ACTIVE；无需预先启动 cycle()；activate() 成功后会自动启动后台周期\n";
             return;
         }
 
         if(backend_ == "damiao" && auto_cycle_.load()) {
-            std::cout << "真机 ACTIVE 状态下禁止暂停后台 cycle()。如需停止，请先执行 deactivate()。\n";
+            std::cout << "真机 ACTIVE 状态下禁止暂停后台 cycle()；如需停止，请先执行 deactivate()\n";
             return;
         }
 
@@ -828,11 +828,11 @@ private:
 
     void single_cycle() {
         if(backend_ == "damiao") {
-            std::cout << "真机后端不提供手动单周期运行；请保持后台 cycle() 连续运行。\n";
+            std::cout << "真机后端不提供手动单周期运行；请保持后台 cycle() 连续运行\n";
             return;
         }
         if(auto_cycle_.load()) {
-            std::cout << "请先暂停后台 cycle()，避免重复周期。\n";
+            std::cout << "请先暂停后台 cycle()，避免重复周期\n";
             return;
         }
         std::lock_guard<std::mutex> lock(robot_mutex_);
@@ -903,7 +903,7 @@ private:
             output = last_output_;
         }
         if(!output) {
-            std::cout << "尚无成功控制周期输出。\n";
+            std::cout << "尚无成功控制周期输出\n";
             return;
         }
         std::cout << "\ndt = " << std::fixed << std::setprecision(6)
@@ -942,7 +942,7 @@ private:
 
     void inject_fake_fault() {
         if(!fake_bus_) {
-            std::cout << "故障注入仅支持 FakeBus。\n";
+            std::cout << "故障注入仅支持 FakeBus\n";
             return;
         }
         std::cout << "\n1 connect 失败\n"
@@ -960,14 +960,14 @@ private:
         if(*type == 6 || *type == 7) {
             index = read_int("执行器编号 1~6: ");
             if(!index || *index < 1 || *index > 6) {
-                std::cout << "编号无效。\n";
+                std::cout << "编号无效\n";
                 return;
             }
         }
         if(*type == 7) {
             code = read_int("错误码(非0): ");
             if(!code || *code == 0) {
-                std::cout << "错误码无效。\n";
+                std::cout << "错误码无效\n";
                 return;
             }
         }
@@ -982,29 +982,29 @@ private:
             case 6: fake_bus_->inject_offline(static_cast<std::size_t>(*index - 1)); break;
             case 7: fake_bus_->inject_fault(static_cast<std::size_t>(*index - 1), *code); break;
             default:
-                std::cout << "类型无效。\n";
+                std::cout << "类型无效\n";
                 return;
         }
-        std::cout << "故障已注入，下一相关 API/周期会体现结果。\n";
+        std::cout << "故障已注入，下一相关 API/周期会体现结果\n";
     }
 
     void clear_fake_faults() {
         if(!fake_bus_) {
-            std::cout << "当前不是 FakeBus。\n";
+            std::cout << "当前不是 FakeBus\n";
             return;
         }
         std::lock_guard<std::mutex> lock(robot_mutex_);
         fake_bus_->clear_injections();
-        std::cout << "FakeBus 故障已清除。\n";
+        std::cout << "FakeBus 故障已清除\n";
     }
 
     void run_api_demo() {
         if(backend_ != "fake") {
-            std::cout << "离线 API 全流程演示只允许 Fake 后端。\n";
+            std::cout << "离线 API 全流程演示只允许 Fake 后端\n";
             return;
         }
 
-        std::cout << "\n[API Demo] 在独立 Robot/FakeBus 实例中运行，不影响当前 Robot。\n";
+        std::cout << "\n[API Demo] 在独立 Robot/FakeBus 实例中运行，不影响当前 Robot\n";
         RobotCfg cfg = cfg_;
         cfg.runtime.write_enabled = true;
         cfg.runtime.model_feedforward_mode = ModelFeedforwardMode::NONE;
@@ -1033,7 +1033,7 @@ private:
         report_demo("activate", activated);
         if(!activated) return;
 
-        // activate() 使用硬件激活完成时刻初始化内部时间基准。
+        // activate() 使用硬件激活完成时刻初始化内部时间基准
         demo_now = Robot::Clock::now();
 
         auto second_activate = demo.activate();
@@ -1107,7 +1107,7 @@ private:
         auto inactive_cycle = demo.cycle(next_cycle_time());
         report_demo_expected_error("cycle while inactive", inactive_cycle, RobotErr::NOT_ACTIVE);
 
-        std::cout << "[API Demo] 完成。\n";
+        std::cout << "[API Demo] 完成\n";
     }
 
     template<typename T>
@@ -1196,9 +1196,9 @@ private:
                 stream_.last_update_time = now;
                 stream_.has_last_update_time = true;
 
-                // 轨迹生成与 Robot::cycle() 使用同一个 now。这里限制最大步长，
+                // 轨迹生成与 Robot::cycle() 使用同一个 now这里限制最大步长，
                 // 避免一次调度抖动把参考速度/位置推进过多；若实际周期超过
-                // Safety::max_dt_s，Robot::cycle() 仍会按 Safety 规则报告 INVALID_DT。
+                // Safety::max_dt_s，Robot::cycle() 仍会按 Safety 规则报告 INVALID_DT
                 dt = std::clamp(dt, 1.0e-6, cfg_.safety.max_dt_s);
 
                 const double pos_tolerance = std::max(
@@ -1227,8 +1227,8 @@ private:
 
                     done = false;
 
-                    // 由剩余距离得到当前允许的制动速度。距离越小，目标速度越低，
-                    // 从源头避免到达目标时再把速度一帧清零。
+                    // 由剩余距离得到当前允许的制动速度距离越小，目标速度越低，
+                    // 从源头避免到达目标时再把速度一帧清零
                     const double direction = error > 0.0 ? 1.0 :
                         (error < 0.0 ? -1.0 : 0.0);
                     const double braking_speed = std::sqrt(
@@ -1249,9 +1249,9 @@ private:
                         (error < 0.0 && next_error > 0.0);
 
                     if(crossed_target || std::abs(error) <= pos_tolerance) {
-                        // 位置可以落在目标点，但速度只能按 max_acc 逐步降到 0。
+                        // 位置可以落在目标点，但速度只能按 max_acc 逐步降到 0
                         // 原实现这里直接 streamed_vel=0，正是
-                        // CMD_VEL_STEP_LIMIT 的根因。
+                        // CMD_VEL_STEP_LIMIT 的根因
                         next_pos = stream_.target_pos[i];
                         next_vel = current_vel + std::clamp(
                             -current_vel,
@@ -1300,7 +1300,7 @@ private:
         std::lock_guard<std::mutex> io_lock(io_mutex_);
         std::cout << "\n[后台 " << source << " 失败]\n";
         print_fault(fault);
-        std::cout << "请输入菜单编号继续。\n";
+        std::cout << "请输入菜单编号继续\n";
     }
 
     void start_safe_position_stream_locked(JointVector target, double speed_scale) {
@@ -1310,8 +1310,8 @@ private:
 
         // Safety 的单周期连续性基准是“上一帧已接受并实际发送的命令”，
         // 因此中途重定向时必须从同一个命令参考继续规划，不能突然退回
-        // 当前实测位置。机械臂存在跟踪滞后时，实测位置与命令位置可能
-        // 相差数度，直接用实测位置重建轨迹会制造假的 CMD_POS_STEP_LIMIT。
+        // 当前实测位置；机械臂存在跟踪滞后时，实测位置与命令位置可能
+        // 相差数度，直接用实测位置重建轨迹会制造假的 CMD_POS_STEP_LIMIT
         if(last_output_ &&
             last_output_->joint_cmd.pos.size() == cfg_.joint_names.size() &&
             last_output_->joint_cmd.vel.size() == cfg_.joint_names.size()) {
@@ -1353,15 +1353,15 @@ private:
         else {
             std::cout << "，从当前实测状态起步";
         }
-        std::cout << "。\n";
+        std::cout << "\n";
 
         if(max_reference_lag > 0.05) {
             std::cout << "[提示] joint" << (max_reference_lag_index + 1)
                 << " 当前命令-实测位置滞后="
                 << std::fixed << std::setprecision(4)
                 << max_reference_lag
-                << " rad。参考会保持连续，但这说明该关节跟踪不足；"
-                "请用菜单 15 对比 joint.pos 与 cmd.pos。\n";
+                << " rad；参考会保持连续，但这说明该关节跟踪不足；"
+                "请用菜单 15 对比 joint.pos 与 cmd.pos\n";
         }
     }
 
@@ -1373,7 +1373,7 @@ private:
                 - cfg_.safety.limits.pos_margin[i];
             if(!std::isfinite(target[i]) || target[i] < low || target[i] > high) {
                 std::cout << "joint" << (i + 1) << " 目标 " << target[i]
-                    << " 超出命令软限位 [" << low << ", " << high << "]。\n";
+                    << " 超出命令软限位 [" << low << ", " << high << "]\n";
                 return false;
             }
         }
@@ -1433,7 +1433,7 @@ private:
         while(input >> value) values.push_back(value);
         if(values.size() != DM_ARM_JOINTS_COUNT ||
             !std::all_of(values.begin(), values.end(), [](double v) { return std::isfinite(v); })) {
-            std::cout << "必须输入 6 个有限浮点数。\n";
+            std::cout << "必须输入 6 个有限浮点数\n";
             return std::nullopt;
         }
         return values;
@@ -1485,7 +1485,7 @@ std::optional<CliOptions> parse_options(int argc, char** argv) {
         }
         if(arg == "--config") {
             if(i + 1 >= argc) {
-                std::cerr << "--config 缺少路径。\n";
+                std::cerr << "--config 缺少路径\n";
                 return std::nullopt;
             }
             options.config_path = argv[++i];
@@ -1493,12 +1493,12 @@ std::optional<CliOptions> parse_options(int argc, char** argv) {
         }
         if(arg == "--backend") {
             if(i + 1 >= argc) {
-                std::cerr << "--backend 缺少值。\n";
+                std::cerr << "--backend 缺少值\n";
                 return std::nullopt;
             }
             options.backend = argv[++i];
             if(options.backend != "fake" && options.backend != "damiao") {
-                std::cerr << "backend 只能是 fake 或 damiao。\n";
+                std::cerr << "backend 只能是 fake 或 damiao\n";
                 return std::nullopt;
             }
             continue;
@@ -1541,7 +1541,7 @@ int main(int argc, char** argv) {
     }
     else {
         if(!options->allow_hardware) {
-            std::cerr << "拒绝创建真机后端：请显式增加 --allow-hardware。\n";
+            std::cerr << "拒绝创建真机后端：请显式增加 --allow-hardware\n";
             return EXIT_FAILURE;
         }
 #ifdef DM_ARM_CLI_HAS_DAMIAO
@@ -1554,7 +1554,7 @@ int main(int argc, char** argv) {
         }
         bus = std::move(damiao);
 #else
-        std::cerr << "当前构建没有启用达妙后端，请使用 -DDM_ARM_BUILD_DAMIAO=ON 重新构建。\n";
+        std::cerr << "当前构建没有启用达妙后端，请使用 -DDM_ARM_BUILD_DAMIAO=ON 重新构建\n";
         return EXIT_FAILURE;
 #endif
     }
