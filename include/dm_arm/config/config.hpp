@@ -56,7 +56,7 @@ struct DamiaoBusCfg {
  */
 struct DynamicsCfg {
     std::string urdf_path;                              ///< URDF 文件路径
-    std::vector<std::string> joint_names;               /// < 受控关节名称，顺序与 JointVector 一致
+    std::vector<std::string> joint_names;               ///< 受控关节名称，顺序与 JointVector 一致
     std::string base_frame{ "base_link" };              ///< 模型底座坐标系名称
     std::string tool_frame{ "tool0" };                  ///< 模型末端工具坐标系名称
     std::array<double, 3> gravity{ 0.0, 0.0, -9.81 };   ///< 重力加速度向量，单位 m/s²

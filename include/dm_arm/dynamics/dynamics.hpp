@@ -20,6 +20,7 @@ namespace dm_arm {
 enum class DynamicsErr {
     NOT_CONFIGURED,      ///< 动力学模型尚未完成配置
     ALREADY_CONFIGURED,  ///< 动力学模型已经配置，不能重复配置
+    NOT_UPDATED,         ///< 动力学缓存尚未完成首次更新
     INVALID_CFG,         ///< 动力学配置内容无效
     URDF_LOAD_FAILED,    ///< URDF 文件读取或模型构建失败
     JOINT_NOT_FOUND,     ///< 配置指定的关节在模型中不存在
@@ -48,13 +49,22 @@ struct DynamicsInfo {
 };
 
 /**
- * @brief 指定关节状态下的主要动力学计算结果
+ * @brief 最近一次 update() 得到的主要运动学与动力学结果
  */
 struct DynamicsState {
-    JointVector gravity;            ///< 重力广义力向量
-    JointVector nonlinear;          ///< 完整非线性广义力向量
-    JointVector coriolis;           ///< 科氏力和离心力广义力向量
-    Eigen::MatrixXd mass_matrix;    ///< 关节空间质量矩阵
+    JointVector pos;                    ///< 最近一次更新使用的关节位置
+    JointVector vel;                    ///< 最近一次更新使用的关节速度
+
+    JointVector gravity;                ///< 未缩放的重力广义力向量
+    JointVector gravity_compensation;   ///< 经过 gravity_scale 缩放的重力补偿向量
+    JointVector nonlinear;              ///< 完整非线性广义力向量
+    JointVector coriolis;               ///< 科氏力和离心力广义力向量
+
+    Eigen::MatrixXd mass_matrix;        ///< 关节空间质量矩阵
+    Eigen::Isometry3d tool_pose{        ///< tool_frame 相对于 base_frame 的位姿
+        Eigen::Isometry3d::Identity()
+    };
+    Eigen::MatrixXd tool_jacobian;      ///< tool_frame 的 LOCAL_WORLD_ALIGNED Jacobian
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
@@ -102,6 +112,41 @@ public:
      * @return 已成功配置时返回 true，否则返回 false
      */
     bool is_configured() const noexcept;
+    /**
+     * @brief 查询动力学缓存是否已经完成至少一次成功更新
+     * @return update() 成功执行过至少一次时返回 true，否则返回 false
+     */
+    bool is_updated() const noexcept;
+    /**
+     * @brief 查询逆动力学缓存是否有效
+     * @return update_inverse_dynamics() 成功执行后返回 true，否则返回 false
+     */
+    bool has_inverse_dynamics() const noexcept;
+    /**
+     * @brief 查询正向动力学缓存是否有效
+     * @return update_forward_dynamics() 成功执行后返回 true，否则返回 false
+     */
+    bool has_forward_dynamics() const noexcept;
+
+    /**
+     * @brief 集中更新当前周期的运动学与主要动力学缓存
+     * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+     * @param dq 关节速度向量，顺序应与 DynamicsInfo::joint_names 一致
+     * @return 成功时返回空值；失败时返回 DynamicsErr
+     */
+    tl::expected<void, DynamicsErr> update(const JointVector& q, const JointVector& dq);
+    /**
+     * @brief 使用最近一次 update() 的 q/dq 更新逆动力学缓存
+     * @param ddq 关节加速度向量
+     * @return 成功时返回空值；失败时返回 DynamicsErr
+     */
+    tl::expected<void, DynamicsErr> update_inverse_dynamics(const JointVector& ddq);
+    /**
+     * @brief 使用最近一次 update() 的 q/dq 更新正向动力学缓存
+     * @param tau 关节驱动力矩向量
+     * @return 成功时返回空值；失败时返回 DynamicsErr
+     */
+    tl::expected<void, DynamicsErr> update_forward_dynamics(const JointVector& tau);
 
     /**
      * @brief 获取当前动力学模型的基本信息
@@ -109,72 +154,67 @@ public:
      */
     const DynamicsInfo& get_info() const noexcept;
     /**
-     * @brief 获取指定坐标系相对于模型根坐标系的位姿
-     * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+     * @brief 获取最近一次 update() 的完整缓存
+     * @return DynamicsState 的只读引用
+     */
+    const DynamicsState& get_state() const noexcept;
+    /**
+     * @brief 获取指定坐标系相对于 base_frame 的缓存位姿
      * @param frame_name 目标坐标系名称
-     * @return 成功时返回目标坐标系位姿；失败时返回 DynamicsErr
+     * @return 成功时返回目标坐标系位姿副本；失败时返回 DynamicsErr
      */
-    tl::expected<Eigen::Isometry3d, DynamicsErr> get_frame_pose(const JointVector& q, const std::string& frame_name) const;
+    tl::expected<Eigen::Isometry3d, DynamicsErr> get_frame_pose(const std::string& frame_name) const;
     /**
-     * @brief 获取指定坐标系的几何 Jacobian
-     * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+     * @brief 获取指定坐标系的缓存几何 Jacobian
      * @param frame_name 目标坐标系名称
-     * @return 成功时返回 6×N Jacobian；失败时返回 DynamicsErr
+     * @return 成功时返回 6×N Jacobian 副本；失败时返回 DynamicsErr
      */
-    tl::expected<Eigen::MatrixXd, DynamicsErr> get_frame_jacobian(const JointVector& q, const std::string& frame_name) const;
+    tl::expected<Eigen::MatrixXd, DynamicsErr> get_frame_jacobian(const std::string& frame_name) const;
     /**
-     * @brief 获取当前关节姿态下的重力广义力
-     * @param q 关节位置向量
-     * @return 成功时返回重力广义力向量；失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的未缩放重力广义力
+     * @return 重力广义力缓存的只读引用
      */
-    tl::expected<JointVector, DynamicsErr> get_gravity(const JointVector& q) const;
+    const JointVector& get_gravity() const noexcept;
     /**
-     * @brief 获取完整非线性广义力
-     * @param q 关节位置向量
-     * @param dq 关节速度向量
-     * @return 成功时返回非线性广义力向量；失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的缩放后重力补偿
+     * @return 重力补偿缓存的只读引用
      */
-    tl::expected<JointVector, DynamicsErr> get_nonlinear(const JointVector& q, const JointVector& dq) const;
+    const JointVector& get_gravity_compensation() const noexcept;
     /**
-     * @brief 获取科氏力和离心力广义力向量
-     * @param q 关节位置向量
-     * @param dq 关节速度向量
-     * @return 成功时返回科氏力和离心力广义力向量；
-     *         失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的完整非线性广义力
+     * @return 非线性广义力缓存的只读引用
      */
-    tl::expected<JointVector, DynamicsErr> get_coriolis(const JointVector& q, const JointVector& dq) const;
+    const JointVector& get_nonlinear() const noexcept;
     /**
-     * @brief 获取关节空间质量矩阵
-     * @param q 关节位置向量
-     * @return 成功时返回质量矩阵；失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的科氏力和离心力广义力
+     * @return 科氏力和离心力缓存的只读引用
      */
-    tl::expected<Eigen::MatrixXd, DynamicsErr> get_mass_matrix(const JointVector& q) const;
+    const JointVector& get_coriolis() const noexcept;
     /**
-     * @brief 获取关节空间逆动力学
-     * @param q 关节位置向量
-     * @param dq 关节速度向量
-     * @param ddq 关节加速度向量
-     * @return 成功时返回关节力矩向量；失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的关节空间质量矩阵
+     * @return 质量矩阵缓存的只读引用
      */
-    tl::expected<JointVector, DynamicsErr> get_inverse_dynamics(const JointVector& q, const JointVector& dq, const JointVector& ddq) const;
+    const Eigen::MatrixXd& get_mass_matrix() const noexcept;
     /**
-     * @brief 获取关节空间正向动力学
-     * @param q 关节位置向量
-     * @param dq 关节速度向量
-     * @param tau 关节驱动力矩向量
-     * @return 成功时返回关节加速度向量；失败时返回 DynamicsErr
+     * @brief 获取最近一次 update() 的末端位姿
+     * @return tool_frame 位姿缓存的只读引用
      */
-    tl::expected<JointVector, DynamicsErr> get_forward_dynamics(const JointVector& q, const JointVector& dq, const JointVector& tau) const;
-
+    const Eigen::Isometry3d& get_tool_pose() const noexcept;
     /**
-     * @brief 批量计算指定关节状态下的主要动力学量
-     * @param q 关节位置向量
-     * @param dq 关节速度向量
-     * @param output 用于接收计算结果的输出结构体
-     * @return 成功时返回空值；失败时返回 DynamicsErr
-     * @post 成功时 output 中所有成员均按照 DynamicsInfo::joint_names 的顺序更新
+     * @brief 获取最近一次 update() 的末端 Jacobian
+     * @return tool_frame Jacobian 缓存的只读引用
      */
-    tl::expected<void, DynamicsErr> compute_state(const JointVector& q, const JointVector& dq, DynamicsState& output) const;
+    const Eigen::MatrixXd& get_tool_jacobian() const noexcept;
+    /**
+     * @brief 获取最近一次 update_inverse_dynamics() 的结果
+     * @return 逆动力学缓存的只读引用
+     */
+    const JointVector& get_inverse_dynamics() const noexcept;
+    /**
+     * @brief 获取最近一次 update_forward_dynamics() 的结果
+     * @return 正向动力学缓存的只读引用
+     */
+    const JointVector& get_forward_dynamics() const noexcept;
 
 private:
     struct Impl;                    ///< 动力学模块内部实现

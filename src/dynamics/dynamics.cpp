@@ -2,15 +2,14 @@
 
 #include <pinocchio/algorithm/aba.hpp>
 #include <pinocchio/algorithm/center-of-mass.hpp>
-#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/compute-all-terms.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/jacobian.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
 #include <pinocchio/parsers/urdf.hpp>
-
-#include <Eigen/Cholesky>
 
 #include <filesystem>
 #include <unordered_set>
@@ -28,26 +27,35 @@ namespace dm_arm {
 // ! ========================= 私 有 量 / 工 具 函 数 实 现 ========================= ! //
 
 struct Dynamics::Impl {
-    DynamicsCfg cfg;
-    DynamicsInfo info;
+    DynamicsCfg cfg;        ///< 动力学配置，包括 URDF 路径和受控关节名称等信息
+    DynamicsInfo info;      ///< 动力学模型信息，包括关节数量、索引和总质量等
+    DynamicsState state;    ///< 动力学缓存状态，包括关节位置、速度、重力、质量矩阵和末端位姿等
 
-    pinocchio::Model model;
-    std::unique_ptr<pinocchio::Data> data;
+    pinocchio::Model model;                 ///< Pinocchio 模型对象
+    std::unique_ptr<pinocchio::Data> data;  ///< Pinocchio 数据对象，用于存储中间计算结果
 
-    std::vector<int> q_indices;
-    std::vector<int> v_indices;
+    std::vector<int> q_indices;     ///< 受控关节在完整模型位置向量中的索引
+    std::vector<int> v_indices;     ///< 受控关节在完整模型速度向量中的索引
 
-    pinocchio::FrameIndex base_frame_id{ 0 };
-    pinocchio::FrameIndex tool_frame_id{ 0 };
+    pinocchio::FrameIndex base_frame_id{ 0 };   ///< Pinocchio 模型中 base_frame 的索引
+    pinocchio::FrameIndex tool_frame_id{ 0 };   ///< Pinocchio 模型中 tool_frame 的索引
 
-    Eigen::VectorXd q_model;
-    Eigen::VectorXd dq_model;
-    Eigen::VectorXd ddq_model;
-    Eigen::VectorXd tau_model;
+    Eigen::VectorXd q_model;        ///< 最近一次 update() 的完整模型位置向量
+    Eigen::VectorXd dq_model;       ///< 最近一次 update() 的完整模型速度向量
+    Eigen::VectorXd ddq_model;      ///< 最近一次 update() 的完整模型加速度向量
+    Eigen::VectorXd tau_model;      ///< 最近一次 update() 的完整模型广义力向量
 
-    Eigen::MatrixXd jacobian_model;
+    Eigen::MatrixXd frame_jacobian_model;           ///< 最近一次 update() 的完整模型 Frame Jacobian
+    std::vector<Eigen::Isometry3d> frame_poses;     ///< 最近一次 update() 的完整模型 Frame 位姿
+    std::vector<Eigen::MatrixXd> frame_jacobians;   ///< 最近一次 update() 的完整模型 Frame Jacobian 列表
 
-    bool is_configured{ false };
+    JointVector inverse_dynamics;   ///< 最近一次 update() 的逆动力学计算结果
+    JointVector forward_dynamics;   ///< 最近一次 update() 的正向动力学计算结果
+
+    bool is_configured{ false };        ///< 是否配置标识符
+    bool is_updated{ false };           ///< 是否更新标识符
+    bool has_inverse_dynamics{ false }; ///< 是否有逆动力学解标识符
+    bool has_forward_dynamics{ false }; ///< 是否有正动力学解标识符
 };
 
 namespace {
@@ -98,18 +106,67 @@ void assign_joint_vector(const JointVector& source, const std::vector<int>& indi
 }
 
 /**
- * @brief 从源向量中提取指定索引位置的关节向量
+ * @brief 从源向量中提取指定索引位置的关节值
  * @param source 源向量
  * @param indices 需要提取的索引位置
- * @return 提取后的关节向量
+ * @param target 输出关节向量
  */
-JointVector extract_joint_vector(const Eigen::VectorXd& source, const std::vector<int>& indices) {
-    JointVector output(indices.size(), 0.0);
-
-    for(std::size_t i = 0; i < indices.size(); ++i) {
-        output[i] = source[indices[i]];
+void extract_joint_vector(const Eigen::VectorXd& source, const std::vector<int>& indices, JointVector& target) {
+    if(target.size() != indices.size()) {
+        target.resize(indices.size());
     }
 
+    for(std::size_t i = 0; i < indices.size(); ++i) {
+        target[i] = source[indices[i]];
+    }
+}
+
+/**
+ * @brief 从完整质量矩阵中提取受控关节顺序下的子矩阵
+ * @param source Pinocchio 完整质量矩阵
+ * @param indices 受控关节速度索引
+ * @param target 输出质量矩阵
+ */
+void extract_joint_matrix(const Eigen::MatrixXd& source, const std::vector<int>& indices, Eigen::MatrixXd& target) {
+    const Eigen::Index size = static_cast<Eigen::Index>(indices.size());
+    if(target.rows() != size || target.cols() != size) {
+        target.resize(size, size);
+    }
+
+    for(std::size_t row = 0; row < indices.size(); ++row) {
+        for(std::size_t col = 0; col < indices.size(); ++col) {
+            target(static_cast<Eigen::Index>(row), static_cast<Eigen::Index>(col)) =
+                source(indices[row], indices[col]);
+        }
+    }
+}
+
+/**
+ * @brief 按受控关节顺序提取 Frame Jacobian 列
+ * @param source Pinocchio 完整 Frame Jacobian
+ * @param indices 受控关节速度索引
+ * @param target 输出 Frame Jacobian
+ */
+void extract_frame_jacobian(const Eigen::MatrixXd& source, const std::vector<int>& indices, Eigen::MatrixXd& target) {
+    const Eigen::Index cols = static_cast<Eigen::Index>(indices.size());
+    if(target.rows() != 6 || target.cols() != cols) {
+        target.resize(6, cols);
+    }
+
+    for(std::size_t col = 0; col < indices.size(); ++col) {
+        target.col(static_cast<Eigen::Index>(col)) = source.col(indices[col]);
+    }
+}
+
+/**
+ * @brief 将 Pinocchio SE3 转换为 Eigen Isometry3d
+ * @param source Pinocchio 位姿
+ * @return Eigen 位姿
+ */
+Eigen::Isometry3d to_isometry(const pinocchio::SE3& source) {
+    Eigen::Isometry3d output = Eigen::Isometry3d::Identity();
+    output.linear() = source.rotation();
+    output.translation() = source.translation();
     return output;
 }
 
@@ -159,6 +216,18 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
         return tl::make_unexpected(DynamicsErr::INVALID_CFG);
     }
 
+    if(!cfg.gravity_scale.empty()) {
+        const bool gravity_scale_valid = std::all_of(cfg.gravity_scale.begin(), cfg.gravity_scale.end(),
+            [](double value) {
+                return std::isfinite(value) && value >= 0.0 && value <= 1.0;
+            }
+        );
+
+        if(!gravity_scale_valid) {
+            return tl::make_unexpected(DynamicsErr::INVALID_CFG);
+        }
+    }
+
     if(!std::filesystem::exists(cfg.urdf_path)) {
         return tl::make_unexpected(DynamicsErr::URDF_LOAD_FAILED);
     }
@@ -181,7 +250,7 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
     for(const auto& name : cfg.joint_names) {
         const pinocchio::JointIndex jid = full_model.getJointId(name);
 
-        if(jid == 0 || (int)jid >= full_model.njoints) {
+        if(jid == 0 || static_cast<int>(jid) >= full_model.njoints) {
             return tl::make_unexpected(DynamicsErr::JOINT_NOT_FOUND);
         }
 
@@ -192,7 +261,7 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
 
     std::unordered_set<std::string> controlled(cfg.joint_names.begin(), cfg.joint_names.end());
     std::vector<pinocchio::JointIndex> joints_to_lock;
-    for(pinocchio::JointIndex jid = 1; (int)jid < full_model.njoints; ++jid) {
+    for(pinocchio::JointIndex jid = 1; static_cast<int>(jid) < full_model.njoints; ++jid) {
         const std::string& name = full_model.names[jid];
 
         if(controlled.find(name) == controlled.end()) {
@@ -209,9 +278,9 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
         return tl::make_unexpected(DynamicsErr::URDF_LOAD_FAILED);
     }
 
-    if(reduced_model.nq != 6 || reduced_model.nv != 6) {
-        return tl::make_unexpected(
-            DynamicsErr::MODEL_SIZE_MISMATCH);
+    const int expected_size = static_cast<int>(cfg.joint_names.size());
+    if(reduced_model.nq != expected_size || reduced_model.nv != expected_size) {
+        return tl::make_unexpected(DynamicsErr::MODEL_SIZE_MISMATCH);
     }
 
     reduced_model.gravity.linear() = Eigen::Vector3d(cfg.gravity[0], cfg.gravity[1], cfg.gravity[2]);
@@ -219,9 +288,9 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
     std::vector<int> q_indices(cfg.joint_names.size(), -1);
     std::vector<int> v_indices(cfg.joint_names.size(), -1);
     for(std::size_t i = 0; i < cfg.joint_names.size(); ++i) {
-        const auto jid = reduced_model.getJointId(cfg.joint_names[i]);
+        const pinocchio::JointIndex jid = reduced_model.getJointId(cfg.joint_names[i]);
 
-        if(jid == 0 || (int)jid >= reduced_model.njoints) {
+        if(jid == 0 || static_cast<int>(jid) >= reduced_model.njoints) {
             return tl::make_unexpected(DynamicsErr::JOINT_NOT_FOUND);
         }
 
@@ -236,10 +305,18 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
     if(!reduced_model.existFrame(cfg.base_frame) || !reduced_model.existFrame(cfg.tool_frame)) {
         return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
     }
-    const auto base_frame_id = reduced_model.getFrameId(cfg.base_frame);
-    const auto tool_frame_id = reduced_model.getFrameId(cfg.tool_frame);
+
+    const pinocchio::FrameIndex base_frame_id = reduced_model.getFrameId(cfg.base_frame);
+    const pinocchio::FrameIndex tool_frame_id = reduced_model.getFrameId(cfg.tool_frame);
+    if(static_cast<int>(base_frame_id) >= reduced_model.nframes || static_cast<int>(tool_frame_id) >= reduced_model.nframes) {
+        return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
+    }
 
     impl_->cfg = cfg;
+    if(impl_->cfg.gravity_scale.empty()) {
+        impl_->cfg.gravity_scale.assign(cfg.joint_names.size(), 1.0);
+    }
+
     impl_->model = std::move(reduced_model);
     impl_->data = std::make_unique<pinocchio::Data>(impl_->model);
     impl_->q_indices = std::move(q_indices);
@@ -251,16 +328,40 @@ tl::expected<void, DynamicsErr> Dynamics::configure(const DynamicsCfg& cfg) {
     impl_->dq_model = Eigen::VectorXd::Zero(impl_->model.nv);
     impl_->ddq_model = Eigen::VectorXd::Zero(impl_->model.nv);
     impl_->tau_model = Eigen::VectorXd::Zero(impl_->model.nv);
-    impl_->jacobian_model = Eigen::MatrixXd::Zero(6, impl_->model.nv);
+    impl_->frame_jacobian_model = Eigen::MatrixXd::Zero(6, impl_->model.nv);
 
-    impl_->info.joints_count = cfg.joint_names.size();
+    const std::size_t joints_count = cfg.joint_names.size();
+    impl_->state.pos.assign(joints_count, 0.0);
+    impl_->state.vel.assign(joints_count, 0.0);
+    impl_->state.gravity.assign(joints_count, 0.0);
+    impl_->state.gravity_compensation.assign(joints_count, 0.0);
+    impl_->state.nonlinear.assign(joints_count, 0.0);
+    impl_->state.coriolis.assign(joints_count, 0.0);
+    impl_->state.mass_matrix = Eigen::MatrixXd::Zero(expected_size, expected_size);
+    impl_->state.tool_pose = Eigen::Isometry3d::Identity();
+    impl_->state.tool_jacobian = Eigen::MatrixXd::Zero(6, expected_size);
+
+    impl_->frame_poses.assign(impl_->model.nframes, Eigen::Isometry3d::Identity());
+    impl_->frame_jacobians.reserve(impl_->model.nframes);
+    for(pinocchio::FrameIndex frame_id = 0; static_cast<int>(frame_id) < impl_->model.nframes; ++frame_id) {
+        impl_->frame_jacobians.emplace_back(Eigen::MatrixXd::Zero(6, expected_size));
+    }
+
+    impl_->inverse_dynamics.assign(joints_count, 0.0);
+    impl_->forward_dynamics.assign(joints_count, 0.0);
+
+    impl_->info.joints_count = joints_count;
     impl_->info.nq = impl_->model.nq;
     impl_->info.nv = impl_->model.nv;
     impl_->info.joint_names = cfg.joint_names;
     impl_->info.q_indices = impl_->q_indices;
     impl_->info.v_indices = impl_->v_indices;
     impl_->info.total_mass = pinocchio::computeTotalMass(impl_->model);
+
     impl_->is_configured = true;
+    impl_->is_updated = false;
+    impl_->has_inverse_dynamics = false;
+    impl_->has_forward_dynamics = false;
 
     return {};
 }
@@ -281,6 +382,167 @@ bool Dynamics::is_configured() const noexcept {
 }
 
 /**
+ * @brief 查询动力学缓存是否已经完成至少一次成功更新
+ * @return update() 成功执行过至少一次时返回 true，否则返回 false
+ */
+bool Dynamics::is_updated() const noexcept {
+    return impl_ && impl_->is_updated;
+}
+
+/**
+ * @brief 查询逆动力学缓存是否有效
+ * @return update_inverse_dynamics() 成功执行后返回 true，否则返回 false
+ */
+bool Dynamics::has_inverse_dynamics() const noexcept {
+    return impl_ && impl_->has_inverse_dynamics;
+}
+
+/**
+ * @brief 查询正向动力学缓存是否有效
+ * @return update_forward_dynamics() 成功执行后返回 true，否则返回 false
+ */
+bool Dynamics::has_forward_dynamics() const noexcept {
+    return impl_ && impl_->has_forward_dynamics;
+}
+
+/**
+ * @brief 集中更新当前周期的运动学与主要动力学缓存
+ * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+ * @param dq 关节速度向量，顺序应与 DynamicsInfo::joint_names 一致
+ * @return 成功时返回空值；失败时返回 DynamicsErr
+ */
+tl::expected<void, DynamicsErr> Dynamics::update(const JointVector& q, const JointVector& dq) {
+    if(!is_configured()) {
+        return tl::make_unexpected(DynamicsErr::NOT_CONFIGURED);
+    }
+
+    const auto q_valid = validate_joint_vector(q, impl_->info.joints_count);
+    if(!q_valid) {
+        return tl::make_unexpected(q_valid.error());
+    }
+
+    const auto dq_valid = validate_joint_vector(dq, impl_->info.joints_count);
+    if(!dq_valid) {
+        return tl::make_unexpected(dq_valid.error());
+    }
+
+    assign_joint_vector(q, impl_->q_indices, impl_->q_model);
+    assign_joint_vector(dq, impl_->v_indices, impl_->dq_model);
+
+    impl_->is_updated = false;
+    impl_->has_inverse_dynamics = false;
+    impl_->has_forward_dynamics = false;
+
+    try {
+        pinocchio::computeAllTerms(impl_->model, *impl_->data, impl_->q_model, impl_->dq_model);
+        pinocchio::updateFramePlacements(impl_->model, *impl_->data);
+
+        const pinocchio::SE3 base_pose = impl_->data->oMf[impl_->base_frame_id];
+        const pinocchio::SE3 base_pose_inverse = base_pose.inverse();
+
+        for(pinocchio::FrameIndex frame_id = 0; static_cast<int>(frame_id) < impl_->model.nframes; ++frame_id) {
+            const pinocchio::SE3 base_to_frame = base_pose_inverse * impl_->data->oMf[frame_id];
+            impl_->frame_poses[frame_id] = to_isometry(base_to_frame);
+
+            impl_->frame_jacobian_model.setZero();
+            pinocchio::getFrameJacobian(impl_->model, *impl_->data, frame_id,
+                pinocchio::LOCAL_WORLD_ALIGNED, impl_->frame_jacobian_model);
+            extract_frame_jacobian(impl_->frame_jacobian_model, impl_->v_indices, impl_->frame_jacobians[frame_id]);
+        }
+
+        extract_joint_vector(impl_->data->g, impl_->v_indices, impl_->state.gravity);
+        extract_joint_vector(impl_->data->nle, impl_->v_indices, impl_->state.nonlinear);
+
+        for(std::size_t i = 0; i < impl_->info.joints_count; ++i) {
+            impl_->state.gravity_compensation[i] = impl_->cfg.gravity_scale[i] * impl_->state.gravity[i];
+            impl_->state.coriolis[i] = impl_->state.nonlinear[i] - impl_->state.gravity[i];
+        }
+
+        impl_->data->M.triangularView<Eigen::StrictlyLower>() = impl_->data->M.transpose().triangularView<Eigen::StrictlyLower>();
+        extract_joint_matrix(impl_->data->M, impl_->v_indices, impl_->state.mass_matrix);
+    }
+    catch(...) {
+        return tl::make_unexpected(DynamicsErr::COMPUTE_FAILED);
+    }
+
+    impl_->state.pos = q;
+    impl_->state.vel = dq;
+    impl_->state.tool_pose = impl_->frame_poses[impl_->tool_frame_id];
+    impl_->state.tool_jacobian = impl_->frame_jacobians[impl_->tool_frame_id];
+    impl_->is_updated = true;
+
+    return {};
+}
+
+/**
+ * @brief 使用最近一次 update() 的 q/dq 更新逆动力学缓存
+ * @param ddq 关节加速度向量
+ * @return 成功时返回空值；失败时返回 DynamicsErr
+ */
+tl::expected<void, DynamicsErr> Dynamics::update_inverse_dynamics(const JointVector& ddq) {
+    if(!is_configured()) {
+        return tl::make_unexpected(DynamicsErr::NOT_CONFIGURED);
+    }
+    if(!impl_->is_updated) {
+        return tl::make_unexpected(DynamicsErr::NOT_UPDATED);
+    }
+
+    const auto ddq_valid = validate_joint_vector(ddq, impl_->info.joints_count);
+    if(!ddq_valid) {
+        return tl::make_unexpected(ddq_valid.error());
+    }
+
+    assign_joint_vector(ddq, impl_->v_indices, impl_->ddq_model);
+    impl_->has_inverse_dynamics = false;
+
+    try {
+        const Eigen::VectorXd& tau_model = pinocchio::rnea(impl_->model, *impl_->data,
+            impl_->q_model, impl_->dq_model, impl_->ddq_model);
+        extract_joint_vector(tau_model, impl_->v_indices, impl_->inverse_dynamics);
+    }
+    catch(...) {
+        return tl::make_unexpected(DynamicsErr::COMPUTE_FAILED);
+    }
+
+    impl_->has_inverse_dynamics = true;
+    return {};
+}
+
+/**
+ * @brief 使用最近一次 update() 的 q/dq 更新正向动力学缓存
+ * @param tau 关节驱动力矩向量
+ * @return 成功时返回空值；失败时返回 DynamicsErr
+ */
+tl::expected<void, DynamicsErr> Dynamics::update_forward_dynamics(const JointVector& tau) {
+    if(!is_configured()) {
+        return tl::make_unexpected(DynamicsErr::NOT_CONFIGURED);
+    }
+    if(!impl_->is_updated) {
+        return tl::make_unexpected(DynamicsErr::NOT_UPDATED);
+    }
+
+    const auto tau_valid = validate_joint_vector(tau, impl_->info.joints_count);
+    if(!tau_valid) {
+        return tl::make_unexpected(tau_valid.error());
+    }
+
+    assign_joint_vector(tau, impl_->v_indices, impl_->tau_model);
+    impl_->has_forward_dynamics = false;
+
+    try {
+        const Eigen::VectorXd& ddq_model = pinocchio::aba(impl_->model, *impl_->data,
+            impl_->q_model, impl_->dq_model, impl_->tau_model);
+        extract_joint_vector(ddq_model, impl_->v_indices, impl_->forward_dynamics);
+    }
+    catch(...) {
+        return tl::make_unexpected(DynamicsErr::COMPUTE_FAILED);
+    }
+
+    impl_->has_forward_dynamics = true;
+    return {};
+}
+
+/**
  * @brief 获取当前动力学模型的基本信息
  * @return DynamicsInfo 的只读引用
  */
@@ -289,96 +551,131 @@ const DynamicsInfo& Dynamics::get_info() const noexcept {
 }
 
 /**
- * @brief 获取指定坐标系相对于模型根坐标系的位姿
- * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+ * @brief 获取最近一次 update() 的完整缓存
+ * @return DynamicsState 的只读引用
+ */
+const DynamicsState& Dynamics::get_state() const noexcept {
+    return impl_->state;
+}
+
+/**
+ * @brief 获取指定坐标系相对于 base_frame 的缓存位姿
  * @param frame_name 目标坐标系名称
- * @return 成功时返回目标坐标系位姿；失败时返回 DynamicsErr
+ * @return 成功时返回目标坐标系位姿副本；失败时返回 DynamicsErr
  */
-tl::expected<Eigen::Isometry3d, DynamicsErr> Dynamics::get_frame_pose(const JointVector& q, const std::string& frame_name) const {
+tl::expected<Eigen::Isometry3d, DynamicsErr> Dynamics::get_frame_pose(const std::string& frame_name) const {
+    if(!is_configured()) {
+        return tl::make_unexpected(DynamicsErr::NOT_CONFIGURED);
+    }
+    if(!impl_->is_updated) {
+        return tl::make_unexpected(DynamicsErr::NOT_UPDATED);
+    }
+    if(frame_name.empty() || !impl_->model.existFrame(frame_name)) {
+        return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
+    }
 
+    const pinocchio::FrameIndex frame_id = impl_->model.getFrameId(frame_name);
+    if(frame_id >= impl_->frame_poses.size()) {
+        return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
+    }
+
+    return impl_->frame_poses[frame_id];
 }
 
 /**
- * @brief 获取指定坐标系的几何 Jacobian
- * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
+ * @brief 获取指定坐标系的缓存几何 Jacobian
  * @param frame_name 目标坐标系名称
- * @return 成功时返回 6×N Jacobian；失败时返回 DynamicsErr
+ * @return 成功时返回 6×N Jacobian 副本；失败时返回 DynamicsErr
  */
-tl::expected<Eigen::MatrixXd, DynamicsErr> Dynamics::get_frame_jacobian(const JointVector& q, const std::string& frame_name) const {
+tl::expected<Eigen::MatrixXd, DynamicsErr> Dynamics::get_frame_jacobian(const std::string& frame_name) const {
+    if(!is_configured()) {
+        return tl::make_unexpected(DynamicsErr::NOT_CONFIGURED);
+    }
+    if(!impl_->is_updated) {
+        return tl::make_unexpected(DynamicsErr::NOT_UPDATED);
+    }
+    if(frame_name.empty() || !impl_->model.existFrame(frame_name)) {
+        return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
+    }
 
+    const pinocchio::FrameIndex frame_id = impl_->model.getFrameId(frame_name);
+    if(frame_id >= impl_->frame_jacobians.size()) {
+        return tl::make_unexpected(DynamicsErr::FRAME_NOT_FOUND);
+    }
+
+    return impl_->frame_jacobians[frame_id];
 }
 
 /**
- * @brief 获取当前关节姿态下的重力广义力
- * @param q 关节位置向量
- * @return 成功时返回重力广义力向量；失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的未缩放重力广义力
+ * @return 重力广义力缓存的只读引用
  */
-tl::expected<JointVector, DynamicsErr> Dynamics::get_gravity(const JointVector& q) const {
-
+const JointVector& Dynamics::get_gravity() const noexcept {
+    return impl_->state.gravity;
 }
 
 /**
- * @brief 获取完整非线性广义力
- * @param q 关节位置向量
- * @param dq 关节速度向量
- * @return 成功时返回非线性广义力向量；失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的缩放后重力补偿
+ * @return 重力补偿缓存的只读引用
  */
-tl::expected<JointVector, DynamicsErr> Dynamics::get_nonlinear(const JointVector& q, const JointVector& dq) const {
-
+const JointVector& Dynamics::get_gravity_compensation() const noexcept {
+    return impl_->state.gravity_compensation;
 }
 
 /**
- * @brief 获取科氏力和离心力广义力向量
- * @param q 关节位置向量
- * @param dq 关节速度向量
- * @return 成功时返回科氏力和离心力广义力向量；
- *         失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的完整非线性广义力
+ * @return 非线性广义力缓存的只读引用
  */
-tl::expected<JointVector, DynamicsErr> Dynamics::get_coriolis(const JointVector& q, const JointVector& dq) const {
-
+const JointVector& Dynamics::get_nonlinear() const noexcept {
+    return impl_->state.nonlinear;
 }
 
 /**
- * @brief 获取关节空间质量矩阵
- * @param q 关节位置向量
- * @return 成功时返回质量矩阵；失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的科氏力和离心力广义力
+ * @return 科氏力和离心力缓存的只读引用
  */
-tl::expected<Eigen::MatrixXd, DynamicsErr> Dynamics::get_mass_matrix(const JointVector& q) const {
-
+const JointVector& Dynamics::get_coriolis() const noexcept {
+    return impl_->state.coriolis;
 }
 
 /**
- * @brief 获取关节空间逆动力学
- * @param q 关节位置向量
- * @param dq 关节速度向量
- * @param ddq 关节加速度向量
- * @return 成功时返回关节力矩向量；失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的关节空间质量矩阵
+ * @return 质量矩阵缓存的只读引用
  */
-tl::expected<JointVector, DynamicsErr> Dynamics::get_inverse_dynamics(const JointVector& q, const JointVector& dq, const JointVector& ddq) const {
-
+const Eigen::MatrixXd& Dynamics::get_mass_matrix() const noexcept {
+    return impl_->state.mass_matrix;
 }
 
 /**
- * @brief 获取关节空间正向动力学
- * @param q 关节位置向量
- * @param dq 关节速度向量
- * @param tau 关节驱动力矩向量
- * @return 成功时返回关节加速度向量；失败时返回 DynamicsErr
+ * @brief 获取最近一次 update() 的末端位姿
+ * @return tool_frame 位姿缓存的只读引用
  */
-tl::expected<JointVector, DynamicsErr> Dynamics::get_forward_dynamics(const JointVector& q, const JointVector& dq, const JointVector& tau) const {
-
+const Eigen::Isometry3d& Dynamics::get_tool_pose() const noexcept {
+    return impl_->state.tool_pose;
 }
 
 /**
- * @brief 批量计算指定关节状态下的主要动力学量
- * @param q 关节位置向量
- * @param dq 关节速度向量
- * @param output 用于接收计算结果的输出结构体
- * @return 成功时返回空值；失败时返回 DynamicsErr
- * @post 成功时 output 中所有成员均按照 DynamicsInfo::joint_names 的顺序更新
+ * @brief 获取最近一次 update() 的末端 Jacobian
+ * @return tool_frame Jacobian 缓存的只读引用
  */
-tl::expected<void, DynamicsErr> Dynamics::compute_state(const JointVector& q, const JointVector& dq, DynamicsState& output) const {
+const Eigen::MatrixXd& Dynamics::get_tool_jacobian() const noexcept {
+    return impl_->state.tool_jacobian;
+}
 
+/**
+ * @brief 获取最近一次 update_inverse_dynamics() 的结果
+ * @return 逆动力学缓存的只读引用
+ */
+const JointVector& Dynamics::get_inverse_dynamics() const noexcept {
+    return impl_->inverse_dynamics;
+}
+
+/**
+ * @brief 获取最近一次 update_forward_dynamics() 的结果
+ * @return 正向动力学缓存的只读引用
+ */
+const JointVector& Dynamics::get_forward_dynamics() const noexcept {
+    return impl_->forward_dynamics;
 }
 
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //
