@@ -15,8 +15,6 @@ namespace dm_arm {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
-constexpr std::size_t DM_ARM_JOINTS_COUNT = 6;  ///< DM-Arm 主链关节数量
-
 /**
  * @brief Robot 运行时配置
  */
@@ -54,6 +52,18 @@ struct DamiaoBusCfg {
 };
 
 /**
+ * @brief 动力学模块配置
+ */
+struct DynamicsCfg {
+    std::string urdf_path;                              ///< URDF 文件路径
+    std::vector<std::string> joint_names;               /// < 受控关节名称，顺序与 JointVector 一致
+    std::string base_frame{ "base_link" };              ///< 模型底座坐标系名称
+    std::string tool_frame{ "tool0" };                  ///< 模型末端工具坐标系名称
+    std::array<double, 3> gravity{ 0.0, 0.0, -9.81 };   ///< 重力加速度向量，单位 m/s²
+    JointVector gravity_scale;                          ///< 重力补偿缩放系数，顺序与 joint_names 一致
+};
+
+/**
  * @brief 当前 DM-Arm 的完整静态配置
  */
 struct RobotCfg {
@@ -63,6 +73,7 @@ struct RobotCfg {
     JointActuatorMapCfg mapper;            ///< Joint/Actuator 映射
     SafetyCfg safety;                      ///< Joint/Actuator 安全配置
     DamiaoBusCfg damiao;                   ///< 达妙后端参数
+    DynamicsCfg dynamics;                  ///< 动力学参数
 };
 
 /**

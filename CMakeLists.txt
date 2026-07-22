@@ -24,7 +24,7 @@ option(DM_ARM_BUILD_TERMINAL "Build terminal main application" ON)
 option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" ON)
 
 # 动力学：编译 Pinocchio 模型、运动学、重力补偿和完整动力学接口
-option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" OFF)
+option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" ON)
 
 # Python：预留 pybind11 绑定开关；对应 target 尚未实现
 option(DM_ARM_BUILD_PYTHON "Build Python binding" OFF)

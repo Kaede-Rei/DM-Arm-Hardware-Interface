@@ -569,7 +569,7 @@ private:
             << " 3. deactivate()\n"
             << " 4. reset_fault()\n"
             << " 5. 切换阻抗模式\n"
-            << " 6. 安全流式移动到 6 轴目标位置\n"
+            << " 6. 安全流式移动到 " << cfg_.joint_names.size() << " 轴目标位置\n"
             << " 7. 安全流式相对移动\n"
             << " 8. 测试 JointPosCmd 输入\n"
             << " 9. 测试 JointPosVelCmd 输入\n"
@@ -682,7 +682,9 @@ private:
     }
 
     void set_safe_absolute_target() {
-        const auto target = read_joint_vector("输入 6 个目标位置 rad，以空格分隔: ");
+        const auto target = read_joint_vector(
+            "输入 " + std::to_string(joint_count()) +
+            " 个目标关节位置（旋转关节 rad，移动关节 m），以空格分隔: ");
         if(!target) return;
         const auto scale = read_double("速度比例 (0, 1]，建议 0.3~1.0: ");
         if(!scale || *scale <= 0.0 || *scale > 1.0) {
@@ -705,7 +707,9 @@ private:
     }
 
     void set_safe_relative_target() {
-        const auto delta = read_joint_vector("输入 6 个相对位移 rad，以空格分隔: ");
+        const auto delta = read_joint_vector(
+            "输入 " + std::to_string(joint_count()) +
+            " 个相对关节位移（旋转关节 rad，移动关节 m），以空格分隔: ");
         if(!delta) return;
         const auto scale = read_double("速度比例 (0, 1]，建议 0.3~1.0: ");
         if(!scale || *scale <= 0.0 || *scale > 1.0) {
@@ -731,42 +735,53 @@ private:
     }
 
     void queue_joint_pos() {
-        const auto pos = read_joint_vector("输入 JointPosCmd.pos 6 个值: ");
+        const auto pos = read_joint_vector(
+            "输入 JointPosCmd.pos " + std::to_string(joint_count()) + " 个值: ");
         if(!pos) return;
         JointPosCmd cmd{ *pos };
         queue_joint_command(JointCmd{ cmd }, StreamKind::JOINT_POS);
     }
 
     void queue_joint_pos_vel() {
-        const auto pos = read_joint_vector("输入 pos 6 个值: ");
+        const auto pos = read_joint_vector(
+            "输入 pos " + std::to_string(joint_count()) + " 个值: ");
         if(!pos) return;
-        const auto vel = read_joint_vector("输入 vel 6 个值: ");
+        const auto vel = read_joint_vector(
+            "输入 vel " + std::to_string(joint_count()) + " 个值: ");
         if(!vel) return;
         JointPosVelCmd cmd{ *pos, *vel };
         queue_joint_command(JointCmd{ cmd }, StreamKind::JOINT_POS_VEL);
     }
 
     void queue_joint_pos_vel_tor() {
-        const auto pos = read_joint_vector("输入 pos 6 个值: ");
+        const auto pos = read_joint_vector(
+            "输入 pos " + std::to_string(joint_count()) + " 个值: ");
         if(!pos) return;
-        const auto vel = read_joint_vector("输入 vel 6 个值: ");
+        const auto vel = read_joint_vector(
+            "输入 vel " + std::to_string(joint_count()) + " 个值: ");
         if(!vel) return;
-        const auto tor = read_joint_vector("输入 tor 6 个值: ");
+        const auto tor = read_joint_vector(
+            "输入 tor " + std::to_string(joint_count()) + " 个值: ");
         if(!tor) return;
         JointPosVelTorCmd cmd{ *pos, *vel, *tor };
         queue_joint_command(JointCmd{ cmd }, StreamKind::JOINT_POS_VEL_TOR);
     }
 
     void queue_full_cmd() {
-        const auto pos = read_joint_vector("输入 full.pos 6 个值: ");
+        const auto pos = read_joint_vector(
+            "输入 full.pos " + std::to_string(joint_count()) + " 个值: ");
         if(!pos) return;
-        const auto vel = read_joint_vector("输入 full.vel 6 个值: ");
+        const auto vel = read_joint_vector(
+            "输入 full.vel " + std::to_string(joint_count()) + " 个值: ");
         if(!vel) return;
-        const auto tor = read_joint_vector("输入 full.tor 6 个值: ");
+        const auto tor = read_joint_vector(
+            "输入 full.tor " + std::to_string(joint_count()) + " 个值: ");
         if(!tor) return;
-        const auto kp = read_joint_vector("输入 full.kp 6 个值: ");
+        const auto kp = read_joint_vector(
+            "输入 full.kp " + std::to_string(joint_count()) + " 个值: ");
         if(!kp) return;
-        const auto kd = read_joint_vector("输入 full.kd 6 个值: ");
+        const auto kd = read_joint_vector(
+            "输入 full.kd " + std::to_string(joint_count()) + " 个值: ");
         if(!kd) return;
 
         std::lock_guard<std::mutex> lock(robot_mutex_);
@@ -958,9 +973,18 @@ private:
         std::optional<int> index;
         std::optional<int> code;
         if(*type == 6 || *type == 7) {
-            index = read_int("执行器编号 1~6: ");
-            if(!index || *index < 1 || *index > 6) {
-                std::cout << "编号无效\n";
+            const std::size_t actuator_count = fake_bus_->size();
+            if(actuator_count == 0) {
+                std::cout << "当前没有可注入故障的执行器\n";
+                return;
+            }
+
+            index = read_int(
+                "执行器编号 1~" + std::to_string(actuator_count) + ": ");
+            if(!index || *index < 1 ||
+                static_cast<std::size_t>(*index) > actuator_count) {
+                std::cout << "编号无效，有效范围为 1~"
+                    << actuator_count << '\n';
                 return;
             }
         }
@@ -1356,11 +1380,11 @@ private:
         std::cout << "\n";
 
         if(max_reference_lag > 0.05) {
-            std::cout << "[提示] joint" << (max_reference_lag_index + 1)
+            std::cout << "[提示] " << joint_name(max_reference_lag_index)
                 << " 当前命令-实测位置滞后="
                 << std::fixed << std::setprecision(4)
                 << max_reference_lag
-                << " rad；参考会保持连续，但这说明该关节跟踪不足；"
+                << "（关节位置单位）；参考会保持连续，但这说明该关节跟踪不足；"
                 "请用菜单 15 对比 joint.pos 与 cmd.pos\n";
         }
     }
@@ -1372,7 +1396,7 @@ private:
             const double high = cfg_.safety.limits.max_pos[i]
                 - cfg_.safety.limits.pos_margin[i];
             if(!std::isfinite(target[i]) || target[i] < low || target[i] > high) {
-                std::cout << "joint" << (i + 1) << " 目标 " << target[i]
+                std::cout << joint_name(i) << " 目标 " << target[i]
                     << " 超出命令软限位 [" << low << ", " << high << "]\n";
                 return false;
             }
@@ -1423,20 +1447,41 @@ private:
         return value;
     }
 
-    static std::optional<JointVector> read_joint_vector(const std::string& prompt) {
+    std::optional<JointVector> read_joint_vector(
+        const std::string& prompt) const {
         std::cout << prompt;
         std::string line;
         if(!std::getline(std::cin, line)) return std::nullopt;
+
         std::istringstream input(line);
         JointVector values;
         double value = 0.0;
         while(input >> value) values.push_back(value);
-        if(values.size() != DM_ARM_JOINTS_COUNT ||
-            !std::all_of(values.begin(), values.end(), [](double v) { return std::isfinite(v); })) {
-            std::cout << "必须输入 6 个有限浮点数\n";
+
+        const bool parsed_all = input.eof();
+        const bool valid_size = values.size() == joint_count();
+        const bool all_finite = std::all_of(
+            values.begin(),
+            values.end(),
+            [](double v) { return std::isfinite(v); });
+
+        if(!parsed_all || !valid_size || !all_finite) {
+            std::cout << "必须输入 " << joint_count()
+                << " 个有限浮点数\n";
             return std::nullopt;
         }
         return values;
+    }
+
+    std::size_t joint_count() const noexcept {
+        return cfg_.joint_names.size();
+    }
+
+    std::string joint_name(std::size_t index) const {
+        if(index < cfg_.joint_names.size()) {
+            return cfg_.joint_names[index];
+        }
+        return "joint[" + std::to_string(index) + "]";
     }
 
 public:

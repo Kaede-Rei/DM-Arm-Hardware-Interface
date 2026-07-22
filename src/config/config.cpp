@@ -33,8 +33,7 @@ public:
      * @param code 错误码
      * @param message 错误信息
      */
-    ConfigLoadException(ConfigErr code, std::string message)
-        : std::runtime_error(std::move(message)), code_(code) {}
+    ConfigLoadException(ConfigErr code, std::string message) : std::runtime_error(std::move(message)), code_(code) {}
 
     /**
      * @brief 获取错误码
@@ -346,9 +345,8 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
  */
 tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
     const std::size_t n = cfg.joint_names.size();
-    if(n != DM_ARM_JOINTS_COUNT) {
-        return fail(ConfigErr::INVALID_SIZE,
-            "DM-Arm main chain requires exactly 6 joints");
+    if(n == 0) {
+        return fail(ConfigErr::INVALID_SIZE, "DM-Arm main chain requires at least one joints");
     }
 
     const auto size_is_n = [n](const auto& values) {
@@ -359,33 +357,28 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
         !size_is_n(limits.max_vel) || !size_is_n(limits.max_acc) ||
         !size_is_n(limits.max_effort) || !size_is_n(limits.max_kp) ||
         !size_is_n(limits.max_kd) || !size_is_n(limits.pos_margin)) {
-        return fail(ConfigErr::INVALID_SIZE,
-            "all Safety joint arrays must have length 6");
+        return fail(ConfigErr::INVALID_SIZE, "all Safety joint arrays must have length " + std::to_string(n));
     }
 
     if(cfg.ctrller.joints_count != n ||
         cfg.mapper.joints_count != n ||
         cfg.safety.joints_count != n) {
-        return fail(ConfigErr::INVALID_SIZE,
-            "controller, mapper and safety joints_count must match joint_names");
+        return fail(ConfigErr::INVALID_SIZE, "controller, mapper and safety joints_count must match joint_names");
     }
 
     if(!std::isfinite(cfg.runtime.ctrl_frequency_hz) ||
         cfg.runtime.ctrl_frequency_hz <= 0.0) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "runtime.ctrl_frequency_hz must be finite and positive");
+        return fail(ConfigErr::INVALID_VALUE, "runtime.ctrl_frequency_hz must be finite and positive");
     }
     const double nominal_dt = 1.0 / cfg.runtime.ctrl_frequency_hz;
     if(cfg.safety.max_dt_s < nominal_dt) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "safety.max_dt_s must not be smaller than the nominal control period");
+        return fail(ConfigErr::INVALID_VALUE, "safety.max_dt_s must not be smaller than the nominal control period");
     }
 
     std::set<std::string> joint_names;
     for(const auto& joint_name : cfg.joint_names) {
         if(joint_name.empty() || !joint_names.insert(joint_name).second) {
-            return fail(ConfigErr::DUPLICATE_NAME,
-                "joint names must be non-empty and unique");
+            return fail(ConfigErr::DUPLICATE_NAME, "joint names must be non-empty and unique");
         }
     }
 
@@ -401,33 +394,28 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
     };
     for(const auto* values : limit_vectors) {
         if(!finite_vector(*values)) {
-            return fail(ConfigErr::INVALID_VALUE,
-                "Safety joint limits contain NaN or Inf");
+            return fail(ConfigErr::INVALID_VALUE, "Safety joint limits contain NaN or Inf");
         }
     }
 
     JointActuatorMapper mapper;
     if(!mapper.configure(cfg.mapper)) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "invalid Joint/Actuator mapping");
+        return fail(ConfigErr::INVALID_VALUE, "invalid Joint/Actuator mapping");
     }
 
     JointCtrller ctrller;
     if(!ctrller.configure(cfg.ctrller)) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "invalid Joint controller gains");
+        return fail(ConfigErr::INVALID_VALUE, "invalid Joint controller gains");
     }
 
     Safety safety;
     if(!safety.configure(cfg.safety)) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "invalid Safety configuration");
+        return fail(ConfigErr::INVALID_VALUE, "invalid Safety configuration");
     }
 
     for(const auto* gains : all_gains(cfg.ctrller)) {
         if(gains->kp.size() != n || gains->kd.size() != n) {
-            return fail(ConfigErr::INVALID_SIZE,
-                "every impedance gain vector must have length 6");
+            return fail(ConfigErr::INVALID_SIZE, "every impedance gain vector must have length " + std::to_string(n));
         }
     }
 
@@ -435,9 +423,7 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
         for(const auto* gains : all_gains(cfg.ctrller)) {
             if(gains->kp[i] > limits.max_kp[i] ||
                 gains->kd[i] > limits.max_kd[i]) {
-                return fail(ConfigErr::INVALID_VALUE,
-                    "controller gain exceeds configured Safety limit at index " +
-                    std::to_string(i));
+                return fail(ConfigErr::INVALID_VALUE, "controller gain exceeds configured Safety limit at index " + std::to_string(i));
             }
         }
     }
@@ -458,8 +444,7 @@ tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
 
     const std::size_t n = cfg.joint_names.size();
     if(cfg.damiao.actuators.size() != n) {
-        return fail(ConfigErr::INVALID_SIZE,
-            "Damiao actuator entries must have length 6");
+        return fail(ConfigErr::INVALID_SIZE, "Damiao actuator count must match configured actuator count");
     }
 
     if(cfg.damiao.serial_port.empty() || cfg.damiao.baudrate <= 0 ||
@@ -467,8 +452,7 @@ tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
         !std::isfinite(cfg.damiao.stop_kp) ||
         !std::isfinite(cfg.damiao.stop_kd) ||
         cfg.damiao.stop_kp < 0.0 || cfg.damiao.stop_kd < 0.0) {
-        return fail(ConfigErr::INVALID_VALUE,
-            "invalid Damiao bus or stop configuration");
+        return fail(ConfigErr::INVALID_VALUE, "invalid Damiao bus or stop configuration");
     }
 
     std::set<std::string> actuator_names;
@@ -477,23 +461,16 @@ tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
         const auto& actuator = cfg.damiao.actuators[i];
         if(actuator.name.empty() ||
             !actuator_names.insert(actuator.name).second) {
-            return fail(ConfigErr::DUPLICATE_NAME,
-                "actuator names must be non-empty and unique");
+            return fail(ConfigErr::DUPLICATE_NAME, "actuator names must be non-empty and unique");
         }
         if(actuator.joint_name != cfg.joint_names[i]) {
-            return fail(ConfigErr::INVALID_VALUE,
-                "actuator order/joint_name must match joint_names at index " +
-                std::to_string(i));
+            return fail(ConfigErr::INVALID_VALUE, "actuator order/joint_name must match joint_names at index " + std::to_string(i));
         }
-        if(actuator.motor_id == 0 ||
-            !motor_ids.insert(actuator.motor_id).second) {
-            return fail(ConfigErr::DUPLICATE_MOTOR_ID,
-                "motor IDs must be non-zero and unique");
+        if(actuator.motor_id == 0 || !motor_ids.insert(actuator.motor_id).second) {
+            return fail(ConfigErr::DUPLICATE_MOTOR_ID, "motor IDs must be non-zero and unique");
         }
         if(actuator.motor_type.empty()) {
-            return fail(ConfigErr::MISSING_FIELD,
-                "motor_type must not be empty at index " +
-                std::to_string(i));
+            return fail(ConfigErr::MISSING_FIELD, "motor_type must not be empty at index " + std::to_string(i));
         }
     }
 
