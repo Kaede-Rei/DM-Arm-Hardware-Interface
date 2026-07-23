@@ -26,8 +26,8 @@ option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" ON)
 # 动力学：编译 Pinocchio 模型、运动学、重力补偿和完整动力学接口
 option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" ON)
 
-# Python：预留 pybind11 绑定开关；对应 target 尚未实现
-option(DM_ARM_BUILD_PYTHON "Build Python binding" OFF)
+# Python：pybind11 绑定开关，依赖 DM_ARM_ENABLE_DYNAMICS=ON
+option(DM_ARM_BUILD_PYTHON "Build Python binding" ON)
 
 # ROS 2：预留 ros2_control 适配开关；对应 target 尚未实现
 option(DM_ARM_BUILD_ROS2 "Build ROS 2 integration" OFF)
@@ -230,13 +230,38 @@ endif()
 # =============================================================================
 
 if(DM_ARM_BUILD_PYTHON)
-    # 后续在该分区中加入：
-    #   find_package(pybind11 CONFIG REQUIRED)
-    #   pybind11_add_module(...)
-    #   target_link_libraries(... dm_arm_robot dm_arm_dynamics ...)
-    message(FATAL_ERROR
-        "DM_ARM_BUILD_PYTHON=ON, but the Python binding target has not been "
-        "implemented yet. Keep this option OFF until mainline E is added.")
+    if(NOT TARGET dm_arm_dynamics)
+        message(FATAL_ERROR "DM_ARM_BUILD_PYTHON=ON requires DM_ARM_ENABLE_DYNAMICS=ON")
+    endif()
+
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+    find_package(pybind11 CONFIG REQUIRED)
+
+    pybind11_add_module(_dm_arm MODULE
+        python/bindings.cpp
+        python/robot_session.cpp
+    )
+
+    target_include_directories(_dm_arm PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/python
+    )
+
+    target_link_libraries(_dm_arm PRIVATE
+        dm_arm_core
+        dm_arm_config
+        dm_arm_robot
+        dm_arm_dynamics
+    )
+
+    if(TARGET dm_arm_damiao)
+        target_link_libraries(_dm_arm PRIVATE dm_arm_damiao)
+        target_compile_definitions(_dm_arm PRIVATE DM_ARM_PYTHON_HAS_DAMIAO=1)
+    endif()
+
+    target_compile_options(_dm_arm PRIVATE -Wall -Wextra -Wpedantic)
+
+    install(TARGETS _dm_arm LIBRARY DESTINATION dm_arm)
+    install(FILES python/dm_arm/__init__.py DESTINATION dm_arm)
 endif()
 
 # =============================================================================

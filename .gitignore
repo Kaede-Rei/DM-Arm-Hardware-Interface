@@ -3,9 +3,10 @@ install/
 log/
 docs/
 
+.VSCodeCounter/
+.vscode/
 .agents/
 .cache/
-.vscode/
-.VSCodeCounter/
+.venv/
 
 .codex
