@@ -17,7 +17,7 @@ include(CMakePackageConfigHelpers)
 # 构建选项
 # =============================================================================
 
-# 终端主程序：用于纯 C++ API、FakeBus 和真机后端的交互式联调
+# 终端主程序：用于达妙真机、动力学与完整纯 C++ API 的交互式联调
 option(DM_ARM_BUILD_TERMINAL "Build terminal main application" ON)
 
 # 达妙后端：编译串口 / USB-CAN / MIT 模式适配层
@@ -255,7 +255,13 @@ endif()
 # =============================================================================
 
 if(DM_ARM_BUILD_TERMINAL)
-    # 线程库只被终端后台 cycle() 调度使用，因此不作为全局必选依赖
+    if(NOT TARGET dm_arm_damiao)
+        message(FATAL_ERROR "DM_ARM_BUILD_TERMINAL=ON requires DM_ARM_BUILD_DAMIAO=ON")
+    endif()
+    if(NOT TARGET dm_arm_dynamics)
+        message(FATAL_ERROR "DM_ARM_BUILD_TERMINAL=ON requires DM_ARM_ENABLE_DYNAMICS=ON")
+    endif()
+
     find_package(Threads REQUIRED)
 
     add_executable(dm_arm_terminal
@@ -266,21 +272,10 @@ if(DM_ARM_BUILD_TERMINAL)
         PRIVATE
             dm_arm_robot
             dm_arm_config
+            dm_arm_damiao
+            dm_arm_dynamics
             Threads::Threads
     )
-
-    # 终端按已创建的可选 target 自动获得后端能力
-    if(TARGET dm_arm_damiao)
-        target_link_libraries(dm_arm_terminal PRIVATE dm_arm_damiao)
-        target_compile_definitions(
-            dm_arm_terminal PRIVATE DM_ARM_CLI_HAS_DAMIAO=1)
-    endif()
-
-    if(TARGET dm_arm_dynamics)
-        target_link_libraries(dm_arm_terminal PRIVATE dm_arm_dynamics)
-        target_compile_definitions(
-            dm_arm_terminal PRIVATE DM_ARM_CLI_HAS_DYNAMICS=1)
-    endif()
 
     target_compile_features(dm_arm_terminal PRIVATE cxx_std_17)
     dm_arm_enable_warnings(dm_arm_terminal)

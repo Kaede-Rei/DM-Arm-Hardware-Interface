@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -87,14 +88,10 @@ std::string yaml_location(const YAML::Mark& mark) {
 YAML::Node require_map(const YAML::Node& parent, const char* key, const char* context) {
     const YAML::Node node = parent[key];
     if(!node) {
-        throw ConfigLoadException(
-            ConfigErr::MISSING_FIELD,
-            std::string(context) + ": missing field '" + key + "'");
+        throw ConfigLoadException(ConfigErr::MISSING_FIELD, std::string(context) + ": missing field '" + key + "'");
     }
     if(!node.IsMap()) {
-        throw ConfigLoadException(
-            ConfigErr::INVALID_VALUE,
-            yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a map");
+        throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a map");
     }
     return node;
 }
@@ -110,14 +107,10 @@ YAML::Node require_map(const YAML::Node& parent, const char* key, const char* co
 YAML::Node require_sequence(const YAML::Node& parent, const char* key, const char* context) {
     const YAML::Node node = parent[key];
     if(!node) {
-        throw ConfigLoadException(
-            ConfigErr::MISSING_FIELD,
-            std::string(context) + ": missing field '" + key + "'");
+        throw ConfigLoadException(ConfigErr::MISSING_FIELD, std::string(context) + ": missing field '" + key + "'");
     }
     if(!node.IsSequence()) {
-        throw ConfigLoadException(
-            ConfigErr::INVALID_VALUE,
-            yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a sequence");
+        throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a sequence");
     }
     return node;
 }
@@ -135,18 +128,14 @@ template<typename T>
 T require_as(const YAML::Node& parent, const char* key, const char* context) {
     const YAML::Node node = parent[key];
     if(!node) {
-        throw ConfigLoadException(
-            ConfigErr::MISSING_FIELD,
-            std::string(context) + ": missing field '" + key + "'");
+        throw ConfigLoadException(ConfigErr::MISSING_FIELD, std::string(context) + ": missing field '" + key + "'");
     }
 
     try {
         return node.as<T>();
     }
     catch(const YAML::BadConversion&) {
-        throw ConfigLoadException(
-            ConfigErr::INVALID_VALUE,
-            yaml_location(node.Mark()) + std::string(context) + "." + key + " has an invalid type or value");
+        throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + std::string(context) + "." + key + " has an invalid type or value");
     }
 }
 
@@ -157,9 +146,7 @@ T require_as(const YAML::Node& parent, const char* key, const char* context) {
  * @return 阻抗增益
  * @throws ConfigLoadException 如果增益配置无效
  */
-JointImpedanceGains load_gains(
-    const YAML::Node& controller,
-    const char* mode_name) {
+JointImpedanceGains load_gains(const YAML::Node& controller, const char* mode_name) {
     const YAML::Node mode = require_map(controller, mode_name, "controller");
     JointImpedanceGains gains;
     gains.kp = require_as<JointVector>(mode, "kp", mode_name);
@@ -171,8 +158,7 @@ JointImpedanceGains load_gains(
  * @brief 解析模型前馈策略
  */
 ModelFeedforwardMode load_model_feedforward_mode(const YAML::Node& runtime) {
-    const std::string value =
-        require_as<std::string>(runtime, "model_feedforward_mode", "runtime");
+    const std::string value = require_as<std::string>(runtime, "model_feedforward_mode", "runtime");
 
     if(value == "NONE") return ModelFeedforwardMode::NONE;
     if(value == "GRAVITY") return ModelFeedforwardMode::GRAVITY;
@@ -180,9 +166,7 @@ ModelFeedforwardMode load_model_feedforward_mode(const YAML::Node& runtime) {
         return ModelFeedforwardMode::FULL_INVERSE_DYNAMICS;
     }
 
-    throw ConfigLoadException(
-        ConfigErr::INVALID_VALUE,
-        "runtime.model_feedforward_mode must be NONE, GRAVITY or FULL_INVERSE_DYNAMICS");
+    throw ConfigLoadException(ConfigErr::INVALID_VALUE, "runtime.model_feedforward_mode must be NONE, GRAVITY or FULL_INVERSE_DYNAMICS");
 }
 
 /**
@@ -225,9 +209,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
     try {
         const YAML::Node root = YAML::LoadFile(path);
         if(!root || !root.IsMap()) {
-            return tl::make_unexpected(make_err(
-                ConfigErr::SYNTAX_ERROR,
-                "configuration root must be a YAML map"));
+            return tl::make_unexpected(make_err(ConfigErr::SYNTAX_ERROR, "configuration root must be a YAML map"));
         }
 
         RobotCfg cfg;
@@ -237,6 +219,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
 
         const YAML::Node runtime = require_map(root, "runtime", "root");
         cfg.runtime.ctrl_frequency_hz = require_as<double>(runtime, "ctrl_frequency_hz", "runtime");
+        cfg.runtime.joint_acc_filter_alpha = runtime["joint_acc_filter_alpha"] ? require_as<double>(runtime, "joint_acc_filter_alpha", "runtime") : 0.2;
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
         cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
 
@@ -245,13 +228,9 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.safety.state_timeout_s = require_as<double>(safety, "state_timeout_s", "safety");
         cfg.safety.max_dt_s = require_as<double>(safety, "max_dt_s", "safety");
         cfg.safety.numeric_tolerance = require_as<double>(safety, "numeric_tolerance", "safety");
-        cfg.safety.state_vel_fault_ratio = safety["state_vel_fault_ratio"]
-            ? require_as<double>(safety, "state_vel_fault_ratio", "safety")
-            : 1.5;
-        cfg.safety.require_all_actuators_online =
-            require_as<bool>(safety, "require_all_actuators_online", "safety");
-        cfg.safety.require_all_actuators_enabled =
-            require_as<bool>(safety, "require_all_actuators_enabled", "safety");
+        cfg.safety.state_vel_fault_ratio = safety["state_vel_fault_ratio"] ? require_as<double>(safety, "state_vel_fault_ratio", "safety") : 1.5;
+        cfg.safety.require_all_actuators_online = require_as<bool>(safety, "require_all_actuators_online", "safety");
+        cfg.safety.require_all_actuators_enabled = require_as<bool>(safety, "require_all_actuators_enabled", "safety");
 
         const YAML::Node limits = require_map(root, "limits", "root");
         cfg.safety.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
@@ -278,6 +257,26 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.ctrller.compliant_drag_gains = load_gains(controller, "compliant_drag");
         cfg.ctrller.compliant_tracking_gains = load_gains(controller, "compliant_tracking");
 
+
+        const YAML::Node dynamics = require_map(root, "dynamics", "root");
+        const std::filesystem::path config_path = std::filesystem::absolute(path).lexically_normal();
+        std::filesystem::path urdf_path = require_as<std::string>(dynamics, "urdf_path", "dynamics");
+        if(urdf_path.is_relative()) {
+            urdf_path = (config_path.parent_path() / urdf_path).lexically_normal();
+        }
+
+        cfg.dynamics.urdf_path = urdf_path.string();
+        cfg.dynamics.joint_names = cfg.joint_names;
+        cfg.dynamics.base_frame = require_as<std::string>(dynamics, "base_frame", "dynamics");
+        cfg.dynamics.tool_frame = require_as<std::string>(dynamics, "tool_frame", "dynamics");
+
+        const JointVector gravity = require_as<JointVector>(dynamics, "gravity", "dynamics");
+        if(gravity.size() != 3) {
+            throw ConfigLoadException(ConfigErr::INVALID_SIZE, "dynamics.gravity must have length 3");
+        }
+        cfg.dynamics.gravity = { gravity[0], gravity[1], gravity[2] };
+        cfg.dynamics.gravity_scale = require_as<JointVector>(dynamics, "gravity_scale", "dynamics");
+
         const YAML::Node damiao = require_map(root, "damiao", "root");
         cfg.damiao.serial_port = require_as<std::string>(damiao, "serial_port", "damiao");
         cfg.damiao.baudrate = require_as<int>(damiao, "baudrate", "damiao");
@@ -292,9 +291,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         for(std::size_t i = 0; i < actuators.size(); ++i) {
             const YAML::Node item = actuators[i];
             if(!item.IsMap()) {
-                throw ConfigLoadException(
-                    ConfigErr::INVALID_VALUE,
-                    yaml_location(item.Mark()) + "damiao.actuators[" + std::to_string(i) + "] must be a map");
+                throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(item.Mark()) + "damiao.actuators[" + std::to_string(i) + "] must be a map");
             }
 
             DamiaoActuatorCfg actuator;
@@ -319,19 +316,13 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         return tl::make_unexpected(make_err(error.code(), error.what()));
     }
     catch(const YAML::BadFile&) {
-        return tl::make_unexpected(make_err(
-            ConfigErr::FILE_OPEN_FAILED,
-            "failed to open configuration file: " + path));
+        return tl::make_unexpected(make_err(ConfigErr::FILE_OPEN_FAILED, "failed to open configuration file: " + path));
     }
     catch(const YAML::ParserException& error) {
-        return tl::make_unexpected(make_err(
-            ConfigErr::SYNTAX_ERROR,
-            yaml_location(error.mark) + error.msg));
+        return tl::make_unexpected(make_err(ConfigErr::SYNTAX_ERROR, yaml_location(error.mark) + error.msg));
     }
     catch(const YAML::Exception& error) {
-        return tl::make_unexpected(make_err(
-            ConfigErr::INVALID_VALUE,
-            yaml_location(error.mark) + error.msg));
+        return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, yaml_location(error.mark) + error.msg));
     }
     catch(const std::exception& error) {
         return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, error.what()));
@@ -351,7 +342,7 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
 
     const auto size_is_n = [n](const auto& values) {
         return values.size() == n;
-        };
+    };
     const auto& limits = cfg.safety.limits;
     if(!size_is_n(limits.min_pos) || !size_is_n(limits.max_pos) ||
         !size_is_n(limits.max_vel) || !size_is_n(limits.max_acc) ||
@@ -366,9 +357,11 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
         return fail(ConfigErr::INVALID_SIZE, "controller, mapper and safety joints_count must match joint_names");
     }
 
-    if(!std::isfinite(cfg.runtime.ctrl_frequency_hz) ||
-        cfg.runtime.ctrl_frequency_hz <= 0.0) {
+    if(!std::isfinite(cfg.runtime.ctrl_frequency_hz) || cfg.runtime.ctrl_frequency_hz <= 0.0) {
         return fail(ConfigErr::INVALID_VALUE, "runtime.ctrl_frequency_hz must be finite and positive");
+    }
+    if(!std::isfinite(cfg.runtime.joint_acc_filter_alpha) || cfg.runtime.joint_acc_filter_alpha < 0.0 || cfg.runtime.joint_acc_filter_alpha > 1.0) {
+        return fail(ConfigErr::INVALID_VALUE, "runtime.joint_acc_filter_alpha must be in [0, 1]");
     }
     const double nominal_dt = 1.0 / cfg.runtime.ctrl_frequency_hz;
     if(cfg.safety.max_dt_s < nominal_dt) {
@@ -421,10 +414,29 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
 
     for(std::size_t i = 0; i < n; ++i) {
         for(const auto* gains : all_gains(cfg.ctrller)) {
-            if(gains->kp[i] > limits.max_kp[i] ||
-                gains->kd[i] > limits.max_kd[i]) {
+            if(gains->kp[i] > limits.max_kp[i] || gains->kd[i] > limits.max_kd[i]) {
                 return fail(ConfigErr::INVALID_VALUE, "controller gain exceeds configured Safety limit at index " + std::to_string(i));
             }
+        }
+    }
+
+    if(cfg.dynamics.urdf_path.empty() || cfg.dynamics.base_frame.empty() || cfg.dynamics.tool_frame.empty()) {
+        return fail(ConfigErr::MISSING_FIELD, "dynamics urdf_path, base_frame and tool_frame must not be empty");
+    }
+    if(cfg.dynamics.joint_names != cfg.joint_names) {
+        return fail(ConfigErr::INVALID_VALUE, "dynamics joint_names must match joint_names");
+    }
+    if(cfg.dynamics.gravity_scale.size() != n) {
+        return fail(ConfigErr::INVALID_SIZE, "dynamics.gravity_scale must have length " + std::to_string(n));
+    }
+    for(const double value : cfg.dynamics.gravity) {
+        if(!std::isfinite(value)) {
+            return fail(ConfigErr::INVALID_VALUE, "dynamics.gravity contains NaN or Inf");
+        }
+    }
+    for(const double value : cfg.dynamics.gravity_scale) {
+        if(!std::isfinite(value) || value < 0.0 || value > 1.0) {
+            return fail(ConfigErr::INVALID_VALUE, "dynamics.gravity_scale values must be in [0, 1]");
         }
     }
 

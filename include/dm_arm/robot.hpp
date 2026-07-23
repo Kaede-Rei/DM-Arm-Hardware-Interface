@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tl/expected.hpp>
+#include <tl/optional.hpp>
 
 #include "dm_arm/config/config.hpp"
 #include "dm_arm/core/joint_actuator_mapper.hpp"
@@ -9,8 +10,8 @@
 #include "dm_arm/hardware/motor_bus.hpp"
 
 #include <chrono>
+#include <functional>
 #include <memory>
-#include <tl/optional.hpp>
 
 namespace dm_arm {
 
@@ -32,6 +33,7 @@ enum class RobotState {
 enum class ModelFeedforwardErr {
     NOT_CONFIGURED, ///< 非 NONE 模式未提供计算函数
     INVALID_INPUT,  ///< 输入状态无效
+    INVALID_MODE,   ///< 模型前馈模式无效
     COMPUTE_FAILED, ///< 动力学计算失败
 };
 
@@ -46,17 +48,18 @@ enum class RobotErr {
     MOTOR_BUS_SIZE_MISMATCH,   ///< MotorBus 数量与关节数量不一致
     WRITE_DISABLED,            ///< 配置禁止写入执行器
     NOT_ACTIVE,                ///< 当前状态不是 ACTIVE
+    NOT_INACTIVE,              ///< 当前状态不是 INACTIVE
     ALREADY_ACTIVE,            ///< 当前已经处于 ACTIVE
     FAULTED,                   ///< 当前处于 FAULT
     NOT_FAULTED,               ///< 当前并未处于 FAULT
     INVALID_TIME,              ///< 时间戳回退或不合法
 
-    MOTOR_BUS_CONNECT_FAILED,   ///< MotorBus connect() 失败
-    MOTOR_BUS_ACTIVATE_FAILED,   ///< MotorBus activate() 失败
-    MOTOR_BUS_READ_FAILED,       ///< MotorBus read() 失败
-    MOTOR_BUS_WRITE_FAILED,      ///< MotorBus write() 失败
-    MOTOR_BUS_DEACTIVATE_FAILED, ///< MotorBus deactivate() 失败
-    MOTOR_BUS_RECOVER_FAILED,    ///< MotorBus recover() 失败
+    MOTOR_BUS_CONNECT_FAILED,       ///< MotorBus connect() 失败
+    MOTOR_BUS_ACTIVATE_FAILED,      ///< MotorBus activate() 失败
+    MOTOR_BUS_READ_FAILED,          ///< MotorBus read() 失败
+    MOTOR_BUS_WRITE_FAILED,         ///< MotorBus write() 失败
+    MOTOR_BUS_DEACTIVATE_FAILED,    ///< MotorBus deactivate() 失败
+    MOTOR_BUS_RECOVER_FAILED,       ///< MotorBus recover() 失败
 
     MAPPER_FAILED,              ///< 关节/执行器映射失败
     CTRLLER_FAILED,             ///< 控制器失败
@@ -83,17 +86,20 @@ struct RobotFault {
  * @brief 单次 Robot 控制周期输出
  */
 struct RobotCycleOutput {
-    ActuatorState actuator_state; ///< 本周期执行器状态
-    JointState joint_state;       ///< 本周期关节状态
-    JointCtrlCmd joint_cmd;       ///< Safety 检查后的关节命令
-    ActuatorMitCmd actuator_cmd;  ///< 实际发送的执行器命令
-    double dt{ 0.0 };             ///< 本周期使用的时间步长
+    ActuatorState actuator_state;     ///< 本周期执行器状态
+    JointState joint_state;           ///< 本周期关节状态
+    JointVector joint_acc;            ///< 本周期关节加速度估计
+    JointVector joint_ref_acc;        ///< 本周期关节参考加速度
+    JointVector model_feedforward;    ///< 本周期模型前馈力矩
+    JointCtrlCmd joint_cmd;           ///< Safety 检查后的关节命令
+    ActuatorMitCmd actuator_cmd;      ///< 实际发送的执行器命令
+    double dt{ 0.0 };                 ///< 本周期使用的时间步长
 };
 
 /**
  * @brief 接入 Robot 的模型前馈函数
  */
-using ModelFeedforwardFn = std::function<tl::expected<JointVector, ModelFeedforwardErr>(ModelFeedforwardMode, const JointState&, double)>;
+using ModelFeedforwardFn = std::function<tl::expected<JointVector, ModelFeedforwardErr>(ModelFeedforwardMode, const JointState&, const JointVector&, const JointVector&, double)>;
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
@@ -124,13 +130,11 @@ public:
      * @return 配置成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> configure(const RobotCfg& cfg, std::unique_ptr<MotorBus> motor_bus, ModelFeedforwardFn model_feedforward = {});
-
     /**
      * @brief 连接、使能并用真实状态初始化控制器
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> activate();
-
     /**
      * @brief 设置跟踪参考命令
      * @param cmd 跟踪命令
@@ -138,7 +142,6 @@ public:
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> set_cmd(const JointCmd& cmd, TimePoint now = Clock::now());
-
     /**
      * @brief 设置完整 Joint 控制命令
      * @param cmd 完整关节控制命令
@@ -146,7 +149,6 @@ public:
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> set_full_cmd(const JointCtrlCmd& cmd, TimePoint now = Clock::now());
-
     /**
      * @brief 切换阻抗模式
      * @param mode 目标阻抗模式
@@ -154,20 +156,23 @@ public:
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> set_impedance_mode(JointImpedanceMode mode, TimePoint now = Clock::now());
-
+    /**
+     * @brief 设置模型前馈模式
+     * @param mode 目标模型前馈模式
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> set_model_feedforward_mode(ModelFeedforwardMode mode);
     /**
      * @brief 执行一次完整控制周期
      * @param now 当前时间点
      * @return 成功返回周期输出，失败返回 RobotFault
      */
     tl::expected<RobotCycleOutput, RobotFault> cycle(TimePoint now = Clock::now());
-
     /**
      * @brief 安全停止并失能，回到 INACTIVE
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> deactivate();
-
     /**
      * @brief 清除 FAULT 锁存并回到 INACTIVE
      * @return 成功返回空 expected，失败返回 RobotFault
@@ -179,31 +184,41 @@ public:
      * @return 当前 RobotState
      */
     RobotState get_state() const noexcept;
-
     /**
      * @brief 获取当前控制器阻抗模式
      * @return 当前 JointImpedanceMode
      */
     JointImpedanceMode get_impedance_mode() const noexcept;
-
     /**
      * @brief 获取当前模型前馈模式
      * @return 当前 ModelFeedforwardMode
      */
     ModelFeedforwardMode get_model_feedforward_mode() const noexcept;
-
     /**
      * @brief 获取最近一次合法的关节状态
      * @return 最近一次合法的 JointState
      */
     const JointState& get_joint_state() const noexcept;
-
+    /**
+     * @brief 获取最近一次关节加速度估计
+     * @return 最近一次关节加速度估计
+     */
+    const JointVector& get_joint_acc() const noexcept;
+    /**
+     * @brief 获取最近一次关节参考加速度
+     * @return 最近一次关节参考加速度
+     */
+    const JointVector& get_joint_ref_acc() const noexcept;
+    /**
+     * @brief 获取最近一次模型前馈力矩
+     * @return 最近一次模型前馈力矩
+     */
+    const JointVector& get_model_feedforward() const noexcept;
     /**
      * @brief 获取最近一次合法的执行器状态
      * @return 最近一次合法的 ActuatorState
      */
     const ActuatorState& get_actuator_state() const noexcept;
-
     /**
      * @brief 获取最近一次锁存的故障信息
      * @return 最近一次故障信息，若无故障则为空
@@ -212,12 +227,28 @@ public:
 
 private:
     /**
+     * @brief 计算当前周期的关节加速度估计
+     * @param state 当前关节状态
+     * @param dt 当前周期时间步长
+     * @return 关节加速度估计
+     */
+    JointVector estimate_joint_acc(const JointState& state, double dt) const;
+    /**
+     * @brief 计算当前周期的关节参考加速度
+     * @param cmd 当前关节控制命令
+     * @param dt 当前周期时间步长
+     * @return 关节参考加速度
+     */
+    JointVector estimate_joint_ref_acc(const JointCtrlCmd& cmd, double dt) const;
+    /**
      * @brief 计算当前周期的模型前馈项
      * @param state 当前关节状态
+     * @param joint_acc 当前关节加速度估计
+     * @param joint_ref_acc 当前关节参考加速度
      * @param dt 当前周期时间步长
      * @return 成功返回前馈向量，失败返回 RobotFault
      */
-    tl::expected<JointVector, RobotFault> compute_model_feedforward(const JointState& state, double dt) const;
+    tl::expected<JointVector, RobotFault> compute_model_feedforward(const JointState& state, const JointVector& joint_acc, const JointVector& joint_ref_acc, double dt) const;
 
     /**
      * @brief 构造仅包含通用错误码的故障对象
@@ -304,20 +335,25 @@ private:
     JointActuatorMapper mapper_;                    ///< Joint/Actuator 映射
     Safety safety_;                                 ///< 安全检查器
     std::unique_ptr<MotorBus> motor_bus_;           ///< 执行器后端
-    ModelFeedforwardFn model_feedforward_;          ///< 可选动力学前馈入口
+    ModelFeedforwardFn model_feedforward_;          ///< 动力学前馈入口
 
     RobotState state_{ RobotState::UNCONFIGURED };  ///< Robot 生命周期状态
     JointState joint_state_;                        ///< 最近一次合法 JointState
+    JointVector joint_acc_;                         ///< 最近一次关节加速度估计
+    JointVector joint_ref_acc_;                     ///< 最近一次关节参考加速度
+    JointVector model_feedforward_cache_;           ///< 最近一次模型前馈力矩
+    JointCtrlCmd last_joint_cmd_;                   ///< 最近一次合法关节控制命令
     ActuatorState actuator_state_;                  ///< 最近一次合法 ActuatorState
     tl::optional<RobotFault> last_fault_;           ///< 锁存的最近故障
 
-    TimePoint last_cycle_time_{};               ///< 上一成功周期时间
-    TimePoint last_state_time_{};               ///< 上一合法状态时间
-    TimePoint last_cmd_time_{};                 ///< 上一外部命令时间
+    TimePoint last_cycle_time_{};                   ///< 上一成功周期时间
+    TimePoint last_state_time_{};                   ///< 上一合法状态时间
+    TimePoint last_cmd_time_{};                     ///< 上一外部命令时间
 
-    bool has_state_{ false };                   ///< 是否已有合法状态
-    bool has_completed_cycle_{ false };         ///< 是否已经完成至少一个周期
-    bool has_external_cmd_{ false };            ///< 跟踪模式是否收到过外部命令
+    bool has_state_{ false };                       ///< 是否已有合法状态
+    bool has_completed_cycle_{ false };             ///< 是否已经完成至少一个周期
+    bool has_external_cmd_{ false };                ///< 跟踪模式是否收到过外部命令
+    bool has_last_joint_cmd_{ false };              ///< 是否已有合法关节控制命令
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

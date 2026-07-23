@@ -7,8 +7,8 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-#include "dm_arm/core/types.hpp"
 #include "dm_arm/config/config.hpp"
+#include "dm_arm/core/types.hpp"
 
 namespace dm_arm {
 
@@ -36,34 +36,34 @@ enum class DynamicsErr {
  * @brief 动力学模型基本信息
  */
 struct DynamicsInfo {
-    std::size_t joints_count{ 0 };  ///< 受控关节数量，等于 joint_names.size()
-
-    int nq{ 0 };        ///< Pinocchio 模型位置空间维数
-    int nv{ 0 };        ///< Pinocchio 模型速度空间维数
-
-    double total_mass{ 0.0 };       ///< URDF 模型中所有刚体的总质量
-
-    std::vector<std::string> joint_names;   ///< 受控关节名称，顺序与 JointVector 一致
-    std::vector<int> q_indices;             ///< 各受控关节在完整模型位置向量中的起始索引
-    std::vector<int> v_indices;             ///< 各受控关节在完整模型速度向量中的起始索引
+    std::size_t joints_count{ 0 };              ///< 受控关节数量
+    int nq{ 0 };                                ///< Pinocchio 模型位置空间维数
+    int nv{ 0 };                                ///< Pinocchio 模型速度空间维数
+    double total_mass{ 0.0 };                   ///< URDF 模型总质量
+    std::vector<std::string> joint_names;       ///< 受控关节名称
+    std::vector<int> q_indices;                 ///< 受控关节位置索引
+    std::vector<int> v_indices;                 ///< 受控关节速度索引
 };
 
 /**
- * @brief 最近一次 update() 得到的主要运动学与动力学结果
+ * @brief 最近一次 update() 得到的完整运动学与动力学缓存
  */
 struct DynamicsState {
-    JointVector pos;                    ///< 最近一次更新使用的关节位置
-    JointVector vel;                    ///< 最近一次更新使用的关节速度
+    JointVector pos;                    ///< 当前关节位置
+    JointVector vel;                    ///< 当前关节速度
+    JointVector acc;                    ///< 当前关节加速度估计
+    JointVector tor;                    ///< 当前关节反馈力矩
+    JointVector ref_acc;                ///< 当前关节参考加速度
 
-    JointVector gravity;                ///< 未缩放的重力广义力向量
-    JointVector gravity_compensation;   ///< 经过 gravity_scale 缩放的重力补偿向量
-    JointVector nonlinear;              ///< 完整非线性广义力向量
-    JointVector coriolis;               ///< 科氏力和离心力广义力向量
+    JointVector gravity;                ///< 未缩放重力广义力
+    JointVector gravity_compensation;   ///< 缩放后的重力补偿
+    JointVector nonlinear;              ///< 非线性广义力
+    JointVector coriolis;               ///< 科氏力和离心力广义力
+    JointVector inverse_dynamics;       ///< 使用 ref_acc 计算的逆动力学结果
+    JointVector forward_dynamics;       ///< 使用反馈力矩计算的正向动力学结果
 
     Eigen::MatrixXd mass_matrix;        ///< 关节空间质量矩阵
-    Eigen::Isometry3d tool_pose{        ///< tool_frame 相对于 base_frame 的位姿
-        Eigen::Isometry3d::Identity()
-    };
+    Eigen::Isometry3d tool_pose{ Eigen::Isometry3d::Identity() };  ///< tool_frame 相对于 base_frame 的位姿
     Eigen::MatrixXd tool_jacobian;      ///< tool_frame 的 LOCAL_WORLD_ALIGNED Jacobian
 };
 
@@ -99,14 +99,29 @@ public:
 
     /**
      * @brief 根据配置加载并初始化动力学模型
-     * @param cfg 动力学配置，包括 URDF 路径和受控关节名称等信息
-     * @return 成功时返回空值；失败时返回对应的 DynamicsErr
+     * @param cfg 动力学配置
+     * @return 成功时返回空值；失败时返回 DynamicsErr
      */
     tl::expected<void, DynamicsErr> configure(const DynamicsCfg& cfg);
+    /**
+     * @brief 集中更新当前周期的全部运动学与动力学缓存
+     * @param state 当前关节位置、速度和反馈力矩
+     * @param acc 当前关节加速度估计
+     * @param ref_acc 当前关节参考加速度
+     * @return 成功时返回空值；失败时返回 DynamicsErr
+     */
+    tl::expected<void, DynamicsErr> update(const JointState& state, const JointVector& acc, const JointVector& ref_acc);
+    /**
+     * @brief 更新重力补偿缩放系数
+     * @param gravity_scale 重力补偿缩放系数
+     * @return 成功时返回空值；失败时返回 DynamicsErr
+     */
+    tl::expected<void, DynamicsErr> set_gravity_scale(const JointVector& gravity_scale);
     /**
      * @brief 清理当前动力学模型并恢复未配置状态
      */
     void cleanup();
+
     /**
      * @brief 查询动力学模型是否已经完成配置
      * @return 已成功配置时返回 true，否则返回 false
@@ -117,36 +132,6 @@ public:
      * @return update() 成功执行过至少一次时返回 true，否则返回 false
      */
     bool is_updated() const noexcept;
-    /**
-     * @brief 查询逆动力学缓存是否有效
-     * @return update_inverse_dynamics() 成功执行后返回 true，否则返回 false
-     */
-    bool has_inverse_dynamics() const noexcept;
-    /**
-     * @brief 查询正向动力学缓存是否有效
-     * @return update_forward_dynamics() 成功执行后返回 true，否则返回 false
-     */
-    bool has_forward_dynamics() const noexcept;
-
-    /**
-     * @brief 集中更新当前周期的运动学与主要动力学缓存
-     * @param q 关节位置向量，顺序应与 DynamicsInfo::joint_names 一致
-     * @param dq 关节速度向量，顺序应与 DynamicsInfo::joint_names 一致
-     * @return 成功时返回空值；失败时返回 DynamicsErr
-     */
-    tl::expected<void, DynamicsErr> update(const JointVector& q, const JointVector& dq);
-    /**
-     * @brief 使用最近一次 update() 的 q/dq 更新逆动力学缓存
-     * @param ddq 关节加速度向量
-     * @return 成功时返回空值；失败时返回 DynamicsErr
-     */
-    tl::expected<void, DynamicsErr> update_inverse_dynamics(const JointVector& ddq);
-    /**
-     * @brief 使用最近一次 update() 的 q/dq 更新正向动力学缓存
-     * @param tau 关节驱动力矩向量
-     * @return 成功时返回空值；失败时返回 DynamicsErr
-     */
-    tl::expected<void, DynamicsErr> update_forward_dynamics(const JointVector& tau);
 
     /**
      * @brief 获取当前动力学模型的基本信息
@@ -158,6 +143,11 @@ public:
      * @return DynamicsState 的只读引用
      */
     const DynamicsState& get_state() const noexcept;
+    /**
+     * @brief 获取当前重力补偿缩放系数
+     * @return 重力补偿缩放系数的只读引用
+     */
+    const JointVector& get_gravity_scale() const noexcept;
     /**
      * @brief 获取指定坐标系相对于 base_frame 的缓存位姿
      * @param frame_name 目标坐标系名称
@@ -196,6 +186,16 @@ public:
      */
     const Eigen::MatrixXd& get_mass_matrix() const noexcept;
     /**
+     * @brief 获取最近一次 update() 的逆动力学结果
+     * @return 逆动力学缓存的只读引用
+     */
+    const JointVector& get_inverse_dynamics() const noexcept;
+    /**
+     * @brief 获取最近一次 update() 的正向动力学结果
+     * @return 正向动力学缓存的只读引用
+     */
+    const JointVector& get_forward_dynamics() const noexcept;
+    /**
      * @brief 获取最近一次 update() 的末端位姿
      * @return tool_frame 位姿缓存的只读引用
      */
@@ -205,16 +205,6 @@ public:
      * @return tool_frame Jacobian 缓存的只读引用
      */
     const Eigen::MatrixXd& get_tool_jacobian() const noexcept;
-    /**
-     * @brief 获取最近一次 update_inverse_dynamics() 的结果
-     * @return 逆动力学缓存的只读引用
-     */
-    const JointVector& get_inverse_dynamics() const noexcept;
-    /**
-     * @brief 获取最近一次 update_forward_dynamics() 的结果
-     * @return 正向动力学缓存的只读引用
-     */
-    const JointVector& get_forward_dynamics() const noexcept;
 
 private:
     struct Impl;                    ///< 动力学模块内部实现

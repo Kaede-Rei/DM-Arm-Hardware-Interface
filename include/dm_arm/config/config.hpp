@@ -6,6 +6,7 @@
 #include "dm_arm/core/joints_ctrller.hpp"
 #include "dm_arm/core/safety.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -20,6 +21,7 @@ namespace dm_arm {
  */
 struct RuntimeCfg {
     double ctrl_frequency_hz{ 200.0 };                 ///< 控制循环频率
+    double joint_acc_filter_alpha{ 0.2 };              ///< 关节加速度低通滤波系数
     bool write_enabled{ false };                       ///< 是否允许下发执行器命令
     ModelFeedforwardMode model_feedforward_mode{       ///< 模型前馈策略
         ModelFeedforwardMode::NONE

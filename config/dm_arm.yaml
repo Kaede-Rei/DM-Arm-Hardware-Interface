@@ -5,6 +5,7 @@ joints:
 # 运行时配置
 runtime:
   ctrl_frequency_hz: 200.0        # Robot cycle 目标频率
+  joint_acc_filter_alpha: 0.2     # 关节加速度低通滤波系数，范围 [0, 1]
   write_enabled: true             # 真机确认前保持 false
   model_feedforward_mode: NONE    # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
 
@@ -60,6 +61,15 @@ controller:
   compliant_tracking:
     kp: [10.0, 10.0, 10.0, 8.0, 8.0, 8.0]     # 比例增益（位置）
     kd: [0.10, 0.10, 0.10, 0.08, 0.08, 0.08]  # 微分增益（速度）
+
+
+# 动力学配置
+dynamics:
+  urdf_path: ../description/urdf/dm_arm.urdf      # 相对于当前 YAML 文件的 URDF 路径
+  base_frame: base_link                           # 动力学基坐标系
+  tool_frame: tool0                               # 动力学末端坐标系
+  gravity: [0.0, 0.0, -9.81]                      # 世界坐标系重力加速度
+  gravity_scale: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # 重力补偿比例
 
 # 硬件配置
 damiao:

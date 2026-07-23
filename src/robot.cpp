@@ -20,6 +20,8 @@ namespace {
 
 /**
  * @brief 判断向量中的所有元素是否均为有限值
+ * @param values 待检查向量
+ * @return 所有元素均有限时返回 true，否则返回 false
  */
 bool finite_vector(const JointVector& values) {
     return std::all_of(values.begin(), values.end(), [](double value) {
@@ -63,8 +65,7 @@ tl::expected<void, RobotFault> Robot::configure(const RobotCfg& cfg, std::unique
     if(motor_bus->size() != cfg.joint_names.size()) {
         return tl::make_unexpected(make_fault(RobotErr::MOTOR_BUS_SIZE_MISMATCH));
     }
-    if(cfg.runtime.model_feedforward_mode != ModelFeedforwardMode::NONE &&
-        !model_feedforward) {
+    if(cfg.runtime.model_feedforward_mode != ModelFeedforwardMode::NONE && !model_feedforward) {
         RobotFault fault = make_model_fault(ModelFeedforwardErr::NOT_CONFIGURED);
         fault.code = RobotErr::INVALID_CFG;
         return tl::make_unexpected(fault);
@@ -162,9 +163,20 @@ tl::expected<void, RobotFault> Robot::activate() {
 
     actuator_state_ = actuator_state.value();
     joint_state_ = joint_state.value();
+    joint_acc_.assign(cfg_.joint_names.size(), 0.0);
+    joint_ref_acc_.assign(cfg_.joint_names.size(), 0.0);
+    model_feedforward_cache_.assign(cfg_.joint_names.size(), 0.0);
+
+    last_joint_cmd_.pos = joint_state_.pos;
+    last_joint_cmd_.vel.assign(cfg_.joint_names.size(), 0.0);
+    last_joint_cmd_.tor.assign(cfg_.joint_names.size(), 0.0);
+    last_joint_cmd_.kp.assign(cfg_.joint_names.size(), 0.0);
+    last_joint_cmd_.kd.assign(cfg_.joint_names.size(), 0.0);
+
     has_state_ = true;
     has_completed_cycle_ = false;
     has_external_cmd_ = false;
+    has_last_joint_cmd_ = true;
 
     const TimePoint activated_at = Clock::now();
     last_cycle_time_ = activated_at;
@@ -180,20 +192,14 @@ tl::expected<void, RobotFault> Robot::activate() {
  * @brief 设置跟踪参考命令
  */
 tl::expected<void, RobotFault> Robot::set_cmd(const JointCmd& cmd, TimePoint now) {
-    if(state_ == RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::FAULTED));
-    }
-    if(state_ != RobotState::ACTIVE) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
-    }
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ != RobotState::ACTIVE) return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
     if(now < last_cycle_time_ || (has_external_cmd_ && now < last_cmd_time_)) {
         return tl::make_unexpected(make_fault(RobotErr::INVALID_TIME));
     }
 
     const auto result = ctrller_.set_cmd(cmd);
-    if(!result) {
-        return tl::make_unexpected(make_ctrller_fault(result.error()));
-    }
+    if(!result) return tl::make_unexpected(make_ctrller_fault(result.error()));
 
     last_cmd_time_ = now;
     has_external_cmd_ = true;
@@ -204,20 +210,14 @@ tl::expected<void, RobotFault> Robot::set_cmd(const JointCmd& cmd, TimePoint now
  * @brief 设置完整 Joint 控制命令
  */
 tl::expected<void, RobotFault> Robot::set_full_cmd(const JointCtrlCmd& cmd, TimePoint now) {
-    if(state_ == RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::FAULTED));
-    }
-    if(state_ != RobotState::ACTIVE) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
-    }
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ != RobotState::ACTIVE) return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
     if(now < last_cycle_time_ || (has_external_cmd_ && now < last_cmd_time_)) {
         return tl::make_unexpected(make_fault(RobotErr::INVALID_TIME));
     }
 
     const auto result = ctrller_.set_full_cmd(cmd);
-    if(!result) {
-        return tl::make_unexpected(make_ctrller_fault(result.error()));
-    }
+    if(!result) return tl::make_unexpected(make_ctrller_fault(result.error()));
 
     last_cmd_time_ = now;
     has_external_cmd_ = true;
@@ -228,20 +228,15 @@ tl::expected<void, RobotFault> Robot::set_full_cmd(const JointCtrlCmd& cmd, Time
  * @brief 切换阻抗模式
  */
 tl::expected<void, RobotFault> Robot::set_impedance_mode(JointImpedanceMode mode, TimePoint now) {
-    if(state_ == RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::FAULTED));
-    }
-    if(state_ != RobotState::ACTIVE || !has_state_) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
-    }
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ != RobotState::ACTIVE || !has_state_) return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
     if(now < last_cycle_time_ || (has_external_cmd_ && now < last_cmd_time_)) {
         return tl::make_unexpected(make_fault(RobotErr::INVALID_TIME));
     }
 
     const auto mode_result = ctrller_.set_impedance_mode(mode, joint_state_);
-    if(!mode_result) {
-        return tl::make_unexpected(make_ctrller_fault(mode_result.error()));
-    }
+    if(!mode_result) return tl::make_unexpected(make_ctrller_fault(mode_result.error()));
+
     const auto history = safety_.reset_cmd_history(joint_state_);
     if(!history) {
         const RobotFault fault = make_safety_fault(history.error());
@@ -249,8 +244,30 @@ tl::expected<void, RobotFault> Robot::set_impedance_mode(JointImpedanceMode mode
         return tl::make_unexpected(fault);
     }
 
+    last_joint_cmd_.pos = joint_state_.pos;
+    std::fill(last_joint_cmd_.vel.begin(), last_joint_cmd_.vel.end(), 0.0);
+    std::fill(last_joint_cmd_.tor.begin(), last_joint_cmd_.tor.end(), 0.0);
+    std::fill(last_joint_cmd_.kp.begin(), last_joint_cmd_.kp.end(), 0.0);
+    std::fill(last_joint_cmd_.kd.begin(), last_joint_cmd_.kd.end(), 0.0);
+    joint_ref_acc_.assign(cfg_.joint_names.size(), 0.0);
+    has_last_joint_cmd_ = true;
     has_external_cmd_ = false;
     last_cmd_time_ = now;
+    return {};
+}
+
+/**
+ * @brief 设置模型前馈模式
+ */
+tl::expected<void, RobotFault> Robot::set_model_feedforward_mode(ModelFeedforwardMode mode) {
+    if(state_ == RobotState::UNCONFIGURED) return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ != RobotState::INACTIVE) return tl::make_unexpected(make_fault(RobotErr::NOT_INACTIVE));
+    if(mode != ModelFeedforwardMode::NONE && !model_feedforward_) {
+        return tl::make_unexpected(make_model_fault(ModelFeedforwardErr::NOT_CONFIGURED));
+    }
+
+    cfg_.runtime.model_feedforward_mode = mode;
     return {};
 }
 
@@ -258,29 +275,20 @@ tl::expected<void, RobotFault> Robot::set_impedance_mode(JointImpedanceMode mode
  * @brief 执行一次完整控制周期
  */
 tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
-    if(state_ == RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::FAULTED));
-    }
-    if(state_ != RobotState::ACTIVE) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
-    }
-    if(now < last_cycle_time_ || now < last_state_time_ ||
-        (has_external_cmd_ && now < last_cmd_time_)) {
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ != RobotState::ACTIVE) return tl::make_unexpected(make_fault(RobotErr::NOT_ACTIVE));
+    if(now < last_cycle_time_ || now < last_state_time_ || (has_external_cmd_ && now < last_cmd_time_)) {
         const RobotFault fault = make_fault(RobotErr::INVALID_TIME);
         enter_fault(fault, SafetyAction::STOP_HOLD);
         return tl::make_unexpected(fault);
     }
 
     const double nominal_dt = 1.0 / cfg_.runtime.ctrl_frequency_hz;
-    const double dt = has_completed_cycle_
-        ? seconds_between(now, last_cycle_time_)
-        : nominal_dt;
+    const double dt = has_completed_cycle_ ? seconds_between(now, last_cycle_time_) : nominal_dt;
 
     const auto actuator_state = motor_bus_->read();
     if(!actuator_state) {
-        const RobotFault fault = make_bus_fault(
-            RobotErr::MOTOR_BUS_READ_FAILED,
-            actuator_state.error());
+        const RobotFault fault = make_bus_fault(RobotErr::MOTOR_BUS_READ_FAILED, actuator_state.error());
         enter_fault(fault, SafetyAction::DISABLE);
         return tl::make_unexpected(fault);
     }
@@ -312,15 +320,11 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
         }
     }
 
-    const auto model_feedforward = compute_model_feedforward(joint_state.value(), dt);
-    if(!model_feedforward) {
-        enter_fault(model_feedforward.error(), SafetyAction::STOP_HOLD);
-        return tl::make_unexpected(model_feedforward.error());
-    }
+    const JointVector joint_acc = estimate_joint_acc(joint_state.value(), dt);
 
     JointCtrllerInput input;
     input.state = joint_state.value();
-    input.model_feedforward = model_feedforward.value();
+    input.model_feedforward.assign(cfg_.joint_names.size(), 0.0);
     input.dt = dt;
 
     const auto ctrl_output = ctrller_.update(input);
@@ -330,7 +334,19 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
         return tl::make_unexpected(fault);
     }
 
-    const auto safe_cmd = safety_.check_joint_cmd(joint_state.value(), ctrl_output->cmd, dt);
+    JointCtrlCmd joint_cmd = ctrl_output->cmd;
+    const JointVector joint_ref_acc = estimate_joint_ref_acc(joint_cmd, dt);
+    const auto model_feedforward = compute_model_feedforward(joint_state.value(), joint_acc, joint_ref_acc, dt);
+    if(!model_feedforward) {
+        enter_fault(model_feedforward.error(), SafetyAction::STOP_HOLD);
+        return tl::make_unexpected(model_feedforward.error());
+    }
+
+    for(std::size_t i = 0; i < joint_cmd.tor.size(); ++i) {
+        joint_cmd.tor[i] += model_feedforward.value()[i];
+    }
+
+    const auto safe_cmd = safety_.check_joint_cmd(joint_state.value(), joint_cmd, dt);
     if(!safe_cmd) {
         const RobotFault fault = make_safety_fault(safe_cmd.error());
         enter_fault(fault, safety_.action_for(safe_cmd.error().code));
@@ -353,14 +369,22 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
 
     actuator_state_ = actuator_state.value();
     joint_state_ = joint_state.value();
+    joint_acc_ = joint_acc;
+    joint_ref_acc_ = joint_ref_acc;
+    model_feedforward_cache_ = model_feedforward.value();
+    last_joint_cmd_ = safe_cmd.value();
     has_state_ = true;
     has_completed_cycle_ = true;
+    has_last_joint_cmd_ = true;
     last_cycle_time_ = now;
     last_state_time_ = state_received_at;
 
     RobotCycleOutput output;
     output.actuator_state = actuator_state_;
     output.joint_state = joint_state_;
+    output.joint_acc = joint_acc_;
+    output.joint_ref_acc = joint_ref_acc_;
+    output.model_feedforward = model_feedforward_cache_;
     output.joint_cmd = safe_cmd.value();
     output.actuator_cmd = actuator_cmd.value();
     output.dt = dt;
@@ -371,15 +395,9 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
  * @brief 安全停止并失能，回到 INACTIVE
  */
 tl::expected<void, RobotFault> Robot::deactivate() {
-    if(state_ == RobotState::UNCONFIGURED) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
-    }
-    if(state_ == RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::FAULTED));
-    }
-    if(state_ == RobotState::INACTIVE) {
-        return {};
-    }
+    if(state_ == RobotState::UNCONFIGURED) return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
+    if(state_ == RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+    if(state_ == RobotState::INACTIVE) return {};
 
     const auto result = motor_bus_->deactivate();
     if(!result && result.error() != MotorBusErr::NOT_CONNECTED) {
@@ -401,12 +419,8 @@ tl::expected<void, RobotFault> Robot::deactivate() {
  * @brief 清除 FAULT 锁存并回到 INACTIVE
  */
 tl::expected<void, RobotFault> Robot::reset_fault() {
-    if(state_ == RobotState::UNCONFIGURED) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
-    }
-    if(state_ != RobotState::FAULT) {
-        return tl::make_unexpected(make_fault(RobotErr::NOT_FAULTED));
-    }
+    if(state_ == RobotState::UNCONFIGURED) return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
+    if(state_ != RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::NOT_FAULTED));
 
     const auto recovered = motor_bus_->recover();
     if(!recovered) {
@@ -452,6 +466,27 @@ const JointState& Robot::get_joint_state() const noexcept {
 }
 
 /**
+ * @brief 获取最近一次关节加速度估计
+ */
+const JointVector& Robot::get_joint_acc() const noexcept {
+    return joint_acc_;
+}
+
+/**
+ * @brief 获取最近一次关节参考加速度
+ */
+const JointVector& Robot::get_joint_ref_acc() const noexcept {
+    return joint_ref_acc_;
+}
+
+/**
+ * @brief 获取最近一次模型前馈力矩
+ */
+const JointVector& Robot::get_model_feedforward() const noexcept {
+    return model_feedforward_cache_;
+}
+
+/**
  * @brief 获取最近一次合法的执行器状态
  */
 const ActuatorState& Robot::get_actuator_state() const noexcept {
@@ -468,20 +503,47 @@ const tl::optional<RobotFault>& Robot::get_last_fault() const noexcept {
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //
 
 /**
+ * @brief 计算当前周期的关节加速度估计
+ */
+JointVector Robot::estimate_joint_acc(const JointState& state, double dt) const {
+    JointVector result(cfg_.joint_names.size(), 0.0);
+    if(!has_completed_cycle_ || joint_state_.vel.size() != state.vel.size()) return result;
+
+    const double alpha = cfg_.runtime.joint_acc_filter_alpha;
+    for(std::size_t i = 0; i < result.size(); ++i) {
+        const double raw_acc = (state.vel[i] - joint_state_.vel[i]) / dt;
+        const double previous_acc = i < joint_acc_.size() ? joint_acc_[i] : 0.0;
+        result[i] = alpha * raw_acc + (1.0 - alpha) * previous_acc;
+    }
+    return result;
+}
+
+/**
+ * @brief 计算当前周期的关节参考加速度
+ */
+JointVector Robot::estimate_joint_ref_acc(const JointCtrlCmd& cmd, double dt) const {
+    JointVector result(cfg_.joint_names.size(), 0.0);
+    if(!has_last_joint_cmd_ || last_joint_cmd_.vel.size() != cmd.vel.size()) return result;
+
+    for(std::size_t i = 0; i < result.size(); ++i) {
+        result[i] = (cmd.vel[i] - last_joint_cmd_.vel[i]) / dt;
+    }
+    return result;
+}
+
+/**
  * @brief 计算当前周期的模型前馈项
  */
-tl::expected<JointVector, RobotFault> Robot::compute_model_feedforward(const JointState& state, double dt) const {
-    if(cfg_.runtime.model_feedforward_mode == ModelFeedforwardMode::NONE) {
-        return JointVector(cfg_.joint_names.size(), 0.0);
-    }
+tl::expected<JointVector, RobotFault> Robot::compute_model_feedforward(const JointState& state, const JointVector& joint_acc, const JointVector& joint_ref_acc, double dt) const {
     if(!model_feedforward_) {
+        if(cfg_.runtime.model_feedforward_mode == ModelFeedforwardMode::NONE) {
+            return JointVector(cfg_.joint_names.size(), 0.0);
+        }
         return tl::make_unexpected(make_model_fault(ModelFeedforwardErr::NOT_CONFIGURED));
     }
 
-    const auto result = model_feedforward_(cfg_.runtime.model_feedforward_mode, state, dt);
-    if(!result) {
-        return tl::make_unexpected(make_model_fault(result.error()));
-    }
+    const auto result = model_feedforward_(cfg_.runtime.model_feedforward_mode, state, joint_acc, joint_ref_acc, dt);
+    if(!result) return tl::make_unexpected(make_model_fault(result.error()));
     if(result->size() != cfg_.joint_names.size() || !finite_vector(result.value())) {
         return tl::make_unexpected(make_fault(RobotErr::INVALID_MODEL_FEEDFORWARD));
     }
@@ -546,12 +608,8 @@ RobotFault Robot::make_model_fault(ModelFeedforwardErr err) const noexcept {
  * @brief 进入 FAULT 状态并执行对应安全动作
  */
 void Robot::enter_fault(const RobotFault& fault, SafetyAction action) noexcept {
-    if(action == SafetyAction::STOP_HOLD) {
-        stop_or_disable_noexcept();
-    }
-    else {
-        disable_noexcept();
-    }
+    if(action == SafetyAction::STOP_HOLD) stop_or_disable_noexcept();
+    else disable_noexcept();
 
     ctrller_.reset();
     safety_.clear_cmd_history();
@@ -565,11 +623,8 @@ void Robot::enter_fault(const RobotFault& fault, SafetyAction action) noexcept {
  */
 void Robot::stop_or_disable_noexcept() noexcept {
     if(!motor_bus_) return;
-
     const auto stopped = motor_bus_->stop();
-    if(!stopped) {
-        (void)motor_bus_->deactivate();
-    }
+    if(!stopped) (void)motor_bus_->deactivate();
 }
 
 /**
@@ -585,10 +640,15 @@ void Robot::disable_noexcept() noexcept {
  */
 void Robot::clear_runtime_state() noexcept {
     joint_state_ = JointState{};
+    joint_acc_.clear();
+    joint_ref_acc_.clear();
+    model_feedforward_cache_.clear();
+    last_joint_cmd_ = JointCtrlCmd{};
     actuator_state_ = ActuatorState{};
     has_state_ = false;
     has_completed_cycle_ = false;
     has_external_cmd_ = false;
+    has_last_joint_cmd_ = false;
     last_cycle_time_ = TimePoint{};
     last_state_time_ = TimePoint{};
     last_cmd_time_ = TimePoint{};
@@ -599,8 +659,7 @@ void Robot::clear_runtime_state() noexcept {
  */
 bool Robot::is_tracking_mode() const noexcept {
     const JointImpedanceMode mode = ctrller_.get_impedance_mode();
-    return mode == JointImpedanceMode::RIGID_TRACKING ||
-        mode == JointImpedanceMode::COMPLIANT_TRACKING;
+    return mode == JointImpedanceMode::RIGID_TRACKING || mode == JointImpedanceMode::COMPLIANT_TRACKING;
 }
 
 /**

@@ -59,8 +59,25 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::configure(const DamiaoBusCfg& cf
     auto valid = validate_cfg(cfg);
     if(!valid) return tl::make_unexpected(valid.error());
     cfg_ = cfg;
-    configured_ = true;
+    actuator_info_.clear();
+    actuator_info_.reserve(cfg_.actuators.size());
+    for(const auto& actuator : cfg_.actuators) {
+        const auto type = parse_motor_type(actuator.motor_type);
+        if(!type) return tl::make_unexpected(type.error());
 
+        const damiao::LimitParam limit = damiao::limit_param[*type];
+        DamiaoActuatorInfo info;
+        info.name = actuator.name;
+        info.joint_name = actuator.joint_name;
+        info.motor_id = actuator.motor_id;
+        info.master_id = actuator.master_id;
+        info.motor_type = actuator.motor_type;
+        info.q_max = limit.q_max;
+        info.dq_max = limit.dq_max;
+        info.tau_max = limit.tau_max;
+        actuator_info_.push_back(std::move(info));
+    }
+    configured_ = true;
     return {};
 }
 
@@ -90,8 +107,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
                 connected_ = false;
                 return tl::make_unexpected(type.error());
             }
-            auto motor = std::make_shared<damiao::Motor>(
-                *type, actuator.motor_id, actuator.master_id);
+            auto motor = std::make_shared<damiao::Motor>(*type, actuator.motor_id, actuator.master_id);
             motor_ctrl_->add_motor(motor.get());
             motors_.push_back(std::move(motor));
         }
@@ -395,6 +411,14 @@ std::size_t DamiaoMotorBus::size() const noexcept {
     return motors_.empty() ? cfg_.actuators.size() : motors_.size();
 }
 
+/**
+ * @brief 获取达妙执行器静态信息
+ * @return 达妙执行器静态信息只读引用
+ */
+const std::vector<DamiaoActuatorInfo>& DamiaoMotorBus::get_actuator_info() const noexcept {
+    return actuator_info_;
+}
+
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //
 
 /**
@@ -512,6 +536,7 @@ void DamiaoMotorBus::release_connection_noexcept(bool keep_config) noexcept {
     active_ = false;
     if(!keep_config) {
         cfg_ = DamiaoBusCfg{};
+        actuator_info_.clear();
         configured_ = false;
     }
 }

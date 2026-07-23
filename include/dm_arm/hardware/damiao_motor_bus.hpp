@@ -8,7 +8,19 @@ namespace dm_arm {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
 
-
+/**
+ * @brief 达妙执行器静态信息
+ */
+struct DamiaoActuatorInfo {
+    std::string name;              ///< 执行器名称
+    std::string joint_name;        ///< 关联关节名称
+    std::uint32_t motor_id{ 0 };   ///< 电机 ID
+    std::uint32_t master_id{ 0 };  ///< 主站 ID
+    std::string motor_type;        ///< 电机型号名称
+    double q_max{ 0.0 };           ///< 执行器最大位置绝对值
+    double dq_max{ 0.0 };          ///< 执行器最大速度绝对值
+    double tau_max{ 0.0 };         ///< 执行器最大力矩绝对值
+};
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //
 
@@ -74,6 +86,11 @@ public:
      * @return 电机数量
      */
     std::size_t size() const noexcept override;
+    /**
+     * @brief 获取达妙执行器静态信息
+     * @return 达妙执行器静态信息只读引用
+     */
+    const std::vector<DamiaoActuatorInfo>& get_actuator_info() const noexcept;
 
 private:
     /**
@@ -121,6 +138,7 @@ private:
     std::vector<std::uint8_t> enabled_;     ///< 电机使能状态列表
 
     ActuatorState last_state_;              ///< 上一次读取的电机状态
+    std::vector<DamiaoActuatorInfo> actuator_info_;  ///< 达妙执行器静态信息
 
     bool configured_{ false };      ///< 是否已配置 DamiaoMotorBus
     bool connected_{ false };       ///< 是否已连接 DamiaoMotorBus
