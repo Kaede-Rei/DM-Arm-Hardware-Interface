@@ -1,857 +1,791 @@
-# DM-Arm-Hardware-Interface：Pinocchio 动力学前馈教程
+# DM-Arm 构建、真机联调与动力学调参教程
 
-> 本文不是项目 README，也不是仓库导航文档；本文只讨论当前项目中 **Pinocchio 动力学前馈链路** 的实现与使用，重点是：
->
-> 1. 如何在 `dm_ros_control` 中接入 Pinocchio
-> 2. 如何完成 **重力补偿** `g(q)`
-> 3. 如何完成 **非线性项补偿** `nle(q, dq)`
-> 4. 如何理解当前控制律里 `kp / kd / tau_ff` 的分工
-> 5. 如何在当前项目里验证补偿是否真的生效
+教程目标
 
----
+- 完成依赖安装和构建
+- 理解配置加载和运行链路
+- 完成无前馈真机检查
+- 读取 Joint、Actuator 和 Dynamics 全部状态
+- 逐轴完成重力补偿调参
+- 判断位置误差来自控制增益、映射还是模型
+- 为 ROS 2 和 Python 适配准备稳定基线
 
-## 0. 教程范围与当前实现边界
+## 1. 运行链路
 
-当前项目里的动力学前馈，不是完整逆动力学控制器，也不是 TSID 任务空间控制器
-
-当前实际实现属于：
-
-- 上层：`joint_trajectory_controller/JointTrajectoryController`
-- 中层：`ros2_control` 的 `position + velocity` 命令接口
-- 底层：达妙电机 MIT 模式
-- 前馈：Pinocchio 计算的 `g(q)` 或 `nle(q, dq)`
-
-当前控制律可以近似写成：
+当前真机控制周期
 
 ```text
-τ = Kp · (q_des - q) + Kd · (dq_des - dq) + τ_ff
+DamiaoMotorBus::read()
+        ↓
+ActuatorState
+        ↓
+JointActuatorMapper::to_joint_state()
+        ↓
+JointState
+        ↓
+Safety::check_state()
+        ↓
+Robot 估计 joint_acc
+        ↓
+JointCtrller 生成初始 JointCtrlCmd
+        ↓
+Robot 估计 joint_ref_acc
+        ↓
+Dynamics::update(state, joint_acc, joint_ref_acc)
+        ↓
+NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+        ↓
+JointCtrller::update()
+        ↓
+Safety::check_joint_cmd()
+        ↓
+JointActuatorMapper::to_actuator_cmd()
+        ↓
+DamiaoMotorBus::write()
 ```
 
-其中：
-
-- `q_des, dq_des`：来自 JTC 的轨迹采样结果
-- `q, dq`：来自电机反馈，经 `joint_to_motor_scale` 换算后的关节状态
-- `τ_ff`：来自 Pinocchio 动力学模型
-- `Kp, Kd`：MIT 模式中的刚度和阻尼参数
-
-因此，本文讨论的是 **关节空间阻抗控制 + 动力学前馈补偿**
-
----
-
-## 1. 当前项目中与动力学相关的文件
-
-本教程对应的核心文件如下：
-
-```text
-src/core/impedance_controller/
-├── include/impedance_controller/
-│   ├── dynamics_observer.hpp
-│   ├── joint_impedance_controller.hpp
-│   └── pinocchio_dynamics_model.hpp
-└── src/
-    ├── dynamics_observer.cpp
-    ├── joint_impedance_controller.cpp
-    └── pinocchio_dynamics_model.cpp
-
-src/adapters/dm_damiao_adapter/
-├── include/dm_damiao_adapter/
-│   └── dm_motor_bus.hpp
-└── src/
-    └── dm_motor_bus.cpp
-
-src/adapters/dm_ros_control/
-├── include/dm_ros_control/
-│   └── dm_hardware_interface.hpp
-├── src/
-│   └── dm_hardware_interface.cpp
-├── urdf/
-│   └── dm_arm_ros_control.urdf.xacro
-├── config/
-│   ├── controllers.yaml
-│   └── pd_config.yaml
-└── launch/
-    ├── dm_ros_control.launch.py
-    └── dm_ros_control_rviz.launch.py
-```
-
-职责划分如下：
-
-- `impedance_controller/pinocchio_dynamics_model.*`
-  - 负责从 URDF 建模
-  - 负责 reduced model 构造
-  - 负责周期更新 `q / dq`
-  - 负责输出 `g(q)`、`nle(q, dq)`、`M(q)`
-
-- `impedance_controller/dynamics_observer.*`
-  - 负责封装动力学观测
-  - 负责选择重力项或非线性项作为 active feedforward
-  - 负责输出 `external_effort`
-
-- `dm_damiao_adapter/dm_motor_bus.*`
-  - 负责达妙电机串口/CAN 通信
-  - 负责关节侧和电机侧单位换算
-  - 负责把 `MitJointCommand` 写入真实电机
-
-- `dm_ros_control/dm_hardware_interface.*`
-  - 负责解析 `ros2_control` 参数
-  - 负责读取电机反馈状态
-  - 负责在 `read()` 中更新动力学观测
-  - 负责在 `write()` 中调用控制核心并把命令交给 `dm_damiao_adapter`
-
-- `dm_arm_ros_control.urdf.xacro`
-  - 负责把硬件参数和动力学开关传给 `DmHardwareInterface`
-
-- `controllers.yaml`
-  - 负责配置 `JointTrajectoryController`
-
-- `launch/*.launch.py`
-  - 负责启动 `robot_state_publisher + ros2_control_node + spawner`
-
----
+动力学 getter 只读取最近一次成功 `update()` 的缓存；不会在查看状态时重新计算模型
 
 ## 2. 环境准备
 
-当前项目至少需要 ROS 2 Humble、Pinocchio、Eigen、基础构建工具
-
-如果只做当前已经实现好的 **重力补偿 / 非线性项补偿**，实际上并不强依赖 TSID；
-但如果后续准备继续做完整逆动力学、任务空间控制、约束控制，提前把 TSID 环境配好是合理的
-
-### 2.1 安装 Pinocchio 与基础依赖
+### 2.1. 基础依赖
 
 ```bash
 sudo apt update
-
-# 基础依赖
-sudo apt install -y \
-  libeigen3-dev \
-  libboost-python-dev
-
-# 可选：用于一些可视化实验
-pip install meshcat
+sudo apt install -y build-essential cmake libyaml-cpp-dev libeigen3-dev
 ```
 
-本项目的 C++ 动力学链路使用非 ROS Pinocchio，优先使用 robotpkg、conda/mamba 或显式 `DM_ARM_PINOCCHIO_PREFIX`
+### 2.2. Pinocchio 环境
 
-不要安装 `ros-humble-pinocchio`、`ros-humble-hpp-fcl`、`ros-humble-eigenpy` 作为本项目的 C++ Pinocchio 来源
-
-### 2.2 可选：安装 TSID
-
-如果工作空间里还没有 TSID，可按下面方式准备当前项目主链路不直接依赖 TSID 做补偿，但后续扩展可直接复用
+当前工程通过 `/opt/openrobots` 查找 Pinocchio
 
 ```bash
-cd ~/your_ws/src
-git clone --recursive https://github.com/stack-of-tasks/tsid.git
-cd ..
-rosdep install --from-paths src -iry
+export PATH=/opt/openrobots/bin:$PATH
+export CMAKE_PREFIX_PATH=/opt/openrobots:$CMAKE_PREFIX_PATH
+export LD_LIBRARY_PATH=/opt/openrobots/lib:$LD_LIBRARY_PATH
+export PKG_CONFIG_PATH=/opt/openrobots/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
-### 2.3 大工作空间构建时的内存问题
-
-如果工作空间较大，或者同时启用了 Python 接口、FCL、额外第三方库，构建过程可能比较吃内存
-
-必要时可以临时扩大 swap：
+检查
 
 ```bash
-sudo swapoff /swapfile
-sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-free -h
+ls /opt/openrobots/lib/libpinocchio_default.so
+ls /opt/openrobots/lib/cmake/pinocchio/pinocchioConfig.cmake
 ```
 
-### 2.4 编译工作空间
+长期使用可写入 `~/.bashrc`
 
 ```bash
-cd ~/your_ws
-source /opt/ros/humble/setup.bash
+cat >> ~/.bashrc <<'EOF_BASHRC'
+export PATH=/opt/openrobots/bin:$PATH
+export CMAKE_PREFIX_PATH=/opt/openrobots:$CMAKE_PREFIX_PATH
+export LD_LIBRARY_PATH=/opt/openrobots/lib:$LD_LIBRARY_PATH
+export PKG_CONFIG_PATH=/opt/openrobots/lib/pkgconfig:$PKG_CONFIG_PATH
+EOF_BASHRC
 
-colcon build --executor sequential \
-  --symlink-install \
-  --cmake-args \
-  -DCMAKE_BUILD_TYPE=Release
-
-source install/setup.bash
+source ~/.bashrc
 ```
 
-说明：
+### 2.3. 串口权限
 
-- `--executor sequential`：降低并行编译带来的内存压力
-- `python_binding/` 默认有 `COLCON_IGNORE`，不会作为 `dm_impedance` 参与 colcon 构建
-- 如果需要 Python 绑定，请使用 README 中的独立 CMake 流程
+检查设备
 
----
+```bash
+ls -l /dev/ttyACM0
+```
 
-## 3. 为什么当前项目需要动力学前馈
+将当前用户加入 `dialout`
 
-如果 MIT 模式只使用：
+```bash
+sudo usermod -aG dialout "$USER"
+```
+
+重新登录后检查
+
+```bash
+groups
+```
+
+## 3. 构建
+
+### 3.1. 清理旧构建
+
+公共接口或 Pinocchio 环境变化后建议清理
+
+```bash
+rm -rf build
+```
+
+### 3.2. Debug 构建
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DDM_ARM_BUILD_TERMINAL=ON \
+  -DDM_ARM_BUILD_DAMIAO=ON \
+  -DDM_ARM_ENABLE_DYNAMICS=ON \
+  -DDM_ARM_BUILD_PYTHON=OFF \
+  -DDM_ARM_BUILD_ROS2=OFF
+
+cmake --build build -j"$(nproc)"
+```
+
+CMake 摘要应包含
 
 ```text
-τ = Kp · (q_des - q) + Kd · (dq_des - dq)
+DM_ARM_BUILD_TERMINAL = ON
+DM_ARM_BUILD_DAMIAO   = ON
+DM_ARM_ENABLE_DYNAMICS= ON
+DM_ARM_BUILD_PYTHON   = OFF
+DM_ARM_BUILD_ROS2     = OFF
 ```
 
-那么在静止保持某个姿态时，电机需要靠位置误差来“顶住重力”
+### 3.3. 链接检查
 
-这会带来三个直接问题：
+```bash
+ldd build/dm_arm_terminal | grep -E "pinocchio|coal|yaml"
+```
 
-### 3.1 保持依赖误差建立
+### 3.4. 安装检查
 
-系统不是“本来就能托住”，而是要先产生一个位置偏差，才能由 `Kp · e` 产生恢复力矩
+```bash
+cmake --install build --prefix install
+find install -maxdepth 4 -type f | sort
+```
 
-于是容易出现：
+## 4. 配置文件说明
 
-- 轨迹起步时先轻微下垂
-- 目标位姿附近显得发软
-- 为了托住机械臂，不得不把 `kp` 调大
-
-### 3.2 刚度和补偿耦合
-
-如果没有前馈，`kp` 同时承担：
-
-- 保持目标位姿
-- 抵消重力
-- 抵抗外扰
-
-这样会导致参数很难调
-
-### 3.3 柔顺控制空间被压缩
-
-如果想实现“无外力时可保持，受外力时可被动跟随”，就需要让 `kp` 不至于过高
-
-但如果 `kp` 低了，单靠误差项又托不住大关节
-
-因此，需要引入动力学前馈，把“托住机械臂”这件事从 `kp` 身上剥离一部分
-
----
-
-## 4. 重力补偿与非线性项补偿的区别
-
-### 4.1 重力补偿 `g(q)`
-
-重力补偿只考虑当前姿态下，为了抵消重力所需的广义力：
+主配置文件
 
 ```text
-g(q)
+config/dm_arm.yaml
 ```
 
-它与速度无关，只和当前姿态有关
-
-适用场景：
-
-- 静态保持
-- 慢速轨迹跟踪
-- 首先验证动力学模型方向是否正确
-- 优先改善“软、塌陷、需要高 kp 才能托住”的问题
-
-### 4.2 非线性项补偿 `nle(q, dq)`
-
-非线性项一般包含：
-
-```text
-nle(q, dq) = C(q, dq)·dq + g(q)
-```
-
-也就是：
-
-- 重力项
-- 科氏项 / 离心项
-- 其他速度相关非线性项
-
-适用场景：
-
-- 轨迹速度较高
-- 加速减速明显
-- 需要改善动态跟踪品质
-
-### 4.3 当前项目建议的启用顺序
-
-建议顺序始终是：
-
-1. 先验证 **仅重力补偿**
-2. 确认 `g(q)` 方向和量级正确
-3. 再切换到 **非线性项补偿**
-
-不要在动力学链路刚接通时就直接上 `nle(q, dq)`，否则问题定位会更困难
-
----
-
-## 5. 当前项目中的动力学实现链路
-
-这一部分是本文核心
-
----
-
-## 6. `PinocchioDynamicsModel`：完整模型到 reduced model
-
-### 6.1 为什么不能直接拿完整 URDF 求解
-
-你当前机械臂的描述模型里，除了 `joint1 ~ joint6 + gripper_left` 之外，还有一个额外的 `gripper_right`，它主要用于：
-
-- 碰撞模型完整性
-- 几何显示语义完整性
-
-但硬件接口实际只能提供 7 维受控状态：
-
-- `joint1`
-- `joint2`
-- `joint3`
-- `joint4`
-- `joint5`
-- `joint6`
-- `gripper_left`
-
-如果 Pinocchio 按完整 URDF 建出的是 8 维模型，而 `DmHardwareInterface` 每周期只传 7 维 `q / dq`，那动力学更新就会直接失败
-
-这就是之前“开关重力补偿几乎没差别”的核心原因之一：
-
-- `update()` 一直失败
-- `model_feedforward_` 始终没被正确更新
-- 最终喂给 MIT 的 `tau_ff` 实际上接近零
-
-### 6.2 当前项目的实际做法：reduced model
-
-当前实现不是手工删改 URDF，而是：
-
-1. 先用完整 URDF 建 full model
-2. 找出所有 **不在 `joint_names` 中的关节**
-3. 将这些关节统一锁死
-4. 基于 `pinocchio::buildReducedModel(...)` 构造 reduced model
-
-这样做的优点：
-
-- 碰撞 / 显示仍然保留完整 URDF
-- 动力学模型维度严格与受控关节一致
-- 不需要维护两套结构不同的 URDF
-
-### 6.3 构造函数流程
-
-当前 `PinocchioDynamicsModel` 的构造函数逻辑可概括为：
-
-```cpp
-pinocchio::Model full_model;
-pinocchio::urdf::buildModel(urdf_path, full_model);
-
-// 校验受控关节是否都存在且为 1 自由度
-// ...
-
-// 锁死所有不在 joint_names 中的关节
-const Eigen::VectorXd q_ref = pinocchio::neutral(full_model);
-_model_ = pinocchio::buildReducedModel(full_model, joints_to_lock, q_ref);
-_data_ = std::make_shared<pinocchio::Data>(_model_);
-```
-
-之后又会建立：
-
-- `_q_indices_`
-- `_v_indices_`
-
-用于把 `hardware interface` 顺序下的关节向量，映射到 Pinocchio 模型内部顺序
-
-### 6.4 这一层的工程意义
-
-这一层解决的不是“补偿公式”，而是 **模型表达空间与控制状态空间对齐** 的问题
-
-如果这一步不对，后续的：
-
-- `computeGeneralizedGravity(...)`
-- `nonLinearEffects(...)`
-- `crba(...)`
-
-都会失去实际意义
-
----
-
-## 7. `update(q, dq)`：周期更新动力学量
-
-当前 `update()` 的核心逻辑是：
-
-```cpp
-_q_.setZero();
-_dq_.setZero();
-
-for (...) {
-    _q_[_q_indices_[i]] = q[i];
-    _dq_[_v_indices_[i]] = dq[i];
-}
-
-pinocchio::computeGeneralizedGravity(_model_, *_data_, _q_);
-_g_ = _data_->g;
-
-pinocchio::nonLinearEffects(_model_, *_data_, _q_, _dq_);
-_nle_ = _data_->nle;
-
-pinocchio::crba(_model_, *_data_, _q_);
-_m_q_ = _data_->M;
-```
-
-### 7.1 `computeGeneralizedGravity`
-
-得到的是：
-
-```text
-g(q)
-```
-
-含义是：
-
-- 当前姿态下
-- 如果希望系统静态平衡
-- 每个关节需要提供多少广义力矩去抵消重力
-
-### 7.2 `nonLinearEffects`
-
-得到的是：
-
-```text
-nle(q, dq)
-```
-
-它包含了：
-
-- `g(q)`
-- 速度相关非线性项
-
-### 7.3 `crba`
-
-得到质量矩阵：
-
-```text
-M(q)
-```
-
-当前项目虽然还没有在控制律中直接使用质量矩阵，但保留它是合理的，因为后续扩展会用到：
-
-- 逆动力学
-- 操作空间控制
-- 惯量整形
-- 更精细的阻抗调参
-
----
-
-## 8. `DmHardwareInterface::read()`：状态更新与动力学更新
-
-当前 `read()` 的流程可以理解成两步
-
-### 8.1 第一步：从电机读真实状态
-
-```cpp
-motor_bus_.read(refresh_state_in_read_, bus_state_);
-
-hw_positions_[i] = bus_state_.position[i];
-hw_velocities_[i] = bus_state_.velocity[i];
-hw_efforts_[i] = bus_state_.effort[i];
-motor_efforts_[i] = bus_state_.motor_effort[i];
-```
-
-含义是：
-
-- `DmHardwareInterface` 不再直接操作达妙电机对象
-- 电机侧位置 / 速度 / 力矩反馈由 `dm_damiao_adapter::DmMotorBus` 读取
-- `DmMotorBus` 经 `joint_to_motor_scale` 还原到关节空间
-- 存入 `_hw_positions_ / _hw_velocities_`
-
-所以，从 `JointTrajectoryController` 的角度看，它接触到的始终是 **关节空间状态**，不是电机编码器原始量
-
-### 8.2 第二步：用当前关节状态更新动力学模型
-
-```cpp
-if(enable_dynamics_) {
-    const bool ok = dynamics_observer_.observe(
-        hw_positions_,
-        hw_velocities_,
-        hw_efforts_,
-        enable_gravity_feedforward_,
-        enable_nonlinear_feedforward_,
-        dynamics_observation_);
-    if(ok) {
-        gravity_feedforward_ = dynamics_observation_.gravity;
-        nonlinear_feedforward_ = dynamics_observation_.nonlinear;
-        model_feedforward_ = dynamics_observation_.active_feedforward;
-    }
-}
-```
-
-这一步的意义是：
-
-- `read()` 不仅刷新真实状态
-- 还顺便把当前状态下的动力学量更新好
-- 后续 `write()` 可以直接使用最新的 `tau_ff`
-
-### 8.3 为什么放在 `read()` 而不是 `write()`
-
-因为当前周期真正的真实状态来自 `read()`
-
-如果把动力学计算放到 `write()`，可能会混入：
-
-- 上一个周期的状态
-- 尚未刷新完成的状态缓存
-
-把动力学更新放在 `read()`，语义更清晰：
-
-> 先拿到真实状态，再基于真实状态计算前馈
-
----
-
-## 9. `DmHardwareInterface::write()`：如何把前馈叠加到 MIT
-
-当前 `write()` 中，核心部分是：
-
-```cpp
-JointImpedanceControllerInput input;
-input.state = bus_state_;
-input.model_feedforward = model_feedforward_;
-input.dt = period.seconds();
-
-const auto output = joint_impedance_controller_.update(input);
-```
-
-然后将控制核心输出交给达妙适配器：
-
-```cpp
-for(size_t i = 0; i < motor_bus_.size(); ++i) {
-    motor_bus_.write(i, output.command);
-}
-```
-
-### 9.1 这里的物理含义
-
-MIT 控制命令本质上包含三部分：
-
-1. 位置误差项
-2. 速度误差项
-3. 前馈扭矩项
-
-当前控制器不是“只靠误差纠正”，而是：
-
-- 先由 `DynamicsObserver` 生成 `model_feedforward`
-- 再由 `JointImpedanceController` 组合位置、速度、命令力矩和模型前馈
-- 最后由 `dm_damiao_adapter::DmMotorBus` 完成电机侧换算和下发
-
-### 9.2 为什么前馈只在 MIT 模式下更自然
-
-因为 MIT 模式天然接受：
-
-- `q_des`
-- `dq_des`
-- `tau_ff`
-
-而 `POS_VEL` 更像一个较高封装的内置位置速度控制模式，对前馈扭矩支持并不天然
-
-所以当前项目中：
-
-- 大部分动力学补偿讨论都围绕 MIT 模式
-- `POS_VEL` 模式主要作为另一种控制模式或调试手段
-
----
-
-## 10. 启动参数与控制器配置
-
----
-
-## 10.1 `dm_arm_ros_control.urdf.xacro`
-
-当前 Xacro 中，与动力学直接相关的参数有：
-
-```xml
-<xacro:arg name="enable_dynamics" default="true"/>
-<xacro:arg name="enable_gravity_feedforward" default="true"/>
-<xacro:arg name="enable_nonlinear_feedforward" default="false"/>
-<xacro:arg name="urdf_path" default="$(find dm_arm_description)/urdf/DM-Arm-Description.urdf"/>
-```
-
-在 `<hardware>` 中会传递给插件：
-
-```xml
-<param name="enable_dynamics">$(arg enable_dynamics)</param>
-<param name="enable_gravity_feedforward">$(arg enable_gravity_feedforward)</param>
-<param name="enable_nonlinear_feedforward">$(arg enable_nonlinear_feedforward)</param>
-<param name="urdf_path">$(arg urdf_path)</param>
-```
-
-这说明当前项目里：
-
-- 动力学是否启用，是 launch/xacro 级别的开关
-- 重力补偿和非线性项补偿，是互斥优先级选择
-- Pinocchio 建模直接使用 `dm_arm_description` 中的 URDF
-
----
-
-## 10.2 `controllers.yaml`
-
-当前控制器配置是：
-
-- `joint_state_broadcaster`
-- `joint_trajectory_controller/JointTrajectoryController`
-
-命令接口为：
+### 4.1. Joint 顺序
 
 ```yaml
-command_interfaces:
-  - position
-  - velocity
+joints:
+  names: [joint1, joint2, joint3, joint4, joint5, joint6]
 ```
 
-状态接口为：
+该顺序必须与以下内容一致
+
+- 控制器增益
+- Safety 限制
+- Mapping
+- Dynamics joint names
+- Damiao actuator 顺序
+- 所有 JointVector
+
+### 4.2. Runtime
 
 ```yaml
-state_interfaces:
-  - position
-  - velocity
+runtime:
+  ctrl_frequency_hz: 200.0
+  joint_acc_filter_alpha: 0.2
+  write_enabled: true
+  model_feedforward_mode: NONE
 ```
 
-这意味着上层 JTC 下发的不是单独位置，而是：
+参数含义
 
-- `q_des`
-- `dq_des`
+| 参数 | 含义 | 调参建议 |
+|---|---|---|
+| `ctrl_frequency_hz` | Robot 目标周期频率 | 当前使用 200 Hz |
+| `joint_acc_filter_alpha` | 加速度估计一阶低通系数 | 噪声大时减小；响应慢时增大 |
+| `write_enabled` | 真机写入门禁 | 未确认安全前设为 false |
+| `model_feedforward_mode` | 启动时模型前馈模式 | 首次测试使用 NONE |
 
-这与 MIT 模式的输入语义是匹配的
+加速度滤波形式
 
----
+```text
+acc_filtered = alpha × acc_raw + (1 - alpha) × acc_previous
+```
 
-## 10.3 launch 文件
+### 4.3. Safety
 
-当前 `dm_ros_control.launch.py` / `dm_ros_control_rviz.launch.py` 会将以下参数传入 Xacro：
+```yaml
+safety:
+  cmd_timeout_s: 0.10
+  state_timeout_s: 0.05
+  max_dt_s: 0.02
+  numeric_tolerance: 1.0e-6
+  state_vel_fault_ratio: 1.5
+  require_all_actuators_online: true
+  require_all_actuators_enabled: true
+```
 
-- `serial_port`
-- `baudrate`
-- `enable_write`
+Safety 不应作为轨迹生成器；明显非法命令应被拒绝，正常参考应由终端或未来轨迹控制器生成连续位置、速度和加速度
+
+### 4.4. Joint 限制
+
+```yaml
+limits:
+  min_pos: [...]
+  max_pos: [...]
+  max_vel: [...]
+  max_acc: [...]
+  max_effort: [...]
+  max_kp: [...]
+  max_kd: [...]
+  pos_margin: [...]
+```
+
+注意
+
+- `min_pos` 和 `max_pos` 是 Joint 状态硬边界
+- 命令位置范围会叠加 `pos_margin`
+- `max_vel` 和 `max_acc` 应是机械臂允许的 Joint 侧运行值
+- 达妙协议最大速度不能直接作为日常机械臂运行速度
+- `max_effort` 必须与 Joint 侧力矩映射一致
+
+### 4.5. Mapping
+
+```yaml
+mapping:
+  pos_ratio: [1, 1, 1, 1, 1, 1]
+  tor_ratio: [1, 1, 1, 1, 1, 1]
+  direction: [1, 1, 1, 1, 1, 1]
+  joint_zero_offset: [0, 0, 0, 0, 0, 0]
+  actuator_zero_offset: [0, 0, 0, 0, 0, 0]
+```
+
+位置映射必须逐轴确认
+
+```text
+q_actuator = direction × pos_ratio × (q_joint - joint_zero_offset) + actuator_zero_offset
+```
+
+力矩映射必须确认符号和比例；重力补偿方向错误时优先检查 `direction` 和 `tor_ratio`
+
+### 4.6. Controller
+
+控制器提供五组增益
+
+- `rigid_hold`
+- `rigid_tracking`
+- `compliant_hold`
+- `compliant_drag`
+- `compliant_tracking`
+
+没有重力补偿时，较大关节需要依靠位置误差产生托举力矩；表现为能够抬起但存在静态误差
+
+加入重力补偿后，位置误差项主要负责跟踪和抗扰；重力项主要负责托举
+
+### 4.7. Dynamics
+
+```yaml
+dynamics:
+  urdf_path: ../description/urdf/dm_arm.urdf
+  base_frame: base_link
+  tool_frame: tool0
+  gravity: [0.0, 0.0, -9.81]
+  gravity_scale: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+```
+
+`gravity_scale` 使用逐轴比例
+
+```text
+gravity_compensation[i] = gravity_scale[i] × gravity[i]
+```
+
+首次真机测试必须从 0 开始
+
+### 4.8. Damiao
+
+```yaml
+damiao:
+  serial_port: /dev/ttyACM0
+  baudrate: 921600
+  refresh_state_in_read: false
+  startup_read_cycles: 5
+  stop_kp: 3.0
+  stop_kd: 0.10
+  stop_cycles: 5
+```
+
+执行器列表必须确认
+
+- motor ID
+- master ID
+- motor type
+- Joint 对应关系
+
+SDK 中的 `q_max`、`dq_max` 和 `tau_max` 是执行器侧唯一物理限制真源
+
+## 5. 启动终端
+
+```bash
+./build/dm_arm_terminal --config config/dm_arm.yaml --allow-hardware
+```
+
+终端只支持真实达妙后端；没有 Fake 选项
+
+首次启动前建议
+
+```yaml
+runtime:
+  model_feedforward_mode: NONE
+
+dynamics:
+  gravity_scale: [0, 0, 0, 0, 0, 0]
+```
+
+## 6. 无动力学前馈基线检查
+
+### 6.1. 配置检查
+
+使用终端菜单查看完整配置摘要；确认
+
+- 六个 Joint 名称正确
+- 六个执行器 ID 正确
+- 电机型号正确
+- Joint 限位覆盖当前姿态
+- `write_enabled` 状态符合计划
+- Dynamics URDF 路径正确
+- base Frame 和 tool Frame 正确
+
+### 6.2. 激活
+
+执行 `activate()`；成功后后台周期自动运行
+
+若激活失败
+
+- `JOINT_POS_LIMIT` 表示当前实测位置超过 Joint 硬限位
+- `ACTUATOR_OFFLINE` 表示目标执行器没有有效反馈
+- `ENABLE_FAILED` 表示达妙使能失败
+- `MODE_SWITCH_FAILED` 表示 MIT 模式切换失败
+- `STATE_TIMEOUT` 表示状态周期超时
+
+### 6.3. 查看全部状态
+
+使用终端状态菜单检查
+
+Joint 侧
+
+- `q`
+- `dq`
+- `ddq_est`
+- `tau_feedback`
+- `q_ref`
+- `dq_ref`
+- `ddq_ref`
+- `model_feedforward`
+- `kp`
+- `kd`
+
+Actuator 侧
+
+- 位置
+- 速度
+- 力矩
+- 在线状态
+- 使能状态
+- 错误码
+- MIT 目标位置
+- MIT 目标速度
+- MIT 前馈力矩
+- MIT `kp`
+- MIT `kd`
+
+### 6.4. 小幅运动
+
+推荐顺序
+
+1. 切换 `RIGID_TRACKING`
+2. 输入小于 0.05 rad 的单轴目标
+3. 速度比例使用 0.1
+4. 观察 Joint 命令和实测状态
+5. 确认方向正确后再扩大范围
+
+判断方式
+
+| 现象 | 优先检查 |
+|---|---|
+| `cmd.pos` 不变化 | 参考生成或模式 |
+| `cmd.pos` 变化而 `actuator_cmd.pos` 不合理 | Mapping |
+| `actuator_cmd.pos` 正确而实测反向 | direction 或零位 |
+| 实测运动正确但静态误差大 | kp、重力补偿或摩擦 |
+| 关节抖动 | kp 过高、kd 过低、反馈噪声或周期抖动 |
+| 关节迟钝 | kp 过低、速度限制低、力矩不足或重力负载大 |
+
+## 7. 动力学缓存检查
+
+Dynamics 配置成功后，即使前馈模式为 `NONE`，Robot 仍会周期调用 `Dynamics::update()`
+
+查看动力学菜单；确认
+
+- `gravity` 为六维有限向量
+- `nonlinear` 为六维有限向量
+- `coriolis = nonlinear - gravity`
+- `mass_matrix` 为 6×6
+- `inverse_dynamics` 为六维有限向量
+- `forward_dynamics` 为六维有限向量
+- tool pose 为有限齐次矩阵
+- tool Jacobian 为 6×6
+
+静止状态下应近似满足
+
+```text
+dq ≈ 0
+ddq_ref ≈ 0
+nonlinear ≈ gravity
+inverse_dynamics ≈ gravity
+```
+
+质量矩阵检查
+
+```text
+M ≈ Mᵀ
+对角元素大于 0
+```
+
+RNEA 与 ABA 一致性检查
+
+```text
+tau = RNEA(q, dq, ddq_ref)
+ddq_check = ABA(q, dq, tau)
+ddq_check ≈ ddq_ref
+```
+
+## 8. 重力补偿调参
+
+### 8.1. 调参目标
+
+重力补偿目标不是让机械臂自动运动；目标是在静止或低速状态下减少维持姿态所需的位置误差
+
+没有重力补偿
+
+```text
+tau_cmd = kp × position_error + kd × velocity_error
+```
+
+加入重力补偿
+
+```text
+tau_cmd = kp × position_error + kd × velocity_error + gravity_scale ⊙ g(q)
+```
+
+### 8.2. 调参前确认
+
+必须确认
+
+- URDF 重力方向正确
+- Joint 顺序正确
+- Joint 位置方向正确
+- Joint 力矩方向正确
+- 当前姿态处于安全范围
+- `max_effort` 不会过早截断所需补偿
+- 急停和支撑可用
+
+### 8.3. 只观察不下发
+
+保持
+
+```yaml
+runtime:
+  model_feedforward_mode: NONE
+
+dynamics:
+  gravity_scale: [0, 0, 0, 0, 0, 0]
+```
+
+激活后查看 `gravity`
+
+重点观察 joint2 和 joint3
+
+- 姿态变化时数值应连续
+- 同一姿态重复读取应稳定
+- 机械臂越接近水平伸展，承担重力的关节力矩通常越大
+- 关节方向翻转后，重力力矩符号可能改变
+
+### 8.4. 单轴低比例测试
+
+先停机并回到 `INACTIVE`；使用终端设置
+
+```text
+[0, 0, 0.05, 0, 0, 0]
+```
+
+切换前馈模式为 `GRAVITY`；重新激活
+
+观察
+
+- joint3 是否向正确方向获得托举
+- `model_feedforward[2]` 是否等于 `0.05 × gravity[2]`
+- 关节是否突然加速
+- 电机是否出现异常声音或错误码
+
+方向错误时立即失能；不要通过增加比例继续试错
+
+### 8.5. 比例递增
+
+建议序列
+
+```text
+0.05
+0.10
+0.15
+0.20
+0.30
+0.40
+0.50
+```
+
+每个比例记录
+
+- 目标位置
+- 实际位置
+- 静态误差
+- `gravity`
+- `gravity_compensation`
+- 最终 Joint 前馈力矩
+- Actuator MIT 前馈力矩
+- 电机温度
+- 是否振荡
+- 是否下沉
+
+### 8.6. joint3 判据
+
+假设固定目标 `q_ref`
+
+```text
+error_none = |q_ref - q_actual| when mode = NONE
+error_gravity = |q_ref - q_actual| when mode = GRAVITY
+```
+
+有效补偿应满足
+
+```text
+error_gravity < error_none
+```
+
+同时不应出现
+
+- 高频振荡
+- 静态持续加速
+- 力矩饱和
+- 明显过补偿
+- 关节越过目标后继续抬升
+
+### 8.7. joint2 与 joint3 联合调参
+
+joint3 单轴方向确认后再加入 joint2
+
+```text
+[0, 0.05, 0.10, 0, 0, 0]
+```
+
+联合调参时注意耦合；改变 joint2 会改变 joint3 后续连杆的空间姿态和重力力矩
+
+### 8.8. 降低 kp 验证解耦效果
+
+重力补偿稳定后逐步降低 `rigid_hold` 或 `compliant_hold` 的 kp
+
+判据
+
+- 静态误差仍可接受
+- 外力下更柔顺
+- 释放外力后能够回到目标附近
+- 不依赖极高 kp 才能托住
+
+### 8.9. COMPLIANT_HOLD
+
+推荐顺序
+
+1. `GRAVITY` 模式
+2. `RIGID_HOLD` 确认补偿稳定
+3. 切换 `COMPLIANT_HOLD`
+4. 观察下沉和回位
+5. 调整 compliant kp 和 kd
+
+### 8.10. COMPLIANT_DRAG
+
+`COMPLIANT_DRAG` 的 kp 为 0 时不提供位置恢复；重力补偿负责托举，kd 负责阻尼
+
+调参重点
+
+- 重力比例不足时会下沉
+- 重力比例过大时会自行抬升
+- kd 太低时拖拽后摆动
+- kd 太高时拖拽阻力大
+
+## 9. FULL_INVERSE_DYNAMICS
+
+当前 Robot 通过命令速度差分估计 `joint_ref_acc`
+
+```text
+joint_ref_acc = (dq_ref_current - dq_ref_previous) / dt
+```
+
+`FULL_INVERSE_DYNAMICS` 使用
+
+```text
+tau_ff = RNEA(q, dq, joint_ref_acc)
+```
+
+启用前必须先完成
+
+- 重力补偿方向确认
+- URDF 惯量审计
+- 参考加速度噪声检查
+- `max_effort` 检查
+- 低速轨迹验证
+
+首次测试建议
+
+- 单轴
+- 小幅目标
+- 低速度比例
+- 低加速度
+- 记录 `joint_ref_acc` 和 RNEA 输出
+
+若 RNEA 输出尖峰明显，优先降低参考加速度噪声；不要直接扩大力矩限制
+
+## 10. URDF 动力学参数审计
+
+每个运动 link 应检查
+
+- 质量单位为 kg
+- 质心相对于 link Frame 的方向正确
+- 惯量单位为 kg·m²
+- 惯量矩阵对称
+- 主对角元素大于 0
+- 惯量满足物理可实现条件
+- 末端工具、夹爪和相机质量没有遗漏或重复
+
+推荐表格
+
+| Link | CAD 质量 | URDF 质量 | CAD 质心 | URDF 质心 | 惯量来源 | 状态 |
+|---|---:|---:|---|---|---|---|
+| link1 |  |  |  |  |  |  |
+| link2 |  |  |  |  |  |  |
+| link3 |  |  |  |  |  |  |
+| link4 |  |  |  |  |  |  |
+| link5 |  |  |  |  |  |  |
+| link6 |  |  |  |  |  |  |
+| tool |  |  |  |  |  |  |
+
+## 11. 常见问题
+
+### 11.1. joint3 能抬起但到不了目标
+
+可能原因
+
+- kp 仍不足
+- 重力补偿未启用
+- `gravity_scale` 太低
+- URDF 质量或质心偏小
+- 前馈力矩方向错误
+- `max_effort` 限制过低
+- `tor_ratio` 不正确
+- 机械摩擦或结构卡滞
+
+排查顺序
+
+1. 比较 `q_ref` 和 `q`
+2. 查看 `gravity[2]`
+3. 查看 `gravity_compensation[2]`
+4. 查看最终 `joint_cmd.tor[2]`
+5. 查看 `actuator_cmd.tor[2]`
+6. 检查 `tor_ratio` 和方向
+7. 逐步增加补偿比例
+8. 最后再调整 kp
+
+### 11.2. 重力补偿后关节向错误方向运动
+
+优先检查
+
+- Joint 位置方向
+- Joint 力矩方向
+- `direction`
+- `tor_ratio`
+- URDF 关节轴方向
+- 世界重力方向
+
+### 11.3. `JOINT_POS_LIMIT`
+
+实测位置超过硬限位；应先确认零位和实际机械范围，不应通过 `numeric_tolerance` 掩盖明显偏差
+
+### 11.4. `CMD_POS_STEP_LIMIT`
+
+相邻命令位置变化超过允许值；检查轨迹参考是否连续、目标重规划是否从上一帧参考开始、周期 dt 是否一致
+
+### 11.5. `CMD_VEL_STEP_LIMIT`
+
+相邻命令速度变化超过 `max_acc × dt`；检查轨迹末端是否突然清零速度、参考切换是否保留上一帧速度
+
+### 11.6. `STATE_TIMEOUT`
+
+检查
+
+- 串口读取时间
+- `state_timeout_s`
+- 周期是否被终端输入阻塞
+- 激活后的首帧时间基准
 - `refresh_state_in_read`
-- `startup_read_cycles`
-- `command_mode`
-- `legacy_feedforward_enabled`
-- `legacy_pd_fallback`
-- `enable_dynamics`
-- `enable_gravity_feedforward`
-- `enable_nonlinear_feedforward`
 
-所以，在不改代码的情况下，切换动力学模式只需要改 launch 参数即可
+### 11.7. `MOTOR_BUS_ACTIVATE_FAILED`
 
----
+检查子错误
 
-## 11. 如何运行当前项目中的重力补偿
+- `ENABLE_FAILED`
+- `MODE_SWITCH_FAILED`
+- `WRITE_FAILED`
+- `ACTUATOR_OFFLINE`
 
-### 11.1 编译
+FAULT 后必须先执行 `reset_fault()`；恢复流程会重建串口和电机对象
 
-```bash
-cd ~/your_ws
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select tl dm_hw impedance_controller dm_damiao_adapter dm_arm_description dm_ros_control
-source install/setup.bash
-```
+## 12. 数据记录建议
 
-### 11.2 启动真机：只开重力补偿
-
-```bash
-ros2 launch dm_ros_control dm_ros_control.launch.py \
-  use_fake_hardware:=false \
-  serial_port:=/dev/ttyACM0 \
-  baudrate:=921600 \
-  command_mode:=impedance \
-  legacy_pd_fallback:=true \
-  enable_dynamics:=true \
-  enable_gravity_feedforward:=true \
-  enable_nonlinear_feedforward:=false
-```
-
-如果要连 RViz 一起起：
-
-```bash
-ros2 launch dm_ros_control dm_ros_control_rviz.launch.py \
-  use_fake_hardware:=false \
-  serial_port:=/dev/ttyACM0 \
-  baudrate:=921600 \
-  command_mode:=impedance \
-  legacy_pd_fallback:=true \
-  enable_dynamics:=true \
-  enable_gravity_feedforward:=true \
-  enable_nonlinear_feedforward:=false
-```
-
-### 11.3 发送测试轨迹
-
-```bash
-ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory "{
-  joint_names: ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'gripper_left'],
-  points: [
-    {
-      positions: [0.5, 0.4, 0.4, 0.4, 0.4, 0.4, -0.02],
-      time_from_start: {sec: 2}
-    }
-  ]
-}"
-```
-
-### 11.4 推荐先做的验证
-
-第一轮先不要看“手感”，而是看以下现象：
-
-- 新目标起步时，肩肘关节是否比无补偿更不容易先下垂
-- 停在某个中间姿态时，是否比无补偿更能稳住
-- 在相同 `kp / kd` 下，是否不再必须把 `kp` 调得特别高才能托住机械臂
-
----
-
-## 12. 如何运行当前项目中的非线性项补偿
-
-在确认重力补偿方向正确以后，再切换到 `nle(q, dq)`
-
-```bash
-ros2 launch dm_ros_control dm_ros_control.launch.py \
-  use_fake_hardware:=false \
-  serial_port:=/dev/ttyACM0 \
-  baudrate:=921600 \
-  command_mode:=impedance \
-  legacy_pd_fallback:=true \
-  enable_dynamics:=true \
-  enable_gravity_feedforward:=false \
-  enable_nonlinear_feedforward:=true
-```
-
-这一模式下，前馈不仅包含重力，还包含与速度相关的非线性项
-
-适合观察：
-
-- 运动中速度变化较大时，跟踪是否更顺
-- 轨迹执行中是否减少额外拖拽感
-- 加减速过程是否更自然
-
----
-
-## 13. 如何判断补偿有没有真正生效
-
-这一部分非常重要
-
-不要只靠主观感觉判断“好像有一点效果”
-
-### 13.1 先打印前馈数值
-
-建议在 `read()` 中临时打印大关节的前馈量：
-
-```cpp
-RCLCPP_INFO_THROTTLE(
-    rclcpp::get_logger("DmHardwareInterface"),
-    *get_clock(),
-    1000,
-    "g_ff: [%.3f, %.3f, %.3f]",
-    gravity_feedforward_[0],
-    gravity_feedforward_[1],
-    gravity_feedforward_[2]);
-```
-
-如果在不同姿态下：
-
-- 数值始终接近零
-- 几乎不变化
-- 或明显方向反了
-
-那就说明链路仍然有问题
-
-### 13.2 做 A/B 对比
-
-建议保持同一组 `kp / kd`，分别测试：
-
-1. `enable_dynamics=false`
-2. `enable_dynamics=true + gravity=true`
-3. `enable_dynamics=true + nonlinear=true`
-
-比较以下项目：
-
-- 中间姿态保持能力
-- 起步是否先塌
-- 轨迹中途是否更稳
-- 大关节是否更容易托住
-
-### 13.3 “开关几乎没差别”通常意味着什么
-
-如果开关补偿几乎没差别，优先排查：
-
-1. `update()` 是否失败
-2. reduced model 是否仍有维度不匹配
-3. `tau_feedforward` 是否实际传到了 MIT 命令
-4. 扭矩语义是否与电机控制语义一致
-5. 模型质量、惯量、质心是否明显不准
-
----
-
-## 14. `kp / kd / tau_ff` 在当前项目中的分工
-
-### 14.1 开启前馈前
-
-如果没有前馈：
-
-- `kp` 既要负责保持目标
-- 又要负责顶住重力
-- 还要负责抵抗外扰
-
-这会导致：
-
-- 为了托住机械臂，`kp` 不得不调很大
-- 系统会更硬
-- 柔顺控制空间被压缩
-
-### 14.2 开启重力补偿后
-
-如果 `g(q)` 基本正确，那么“托住手臂”主要由：
+每次真机调参记录
 
 ```text
-τ_ff ≈ g(q)
+timestamp
+mode
+q_ref
+q
+dq
+ddq_est
+tau_feedback
+model_feedforward
+gravity
+gravity_scale
+joint_cmd_tor
+actuator_cmd_tor
+kp
+kd
+motor_err_code
 ```
 
-来承担
+建议为每个姿态保存
 
-这时 `kp` 的职责就变成：
+- 配置文件副本
+- URDF commit
+- 软件 commit
+- 机械负载
+- 工具质量
+- 测试视频
+- 急停和支撑方式
 
-- 约束目标位姿
-- 处理模型误差
-- 在受扰动后把关节拉回目标附近
+## 13. 当前教程完成边界
 
-这就是为什么开启补偿后，通常可以在更低 `kp` 下获得更好的保持效果
+当前仓库已经能够完成
 
-### 14.3 `kd` 的作用
+- 真机达妙闭环
+- Dynamics 集中更新
+- 重力补偿输出
+- RNEA 和 ABA 计算
+- 完整周期状态观测
+- 运行时补偿比例调整
 
-`kd` 本质上负责阻尼：
+当前仍需工程验证
 
-- 太低：像低阻尼弹簧，容易飘、容易回摆
-- 太高：像被黏住，拖泥带水
-
-因此，当前项目里合理的关系通常是：
-
-- `tau_ff` 负责先把系统“托起来”
-- `kp` 决定“有多硬”
-- `kd` 决定“有多稳”
-
----
-
-## 15. 建议的调试顺序
-
-### 第一轮：只验证模型链路
-
-目标：确认动力学真的在更新，不讨论手感
-
-步骤：
-
-1. 开 `enable_dynamics=true`
-2. 只开 `enable_gravity_feedforward=true`
-3. 打印前馈值
-4. 检查不同姿态下 `g(q)` 是否变化合理
-
-### 第二轮：只验证静态保持
-
-目标：确认重力补偿是否真的改善了保持
-
-步骤：
-
-1. 让机械臂停在一个非零中间姿态
-2. 比较有无补偿时的保持效果
-3. 不做快速轨迹，不做大动作
-
-### 第三轮：再验证动态轨迹
-
-目标：确认 `nle(q, dq)` 是否改善动态跟踪
-
-步骤：
-
-1. 先确保重力补偿正确
-2. 切 `enable_nonlinear_feedforward=true`
-3. 跑中等速度轨迹
-4. 观察轨迹跟踪、加减速与平顺性
+- URDF 参数准确性
+- 重力补偿比例
+- 力矩映射
+- 长期温升
+- 周期稳定性
+- 多姿态误差
+- ROS 2 接入
+- Python binding

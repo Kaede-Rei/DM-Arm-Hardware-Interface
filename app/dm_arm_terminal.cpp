@@ -305,7 +305,7 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
 
 void print_usage(const char* program) {
     std::cout << "用法: " << program << " [--config <path>] --allow-hardware\n";
-    std::cout << "说明: 终端仅支持 Damiao 真机后端。\n";
+    std::cout << "说明: 终端仅支持 Damiao 真机后端\n";
 }
 
 bool read_line(const std::string& prompt, std::string& line) {
@@ -412,7 +412,7 @@ public:
                     safe_exit();
                     break;
                 }
-                std::cout << "输入无效，请输入菜单编号。\n";
+                std::cout << "输入无效，请输入菜单编号\n";
                 continue;
             }
             if(!handle_menu(*selection)) break;
@@ -525,7 +525,7 @@ private:
         stream_.has_last_update_time = true;
         if(complete && !stream_.completion_reported) {
             stream_.completion_reported = true;
-            std::cout << "\n[轨迹] 已到达目标，继续周期刷新目标位置。\n请输入菜单编号继续。\n";
+            std::cout << "\n[轨迹] 已到达目标，继续周期刷新目标位置\n请输入菜单编号继续\n";
         }
         return {};
     }
@@ -537,7 +537,7 @@ private:
         std::cout << "\n[后台 cycle 失败]\n";
         print_fault(fault);
         if(last_dynamics_err_) std::cout << "  DynamicsErr: " << to_string(*last_dynamics_err_) << '\n';
-        std::cout << "请输入菜单编号继续。\n";
+        std::cout << "请输入菜单编号继续\n";
     }
 
     void print_banner() const {
@@ -546,7 +546,7 @@ private:
         std::cout << " backend: damiao\n";
         std::cout << " config : " << config_path_ << '\n';
         std::cout << "==============================================\n";
-        std::cout << "[危险] 当前终端仅支持真机。运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确。\n";
+        std::cout << "[危险] 当前终端仅支持真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确\n";
     }
 
     void print_menu() const {
@@ -597,7 +597,7 @@ private:
             case 18: set_gravity_scale(); break;
             case 19: show_config_summary(); break;
             case 20: show_frame_state(); break;
-            default: std::cout << "未知菜单编号。\n"; break;
+            default: std::cout << "未知菜单编号\n"; break;
         }
         return true;
     }
@@ -613,7 +613,7 @@ private:
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "activate() 成功，后台 cycle() 自动运行。\n";
+        std::cout << "activate() 成功，后台 cycle() 自动运行\n";
     }
 
     void deactivate() {
@@ -627,7 +627,7 @@ private:
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "deactivate() 成功，Robot 回到 INACTIVE。\n";
+        std::cout << "deactivate() 成功，Robot 回到 INACTIVE\n";
     }
 
     void reset_fault() {
@@ -641,14 +641,14 @@ private:
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "reset_fault() 成功，Robot 回到 INACTIVE。\n";
+        std::cout << "reset_fault() 成功，Robot 回到 INACTIVE\n";
     }
 
     void set_impedance_mode() {
         std::cout << "\n1 RIGID_HOLD\n2 RIGID_TRACKING\n3 COMPLIANT_HOLD\n4 COMPLIANT_DRAG\n5 COMPLIANT_TRACKING\n";
         const auto selection = read_int("模式: ");
         if(!selection || *selection < 1 || *selection > 5) {
-            std::cout << "模式输入无效。\n";
+            std::cout << "模式输入无效\n";
             return;
         }
 
@@ -663,14 +663,14 @@ private:
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "模式已切换为 " << to_string(mode) << "。\n";
+        std::cout << "模式已切换为 " << to_string(mode) << "\n";
     }
 
     void set_model_feedforward_mode() {
         std::cout << "\n1 NONE\n2 GRAVITY\n3 FULL_INVERSE_DYNAMICS\n";
         const auto selection = read_int("模式: ");
         if(!selection || *selection < 1 || *selection > 3) {
-            std::cout << "模式输入无效。\n";
+            std::cout << "模式输入无效\n";
             return;
         }
 
@@ -683,20 +683,20 @@ private:
             return;
         }
         cfg_.runtime.model_feedforward_mode = mode;
-        std::cout << "模型前馈模式已切换为 " << to_string(mode) << "。\n";
+        std::cout << "模型前馈模式已切换为 " << to_string(mode) << "\n";
     }
 
     void start_absolute_stream() {
         const auto target = read_vector("输入 6 个目标位置 rad，以空格分隔: ", cfg_.joint_names.size());
         const auto speed_scale = read_double("速度比例 (0, 1]，建议 0.1~0.5: ");
         if(!target || !speed_scale || *speed_scale <= 0.0 || *speed_scale > 1.0) {
-            std::cout << "目标位置或速度比例输入无效。\n";
+            std::cout << "目标位置或速度比例输入无效\n";
             return;
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::ACTIVE || !is_tracking_mode(robot_.get_impedance_mode())) {
-            std::cout << "请先 activate()，并切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING。\n";
+            std::cout << "请先 activate()，并切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING\n";
             return;
         }
         begin_stream(*target, *speed_scale);
@@ -706,13 +706,13 @@ private:
         const auto delta = read_vector("输入 6 个相对位移 rad，以空格分隔: ", cfg_.joint_names.size());
         const auto speed_scale = read_double("速度比例 (0, 1]，建议 0.1~0.5: ");
         if(!delta || !speed_scale || *speed_scale <= 0.0 || *speed_scale > 1.0) {
-            std::cout << "相对位移或速度比例输入无效。\n";
+            std::cout << "相对位移或速度比例输入无效\n";
             return;
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::ACTIVE || !is_tracking_mode(robot_.get_impedance_mode())) {
-            std::cout << "请先 activate()，并切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING。\n";
+            std::cout << "请先 activate()，并切换到 RIGID_TRACKING 或 COMPLIANT_TRACKING\n";
             return;
         }
 
@@ -736,10 +736,10 @@ private:
         const JointState& measured = robot_.get_joint_state();
         for(std::size_t i = 0; i < cfg_.joint_names.size(); ++i) {
             if(i < measured.pos.size() && std::abs(stream_.ref_pos[i] - measured.pos[i]) > 0.05) {
-                std::cout << "[提示] " << cfg_.joint_names[i] << " 命令-实测位置滞后=" << stream_.ref_pos[i] - measured.pos[i] << " rad。\n";
+                std::cout << "[提示] " << cfg_.joint_names[i] << " 命令-实测位置滞后=" << stream_.ref_pos[i] - measured.pos[i] << " rad\n";
             }
         }
-        std::cout << "已开始连续梯形参考，速度上限比例=" << speed_scale << "。\n";
+        std::cout << "已开始连续梯形参考，速度上限比例=" << speed_scale << "\n";
     }
 
     JointVector current_reference_pos() const {
@@ -757,7 +757,7 @@ private:
     void set_joint_pos_cmd() {
         const auto pos = read_vector("输入 6 个目标位置 rad，以空格分隔: ", cfg_.joint_names.size());
         if(!pos) {
-            std::cout << "输入无效。\n";
+            std::cout << "输入无效\n";
             return;
         }
         latch_joint_cmd(JointPosCmd{ *pos });
@@ -767,7 +767,7 @@ private:
         const auto pos = read_vector("输入 6 个目标位置 rad，以空格分隔: ", cfg_.joint_names.size());
         const auto vel = read_vector("输入 6 个目标速度 rad/s，以空格分隔: ", cfg_.joint_names.size());
         if(!pos || !vel) {
-            std::cout << "输入无效。\n";
+            std::cout << "输入无效\n";
             return;
         }
         latch_joint_cmd(JointPosVelCmd{ *pos, *vel });
@@ -778,7 +778,7 @@ private:
         const auto vel = read_vector("输入 6 个目标速度 rad/s，以空格分隔: ", cfg_.joint_names.size());
         const auto tor = read_vector("输入 6 个附加力矩 N·m，以空格分隔: ", cfg_.joint_names.size());
         if(!pos || !vel || !tor) {
-            std::cout << "输入无效。\n";
+            std::cout << "输入无效\n";
             return;
         }
         latch_joint_cmd(JointPosVelTorCmd{ *pos, *vel, *tor });
@@ -787,7 +787,7 @@ private:
     void latch_joint_cmd(const JointCmd& cmd) {
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::ACTIVE || !is_tracking_mode(robot_.get_impedance_mode())) {
-            std::cout << "请先 activate()，并切换到跟踪模式。\n";
+            std::cout << "请先 activate()，并切换到跟踪模式\n";
             return;
         }
         clear_command_sources();
@@ -799,7 +799,7 @@ private:
         }
         latched_cmd_ = cmd;
         background_fault_reported_ = false;
-        std::cout << "命令已提交并将在后台周期持续刷新。\n";
+        std::cout << "命令已提交并将在后台周期持续刷新\n";
     }
 
     void set_full_cmd() {
@@ -809,14 +809,14 @@ private:
         const auto kp = read_vector("输入 6 个 kp: ", cfg_.joint_names.size());
         const auto kd = read_vector("输入 6 个 kd: ", cfg_.joint_names.size());
         if(!pos || !vel || !tor || !kp || !kd) {
-            std::cout << "输入无效。\n";
+            std::cout << "输入无效\n";
             return;
         }
 
         JointCtrlCmd cmd{ *pos, *vel, *tor, *kp, *kd };
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "请先 activate()。\n";
+            std::cout << "请先 activate()\n";
             return;
         }
         clear_command_sources();
@@ -828,13 +828,13 @@ private:
         }
         latched_full_cmd_ = std::move(cmd);
         background_fault_reported_ = false;
-        std::cout << "完整命令已提交并将在后台周期持续刷新。\n";
+        std::cout << "完整命令已提交并将在后台周期持续刷新\n";
     }
 
     void cancel_and_hold() {
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::ACTIVE) {
-            std::cout << "Robot 当前不是 ACTIVE。\n";
+            std::cout << "Robot 当前不是 ACTIVE\n";
             return;
         }
         clear_command_sources();
@@ -845,7 +845,7 @@ private:
             return;
         }
         last_output_.reset();
-        std::cout << "已取消外部命令并切换到当前位置刚性保持。\n";
+        std::cout << "已取消外部命令并切换到当前位置刚性保持\n";
     }
 
     void show_robot_summary() {
@@ -864,7 +864,7 @@ private:
     void show_all_states() {
         std::lock_guard<std::mutex> lock(mutex_);
         if(!last_output_) {
-            std::cout << "尚无成功控制周期输出，请先 activate()。\n";
+            std::cout << "尚无成功控制周期输出，请先 activate()\n";
             return;
         }
 
@@ -944,7 +944,7 @@ private:
     void show_dynamics_state() {
         std::lock_guard<std::mutex> lock(mutex_);
         if(!dynamics_.is_updated()) {
-            std::cout << "Dynamics 尚未完成首次 update()，请先 activate() 并等待一个周期。\n";
+            std::cout << "Dynamics 尚未完成首次 update()，请先 activate() 并等待一个周期\n";
             return;
         }
 
@@ -969,7 +969,7 @@ private:
     void show_dynamics_matrices() {
         std::lock_guard<std::mutex> lock(mutex_);
         if(!dynamics_.is_updated()) {
-            std::cout << "Dynamics 尚未完成首次 update()。\n";
+            std::cout << "Dynamics 尚未完成首次 update()\n";
             return;
         }
         print_matrix("mass_matrix", dynamics_.get_mass_matrix());
@@ -1011,13 +1011,13 @@ private:
     void set_gravity_scale() {
         const auto scale = read_vector("输入 6 个重力补偿比例 [0, 1]，以空格分隔: ", cfg_.joint_names.size());
         if(!scale) {
-            std::cout << "输入无效。\n";
+            std::cout << "输入无效\n";
             return;
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
         if(robot_.get_state() != RobotState::INACTIVE) {
-            std::cout << "请先 deactivate()，重力补偿比例只允许在 INACTIVE 修改。\n";
+            std::cout << "请先 deactivate()，重力补偿比例只允许在 INACTIVE 修改\n";
             return;
         }
         const auto result = dynamics_.set_gravity_scale(*scale);
@@ -1026,7 +1026,7 @@ private:
             return;
         }
         cfg_.dynamics.gravity_scale = *scale;
-        std::cout << "重力补偿比例已更新。该值只修改当前进程，不会回写 YAML。\n";
+        std::cout << "重力补偿比例已更新该值只修改当前进程，不会回写 YAML\n";
     }
 
     void show_config_summary() {
@@ -1056,7 +1056,7 @@ private:
     void show_frame_state() {
         std::string frame_name;
         if(!read_line("输入 Frame 名称: ", frame_name) || frame_name.empty()) {
-            std::cout << "Frame 名称无效。\n";
+            std::cout << "Frame 名称无效\n";
             return;
         }
 
@@ -1086,7 +1086,7 @@ private:
             }
         }
         quit_.store(true);
-        std::cout << "终端退出。\n";
+        std::cout << "终端退出\n";
     }
 
     void clear_command_sources() {
@@ -1128,7 +1128,7 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
     }
     if(!options.allow_hardware) {
-        std::cerr << "拒绝启动：当前终端只支持真机，必须显式传入 --allow-hardware。\n";
+        std::cerr << "拒绝启动：当前终端只支持真机，必须显式传入 --allow-hardware\n";
         return EXIT_FAILURE;
     }
 
@@ -1138,7 +1138,7 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     if(!cfg_result->runtime.write_enabled) {
-        std::cerr << "拒绝启动：runtime.write_enabled=false。\n";
+        std::cerr << "拒绝启动：runtime.write_enabled=false\n";
         return EXIT_FAILURE;
     }
 
