@@ -1,0 +1,42 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "pybind11>=2.11",
+  "numpy>=1.24",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "dm-arm"
+version = "0.1.0"
+description = "Python bindings for the DM-Arm C++ control and dynamics platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "DM-Arm Maintainer" },
+]
+dependencies = [
+  "numpy>=1.24",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Robotics",
+]
+
+[tool.scikit-build]
+cmake.source-dir = ".."
+wheel.packages = ["dm_arm"]
+install.components = ["python"]
+cmake.args = [
+  "-DDM_ARM_BUILD_TERMINAL=OFF",
+  "-DDM_ARM_BUILD_DAMIAO=ON",
+  "-DDM_ARM_ENABLE_DYNAMICS=ON",
+  "-DDM_ARM_BUILD_PYTHON=ON",
+  "-DDM_ARM_BUILD_ROS2=OFF",
+]

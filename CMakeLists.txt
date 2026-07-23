@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -26,7 +27,7 @@ option(DM_ARM_BUILD_DAMIAO "Build Damiao backend" ON)
 # 动力学：编译 Pinocchio 模型、运动学、重力补偿和完整动力学接口
 option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" ON)
 
-# Python：pybind11 绑定开关，依赖 DM_ARM_ENABLE_DYNAMICS=ON
+# Python：编译 pybind11 离线 API 与 C++ RobotSession 真机接口
 option(DM_ARM_BUILD_PYTHON "Build Python binding" ON)
 
 # ROS 2：预留 ros2_control 适配开关；对应 target 尚未实现
@@ -236,21 +237,25 @@ if(DM_ARM_BUILD_PYTHON)
 
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
+    find_package(Threads REQUIRED)
 
     pybind11_add_module(_dm_arm MODULE
         python/bindings.cpp
         python/robot_session.cpp
     )
 
-    target_include_directories(_dm_arm PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/python
+    target_include_directories(_dm_arm
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/python
     )
 
-    target_link_libraries(_dm_arm PRIVATE
-        dm_arm_core
-        dm_arm_config
-        dm_arm_robot
-        dm_arm_dynamics
+    target_link_libraries(_dm_arm
+        PRIVATE
+            dm_arm_core
+            dm_arm_config
+            dm_arm_robot
+            dm_arm_dynamics
+            Threads::Threads
     )
 
     if(TARGET dm_arm_damiao)
@@ -258,10 +263,17 @@ if(DM_ARM_BUILD_PYTHON)
         target_compile_definitions(_dm_arm PRIVATE DM_ARM_PYTHON_HAS_DAMIAO=1)
     endif()
 
-    target_compile_options(_dm_arm PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_features(_dm_arm PRIVATE cxx_std_17)
+    dm_arm_enable_warnings(_dm_arm)
 
-    install(TARGETS _dm_arm LIBRARY DESTINATION dm_arm)
-    install(FILES python/dm_arm/__init__.py DESTINATION dm_arm)
+    install(TARGETS _dm_arm
+        LIBRARY DESTINATION dm_arm
+        COMPONENT python
+    )
+    install(FILES python/dm_arm/__init__.py
+        DESTINATION dm_arm
+        COMPONENT python
+    )
 endif()
 
 # =============================================================================

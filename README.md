@@ -24,6 +24,10 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 - 关节加速度估计和参考加速度估计
 - 真机交互式终端
 - CMake 安装和 package 导出
+- pybind11 Python 离线 API
+- NumPy 状态、命令、矩阵和位姿转换
+- C++ 后台线程真机 `RobotSession`
+- scikit-build-core wheel 构建
 
 ---
 
@@ -38,8 +42,8 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 | `dm_arm::dynamics` | 已实现 | FK、Frame、Jacobian、重力、质量矩阵、RNEA 和 ABA |
 | `dm_arm_terminal` | 已实现 | 真机控制、状态观测、动力学观测和补偿调参 |
 | ROS 2 / ros2_control | 未实现 | 构建开关存在；开启时会主动报错 |
-| Python binding | 未实现 | 构建开关存在；开启时会主动报错 |
-| 自动化测试 | 未加入 | 当前仓库没有 `tests/` 目录 |
+| Python binding | 已实现 | Config、Core、Dynamics、NumPy API、真机 RobotSession 和 wheel |
+| 自动化测试 | 未实现 | 待所有完成再统一测试 |
 | 独立诊断工具 | 未加入 | 当前主要通过终端完成联调 |
 
 动力学代码已经完成；当前仍需完成 URDF 惯量审计、Joint 与 Actuator 力矩映射确认、`gravity_scale` 调参、真机补偿验证和长期运行验证
@@ -73,7 +77,8 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
                 |             |
                 |       dm_arm::dynamics
                 |             |
-                └──── dm_arm_terminal
+                ├──── dm_arm_terminal
+                └──── Python _dm_arm
 ```
 
 核心边界
@@ -85,10 +90,12 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 - `DamiaoMotorBus` 只处理达妙通信和执行器侧限制
 - `Dynamics` 只处理模型计算和缓存
 - 终端只负责交互、参考生成和观测
+- Python 离线 API 只包装公开 C++ 接口
+- Python 真机会话由 C++ 工作线程独占 Robot 和串口；Python 线程只提交请求和读取快照
 
 ---
 
-## 安全警告 
+## 安全警告
 
 > [!WARNING]
 > 本项目能够向真实机械臂发送 MIT 命令；错误的零位、方向、比例、限位、增益、惯量、重力方向或电机型号可能导致突然运动、碰撞、过流、坠落或机构损坏
@@ -135,6 +142,12 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 │   │   ├── damiao_motor_bus.hpp
 │   │   └── motor_bus.hpp
 │   └── robot.hpp
+├── python/
+│   ├── bindings.cpp
+│   ├── robot_session.hpp
+│   ├── robot_session.cpp
+│   ├── dm_arm/__init__.py
+│   └── pyproject.toml
 ├── src/
 │   ├── config/config.cpp
 │   ├── core/
@@ -156,10 +169,10 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 
 当前开发目标平台
 
-* Ubuntu 22.04 amd64
-* GCC 11 或兼容编译器
-* CMake 3.20 及以上
-* C++17
+- Ubuntu 22.04
+- GCC 11 或兼容编译器
+- CMake 3.20 及以上
+- C++17
 
 基础依赖
 
@@ -318,7 +331,7 @@ cmake --install build --prefix install
 | `DM_ARM_BUILD_TERMINAL` | `ON` | 已实现；要求 Damiao 和 Dynamics 同时开启 |
 | `DM_ARM_BUILD_DAMIAO` | `ON` | 已实现 |
 | `DM_ARM_ENABLE_DYNAMICS` | `ON` | 已实现 |
-| `DM_ARM_BUILD_PYTHON` | `OFF` | 未实现；开启时 CMake 主动报错 |
+| `DM_ARM_BUILD_PYTHON` | `OFF` | 已实现；要求 Dynamics，Damiao 开启时额外提供真机 RobotSession |
 | `DM_ARM_BUILD_ROS2` | `OFF` | 未实现；开启时 CMake 主动报错 |
 
 ---
@@ -457,6 +470,79 @@ const auto& mass_matrix = dynamics.get_mass_matrix();
 
 ---
 
+## Python binding
+
+Python 模块由 `_dm_arm` C++ 扩展和 `dm_arm` 纯 Python 包装层组成
+
+离线接口包括
+
+- `load_robot_cfg()` 和完整配置结构
+- `JointCtrller`
+- `JointActuatorMapper`
+- `Safety`
+- `Dynamics`
+- NumPy 状态、命令、质量矩阵、Jacobian 和位姿
+
+真机接口使用 `RobotSession`；200 Hz 周期在 C++ 工作线程中执行，Python 不直接调度 `Robot::cycle()`
+
+创建虚拟环境并构建 wheel
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install scikit-build-core pybind11 numpy pytest build
+
+cd python
+python -m build --wheel
+python -m pip install dist/dm_arm-*.whl
+```
+
+离线动力学示例
+
+```python
+from pathlib import Path
+
+import numpy as np
+
+import dm_arm
+
+repo = Path.cwd()
+cfg = dm_arm.load_robot_cfg(repo / "config" / "dm_arm.yaml")
+dynamics = dm_arm.Dynamics()
+dynamics.configure(cfg.dynamics)
+
+zero = np.zeros(6, dtype=np.float64)
+dynamics.update(zero, zero, zero, zero, zero)
+
+print(dynamics.gravity)
+print(dynamics.mass_matrix)
+print(dynamics.tool_pose)
+```
+
+真机会话示例
+
+```python
+from pathlib import Path
+
+import numpy as np
+
+import dm_arm
+
+config_file = Path("config/dm_arm.yaml")
+session = dm_arm.RobotSession(config_file, allow_hardware=True)
+session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
+session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
+
+with session:
+    session.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING)
+    session.move_to(np.array([0.0, 0.3, 0.3, 0.0, 0.0, 0.0]), speed_scale=0.2)
+    snapshot = session.snapshot
+    print(snapshot.cycle.joint_state.pos)
+```
+
+真机启动同时要求构造参数 `allow_hardware=True` 和 YAML 中 `runtime.write_enabled: true`；模型前馈模式只能在会话处于 INACTIVE 时修改
+
 ## 在其他 CMake 项目中使用
 
 安装后
@@ -490,9 +576,8 @@ dm_arm::dynamics
 ## 已知限制
 
 - 当前固定六个受控旋转关节
-- Python binding 尚未实现
 - ROS 2 / ros2_control 尚未实现
-- 当前没有仓库内自动化测试目录
+- 当前只有 Python pytest；尚无 C++ 单元测试和硬件在环自动化
 - 当前终端仅面向真实达妙后端
 - URDF 动力学参数尚需系统审计和标定
 - `gravity_scale` 尚需逐轴真机调参
