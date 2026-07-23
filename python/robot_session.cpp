@@ -14,6 +14,12 @@ namespace dm_arm {
 
 namespace {
 
+/**
+ * @brief 将 RobotFault 转换为 Python 会话错误文本
+ * @param action 当前失败操作名称
+ * @param fault Robot 故障详情
+ * @return 包含顶层错误和有效子错误的文本
+ */
 std::string make_robot_error(const char* action, const RobotFault& fault) {
     std::ostringstream stream;
     stream << action << " failed; RobotErr=" << static_cast<int>(fault.code);
@@ -42,6 +48,11 @@ std::string make_robot_error(const char* action, const RobotFault& fault) {
     return stream.str();
 }
 
+/**
+ * @brief 判断阻抗模式是否需要连续外部参考
+ * @param mode 阻抗模式
+ * @return 需要连续参考时返回 true，否则返回 false
+ */
 bool is_tracking_mode(JointImpedanceMode mode) {
     return mode == JointImpedanceMode::RIGID_TRACKING || mode == JointImpedanceMode::COMPLIANT_TRACKING;
 }
@@ -303,7 +314,7 @@ void PyRobotSession::hold_current() {
     has_goal_ = false;
 }
 
-// ! ========================= 状 态 读 取 方 法 实 现 ========================= ! //
+// ! ========================= 状 态 / 快 照 读 取 方 法 实 现 ========================= ! //
 
 RobotSessionSnapshot PyRobotSession::get_snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -341,8 +352,13 @@ std::vector<RobotSessionActuatorInfo> PyRobotSession::get_actuator_info() const 
     return actuator_info_;
 }
 
-// ! ========================= 周 期 线 程 方 法 实 现 ========================= ! //
+// ! ========================= 周 期 线 程 / 参 考 生 成 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 运行固定频率控制周期并应用 Python 侧提交的最新请求
+ *
+ * 工作线程串行执行模式切换、重力比例更新、参考生成、Robot::set_cmd() 和 Robot::cycle()；退出前在 ACTIVE 状态下执行安全失能
+ */
 void PyRobotSession::loop() noexcept {
     const double target_dt = 1.0 / cfg_.runtime.ctrl_frequency_hz;
     const auto period = std::chrono::duration<double>(target_dt);
@@ -447,6 +463,10 @@ void PyRobotSession::loop() noexcept {
     snapshot_.robot_state = robot_ ? robot_->get_state() : RobotState::UNCONFIGURED;
 }
 
+/**
+ * @brief 根据当前目标更新梯形位置速度参考
+ * @param dt 当前参考生成时间步长
+ */
 void PyRobotSession::update_reference(double dt) {
     JointVector goal;
     double speed_scale;
@@ -486,6 +506,11 @@ void PyRobotSession::update_reference(double dt) {
     }
 }
 
+/**
+ * @brief 校验 Python 输入关节向量的长度和有限性
+ * @param values 待校验关节向量
+ * @param name 参数名称
+ */
 void PyRobotSession::validate_joint_vector(const JointVector& values, const char* name) const {
     if(!configured_) {
         throw DmArmPythonError("RobotSession is not configured");
@@ -500,6 +525,10 @@ void PyRobotSession::validate_joint_vector(const JointVector& values, const char
     }
 }
 
+/**
+ * @brief 将周期线程错误写入会话快照
+ * @param message 错误文本
+ */
 void PyRobotSession::set_worker_error(const std::string& message) noexcept {
     try {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -510,6 +539,10 @@ void PyRobotSession::set_worker_error(const std::string& message) noexcept {
     }
 }
 
+/**
+ * @brief 创建 Robot 使用的动力学前馈回调
+ * @return 根据前馈模式返回零向量、重力补偿或逆动力学结果的回调
+ */
 ModelFeedforwardFn PyRobotSession::make_model_feedforward() {
     return [this](auto mode, const auto& state, const auto& acc, const auto& ref_acc, double) -> tl::expected<JointVector, ModelFeedforwardErr> {
         const auto result = dynamics_->update(state, acc, ref_acc);

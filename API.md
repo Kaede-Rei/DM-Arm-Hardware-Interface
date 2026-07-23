@@ -1,4 +1,4 @@
-# DM-Arm C++ API 参考
+# DM-Arm API 文档
 
 命名空间为 `dm_arm`；语言标准为 C++17
 
@@ -951,11 +951,281 @@ Robot::reset_fault
 
 当前仍存在动态容器和 `tl::expected`；项目尚未宣称硬实时
 
-## 15. 未实现 API
+## 15. Python API
 
-以下构建面尚未实现
+Python 包名为 `dm_arm`；底层扩展模块名为 `_dm_arm`
+
+### 15.1. 构建入口
+
+根 CMake 开关
+
+```cmake
+-DM_ARM_BUILD_PYTHON=ON
+```
+
+该开关要求
+
+```text
+DM_ARM_ENABLE_DYNAMICS=ON
+Python Interpreter
+Python Development.Module
+pybind11
+Threads
+```
+
+`DM_ARM_BUILD_DAMIAO=ON` 时编译可用的真机 `RobotSession`；关闭 Damiao 时 Config、Core 和 Dynamics 仍可绑定，但真机会话会在 configure 阶段明确拒绝
+
+wheel 构建入口
+
+```bash
+cd python
+python -m build --wheel
+```
+
+Python 包说明见 [`../python/README.md`](../python/README.md)
+
+### 15.2. 异常
+
+所有 `tl::expected` 错误统一转换为
+
+```python
+dm_arm.DmArmError
+```
+
+配置、控制、映射、Safety、Dynamics 和 Robot 错误枚举仍然可以用于诊断
+
+```python
+try:
+    cfg = dm_arm.load_robot_cfg("missing.yaml")
+except dm_arm.DmArmError as error:
+    print(error)
+```
+
+### 15.3. NumPy 规则
+
+输入向量接受 C contiguous 或可转换为 C contiguous 的数组；内部统一转换为 `float64`
+
+```text
+JointVector shape = (N,)
+六轴 q、dq、ddq、tau shape = (6,)
+质量矩阵 shape = (6, 6)
+Jacobian shape = (6, 6)
+位姿 shape = (4, 4)
+```
+
+所有 C++ 向量、矩阵和位姿 getter 都返回 Python 独立副本；修改返回数组不会修改 C++ 缓存
+
+### 15.4. 配置 API
+
+公开类型
+
+```text
+RuntimeCfg
+JointCtrllerCfg
+JointActuatorMapCfg
+JointLimitCfg
+SafetyCfg
+DamiaoActuatorCfg
+DamiaoBusCfg
+DynamicsCfg
+RobotCfg
+ConfigErr
+ConfigErrInfo
+```
+
+公开函数
+
+```python
+cfg = dm_arm.load_robot_cfg("config/dm_arm.yaml")
+dm_arm.validate_robot_core_cfg(cfg)
+dm_arm.validate_robot_cfg(cfg)
+```
+
+### 15.5. 状态和命令类型
+
+公开类型
+
+```text
+JointState
+ActuatorState
+JointPosCmd
+JointPosVelCmd
+JointPosVelTorCmd
+JointCtrlCmd
+ActuatorMitCmd
+```
+
+向量成员通过 NumPy 属性读写
+
+```python
+state = dm_arm.JointState()
+state.pos = np.zeros(6)
+state.vel = np.zeros(6)
+state.tor = np.zeros(6)
+```
+
+### 15.6. JointCtrller
+
+```python
+ctrller = dm_arm.JointCtrller()
+ctrller.configure(cfg.ctrller)
+ctrller.initialize(state)
+ctrller.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING, state)
+ctrller.set_pos_vel_cmd(pos, vel)
+cmd = ctrller.update(state, model_feedforward, 0.005)
+```
+
+公开方法
+
+```text
+configure
+initialize
+reset
+set_impedance_mode
+set_pos_cmd
+set_pos_vel_cmd
+set_pos_vel_tor_cmd
+set_full_cmd
+update
+```
+
+### 15.7. JointActuatorMapper
+
+```python
+mapper = dm_arm.JointActuatorMapper()
+mapper.configure(cfg.mapper)
+actuator_cmd = mapper.to_actuator_cmd(joint_cmd)
+joint_state = mapper.to_joint_state(actuator_state)
+```
+
+### 15.8. Safety
+
+```python
+safety = dm_arm.Safety()
+safety.configure(cfg.safety)
+safety.check_state(joint_state, actuator_state, state_age_s=0.005)
+safe_cmd = safety.check_joint_cmd(joint_state, joint_cmd, dt=0.005)
+```
+
+公开诊断
+
+```text
+configured
+clamp_count
+action_for
+```
+
+### 15.9. Dynamics
+
+```python
+dynamics = dm_arm.Dynamics()
+dynamics.configure(cfg.dynamics)
+dynamics.update(q, dq, ddq, tau, ddq_ref)
+```
+
+更新后读取缓存
+
+```python
+state = dynamics.state
+gravity = dynamics.gravity
+gravity_compensation = dynamics.gravity_compensation
+nonlinear = dynamics.nonlinear
+coriolis = dynamics.coriolis
+mass_matrix = dynamics.mass_matrix
+inverse_dynamics = dynamics.inverse_dynamics
+forward_dynamics = dynamics.forward_dynamics
+tool_pose = dynamics.tool_pose
+tool_jacobian = dynamics.tool_jacobian
+```
+
+指定 Frame
+
+```python
+pose = dynamics.frame_pose("tool0")
+jacobian = dynamics.frame_jacobian("tool0")
+```
+
+Dynamics 计算期间释放 GIL；NumPy 转换和返回值复制在持有 GIL 时完成
+
+### 15.10. RobotSession
+
+Python 不直接绑定由调用方驱动的 `Robot::cycle()` 真机循环；公开的 `RobotSession` 在 C++ 内部创建工作线程并独占 Robot、DamiaoMotorBus 和 Dynamics
+
+构造
+
+```python
+session = dm_arm.RobotSession("config/dm_arm.yaml", allow_hardware=True)
+```
+
+生命周期
+
+```python
+session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
+session.start()
+session.stop()
+session.reset_fault()
+```
+
+`set_model_feedforward_mode()` 只允许 INACTIVE；运行期间调用会抛出 `DmArmError`
+
+模式和目标
+
+```python
+session.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING)
+session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
+session.move_to(np.array([0.0, 0.2, 0.2, 0.0, 0.0, 0.0]), speed_scale=0.2)
+session.hold_current()
+```
+
+状态
+
+```python
+snapshot = session.snapshot
+print(snapshot.robot_state)
+print(snapshot.valid)
+print(snapshot.last_error)
+print(snapshot.cycle.joint_state.pos)
+print(snapshot.cycle.actuator_state.pos)
+print(snapshot.cycle.joint_acc)
+print(snapshot.dynamics.gravity)
+```
+
+静态信息
+
+```python
+print(session.config)
+print(session.dynamics_info)
+print(session.actuator_info)
+```
+
+### 15.11. RobotSession 安全语义
+
+真机启动必须同时满足
+
+```text
+Python 构造 allow_hardware=True
+YAML runtime.write_enabled=true
+CMake DM_ARM_BUILD_DAMIAO=ON
+```
+
+`start()` 负责激活和启动 C++ 周期线程；`stop()` 停止线程并在 ACTIVE 时调用 `Robot::deactivate()`；工作线程错误写入 `snapshot.last_error` 并停止周期；FAULT 必须显式调用 `reset_fault()`
+
+`move_to()` 使用 C++ 梯形位置速度参考；目标必须位于 Safety 软限位内；调用前必须请求 `RIGID_TRACKING` 或 `COMPLIANT_TRACKING`
+
+### 15.12. 上下文管理器
+
+```python
+with dm_arm.RobotSession("config/dm_arm.yaml", allow_hardware=True) as session:
+    session.set_impedance_mode(dm_arm.JointImpedanceMode.COMPLIANT_DRAG)
+    snapshot = session.snapshot
+```
+
+退出上下文时自动调用 `stop()`
+
+## 16 未实现 API
+
+当前尚未实现
 
 - ROS 2 / ros2_control
-- Python binding
 
-开启对应 CMake 选项时会主动报错
+开启 `DM_ARM_BUILD_ROS2=ON` 时会主动报错

@@ -147,6 +147,7 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 │   ├── robot_session.hpp
 │   ├── robot_session.cpp
 │   ├── dm_arm/__init__.py
+│   ├── README.md
 │   └── pyproject.toml
 ├── src/
 │   ├── config/config.cpp
@@ -491,7 +492,7 @@ Python 模块由 `_dm_arm` C++ 扩展和 `dm_arm` 纯 Python 包装层组成
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install scikit-build-core pybind11 numpy pytest build
+python -m pip install scikit-build-core pybind11 numpy build
 
 cd python
 python -m build --wheel
@@ -570,6 +571,7 @@ dm_arm::dynamics
 ```
 
 详细 API 见 [API.md](API.md)
+Python 构建与使用见 [python/README.md](python/README.md)
 
 ---
 
@@ -577,7 +579,7 @@ dm_arm::dynamics
 
 - 当前固定六个受控旋转关节
 - ROS 2 / ros2_control 尚未实现
-- 当前只有 Python pytest；尚无 C++ 单元测试和硬件在环自动化
+- 当前尚无 Python、C++ 和硬件在环自动化测试
 - 当前终端仅面向真实达妙后端
 - URDF 动力学参数尚需系统审计和标定
 - `gravity_scale` 尚需逐轴真机调参

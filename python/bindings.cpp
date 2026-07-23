@@ -27,6 +27,11 @@ using IntArray = py::array_t<int, py::array::c_style | py::array::forcecast>;
 
 // ! ========================= NumPy 转 换 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 将 std::vector 复制为独立 NumPy 一维数组
+ * @param values C++ 向量
+ * @return 不共享 C++ 内存的 NumPy 数组
+ */
 template<typename T>
 py::array_t<T> vector_to_numpy(const std::vector<T>& values) {
     py::array_t<T> result(values.size());
@@ -36,6 +41,12 @@ py::array_t<T> vector_to_numpy(const std::vector<T>& values) {
     return result;
 }
 
+/**
+ * @brief 将 NumPy 一维数组转换为有限 JointVector
+ * @param array NumPy 输入数组
+ * @param name 参数名称
+ * @return 转换后的 JointVector
+ */
 JointVector numpy_to_joint_vector(const DoubleArray& array, const char* name) {
     if(array.ndim() != 1) {
         throw py::value_error(std::string(name) + " must be a one-dimensional float64 array");
@@ -52,6 +63,13 @@ JointVector numpy_to_joint_vector(const DoubleArray& array, const char* name) {
     return result;
 }
 
+/**
+ * @brief 将 NumPy 一维数组转换为指定长度的有限 JointVector
+ * @param array NumPy 输入数组
+ * @param expected_size 期望元素数量
+ * @param name 参数名称
+ * @return 转换后的 JointVector
+ */
 JointVector numpy_to_joint_vector(const DoubleArray& array, std::size_t expected_size, const char* name) {
     JointVector result = numpy_to_joint_vector(array, name);
     if(result.size() != expected_size) {
@@ -106,6 +124,11 @@ void set_int_member(Owner& self, const IntArray& values) {
     self.*Member = numpy_to_int_vector(values, "values");
 }
 
+/**
+ * @brief 将 Eigen 动态矩阵复制为独立 NumPy 二维数组
+ * @param matrix Eigen 矩阵
+ * @return 不共享 C++ 内存的 NumPy 数组
+ */
 py::array_t<double> matrix_to_numpy(const Eigen::MatrixXd& matrix) {
     py::array_t<double> result({ matrix.rows(), matrix.cols() });
     auto view = result.mutable_unchecked<2>();
@@ -117,6 +140,11 @@ py::array_t<double> matrix_to_numpy(const Eigen::MatrixXd& matrix) {
     return result;
 }
 
+/**
+ * @brief 将 Eigen 位姿复制为 4×4 NumPy 齐次变换矩阵
+ * @param pose Eigen 位姿
+ * @return 4×4 NumPy 数组
+ */
 py::array_t<double> pose_to_numpy(const Eigen::Isometry3d& pose) {
     const Eigen::Matrix4d matrix = pose.matrix();
     py::array_t<double> result({ 4, 4 });
@@ -242,6 +270,10 @@ void session_move_to(PyRobotSession& self, const DoubleArray& pos, double speed_
 
 // ! ========================= 基 础 类 型 绑 定 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 绑定公共错误码、模式和生命周期枚举
+ * @param module pybind11 模块
+ */
 void bind_enums(py::module_& module) {
     py::enum_<JointImpedanceMode>(module, "JointImpedanceMode")
         .value("RIGID_HOLD", JointImpedanceMode::RIGID_HOLD)
@@ -397,6 +429,10 @@ void bind_enums(py::module_& module) {
         .value("CMD_VEL_STEP_LIMIT", SafetyErr::CMD_VEL_STEP_LIMIT);
 }
 
+/**
+ * @brief 绑定 Joint、Actuator、故障和周期快照结构
+ * @param module pybind11 模块
+ */
 void bind_state_types(py::module_& module) {
     py::class_<JointState>(module, "JointState")
         .def(py::init<>())
@@ -447,6 +483,10 @@ void bind_state_types(py::module_& module) {
 
 // ! ========================= 配 置 绑 定 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 绑定配置结构、配置加载和配置验证函数
+ * @param module pybind11 模块
+ */
 void bind_config(py::module_& module) {
     py::class_<ConfigErrInfo>(module, "ConfigErrInfo")
         .def(py::init<>())
@@ -558,6 +598,10 @@ void bind_config(py::module_& module) {
 
 // ! ========================= Core 绑 定 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 绑定 JointCtrller、JointActuatorMapper 和 Safety
+ * @param module pybind11 模块
+ */
 void bind_core(py::module_& module) {
     py::class_<JointCtrller>(module, "JointCtrller")
         .def(py::init<>())
@@ -602,6 +646,10 @@ void bind_core(py::module_& module) {
 
 // ! ========================= Dynamics 绑 定 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 绑定 Dynamics 集中更新接口和只读缓存 getter
+ * @param module pybind11 模块
+ */
 void bind_dynamics(py::module_& module) {
     py::class_<DynamicsInfo>(module, "DynamicsInfo")
         .def(py::init<>())
@@ -675,6 +723,10 @@ void bind_dynamics(py::module_& module) {
 
 // ! ========================= RobotSession 绑 定 方 法 实 现 ========================= ! //
 
+/**
+ * @brief 绑定由 C++ 工作线程驱动的真机 RobotSession
+ * @param module pybind11 模块
+ */
 void bind_robot_session(py::module_& module) {
     py::class_<RobotFault>(module, "RobotFault")
         .def(py::init<>())
@@ -739,6 +791,9 @@ void bind_robot_session(py::module_& module) {
 
 } // namespace dm_arm
 
+/**
+ * @brief 创建 DM-Arm Python 扩展模块并注册全部公开绑定
+ */
 PYBIND11_MODULE(_dm_arm, module) {
     module.doc() = "DM-Arm C++17 control, dynamics and hardware bindings";
     module.attr("__version__") = "0.1.0";

@@ -768,24 +768,83 @@ motor_err_code
 - 测试视频
 - 急停和支撑方式
 
-## 13. 当前教程完成边界
+## 13. Python binding 构建与使用
 
-当前仓库已经能够完成
+### 13.1. 创建虚拟环境
 
-- 真机达妙闭环
-- Dynamics 集中更新
-- 重力补偿输出
-- RNEA 和 ABA 计算
-- 完整周期状态观测
-- 运行时补偿比例调整
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install scikit-build-core pybind11 numpy build
+```
 
-当前仍需工程验证
+虚拟环境目录名称由 `python3 -m venv` 的最后一个参数决定；`.venv` 只是当前仓库推荐名称
 
-- URDF 参数准确性
-- 重力补偿比例
-- 力矩映射
-- 长期温升
-- 周期稳定性
-- 多姿态误差
-- ROS 2 接入
-- Python binding
+### 13.2. 构建 wheel
+
+```bash
+cd python
+python -m build --wheel
+python -m pip install --force-reinstall dist/dm_arm-*.whl
+python -c "import dm_arm; print(dm_arm.__version__)"
+```
+
+构建前必须保留 Pinocchio 的 `/opt/openrobots` 环境变量；wheel 默认启用 Dynamics 和 Damiao
+
+### 13.3. 离线 Dynamics 检查
+
+```python
+from pathlib import Path
+
+import numpy as np
+
+import dm_arm
+
+cfg = dm_arm.load_robot_cfg(Path("../config/dm_arm.yaml"))
+dynamics = dm_arm.Dynamics()
+dynamics.configure(cfg.dynamics)
+
+zero = np.zeros(6, dtype=np.float64)
+dynamics.update(zero, zero, zero, zero, zero)
+
+print(dynamics.gravity)
+print(dynamics.mass_matrix)
+print(dynamics.tool_pose)
+```
+
+检查结果
+
+- `gravity.shape == (6,)`
+- `mass_matrix.shape == (6, 6)`
+- `tool_pose.shape == (4, 4)`
+- 修改返回数组不会改变 C++ Dynamics 缓存
+
+### 13.4. 真机 RobotSession
+
+```python
+from pathlib import Path
+
+import numpy as np
+
+import dm_arm
+
+session = dm_arm.RobotSession(Path("../config/dm_arm.yaml"), allow_hardware=True)
+session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
+session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
+
+with session:
+    session.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING)
+    session.move_to(np.array([0.0, 0.2, 0.2, 0.0, 0.0, 0.0]), speed_scale=0.2)
+    print(session.snapshot.cycle.joint_state.pos)
+```
+
+真机启动必须同时满足
+
+```text
+allow_hardware=True
+runtime.write_enabled=true
+DM_ARM_BUILD_DAMIAO=ON
+```
+
+`set_model_feedforward_mode()` 必须在 `start()` 前调用；运行期间通过 `snapshot.last_error` 检查工作线程错误；FAULT 复位前先确保工作线程已经停止
