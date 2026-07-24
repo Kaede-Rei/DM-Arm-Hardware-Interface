@@ -323,6 +323,16 @@ struct RuntimeCfg {
 ### 4.2. `DamiaoActuatorCfg`
 
 ```cpp
+struct ShutdownCfg {
+    bool park_before_disable{ true };
+    JointVector park_pos;
+    double speed_scale{ 0.1 };
+    double position_tolerance{ 0.02 };
+    double velocity_tolerance{ 0.03 };
+    double settle_time_s{ 0.5 };
+    double timeout_s{ 15.0 };
+};
+
 struct DamiaoActuatorCfg {
     std::string name;
     std::string joint_name;
@@ -339,6 +349,7 @@ struct DamiaoBusCfg {
     std::string serial_port{ "/dev/ttyACM0" };
     int baudrate{ 921600 };
     bool refresh_state_in_read{ false };
+    double feedback_timeout_s{ 0.05 };
     std::size_t startup_read_cycles{ 5 };
     double stop_kp{ 3.0 };
     double stop_kd{ 0.1 };
@@ -366,6 +377,7 @@ struct DynamicsCfg {
 struct RobotCfg {
     std::vector<std::string> joint_names;
     RuntimeCfg runtime;
+    ShutdownCfg shutdown;
     JointCtrllerCfg ctrller;
     JointActuatorMapCfg mapper;
     SafetyCfg safety;
@@ -561,7 +573,7 @@ public:
 - `read()` 返回固定长度 ActuatorState
 - `write()` 接受执行器侧 MIT 命令
 - `stop()` 优先执行可控保持
-- `deactivate()` 失能硬件
+- `deactivate()` 立即停止并失能硬件；回停放姿态属于终端或上层会话职责
 - `recover()` 清理故障残留并恢复到可再次激活的状态
 - 周期路径不读取 YAML
 
@@ -801,7 +813,9 @@ dt
 tl::expected<void, RobotFault> configure(const RobotCfg& cfg, std::unique_ptr<MotorBus> motor_bus, ModelFeedforwardFn model_feedforward = {});
 tl::expected<void, RobotFault> activate();
 tl::expected<void, RobotFault> deactivate();
+tl::expected<void, RobotFault> force_deactivate();
 tl::expected<void, RobotFault> reset_fault();
+tl::expected<void, RobotFault> maintain_fault_hold();
 ```
 
 ### 11.4. 命令接口
@@ -819,6 +833,7 @@ tl::expected<void, RobotFault> set_model_feedforward_mode(ModelFeedforwardMode m
 
 ```cpp
 tl::expected<RobotCycleOutput, RobotFault> cycle(TimePoint now = Clock::now());
+bool is_fault_holding() const noexcept;
 ```
 
 周期输出

@@ -202,6 +202,28 @@ runtime:
 acc_filtered = alpha × acc_raw + (1 - alpha) × acc_previous
 ```
 
+### 4.2.1. Shutdown
+
+```yaml
+shutdown:
+  park_before_disable: true
+  park_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  speed_scale: 0.10
+  position_tolerance: 0.03
+  velocity_tolerance: 0.05
+  settle_time_s: 0.25
+  relaxed_tolerance_ratio: 2.0
+  timeout_s: 15.0
+```
+
+菜单 3 和菜单 0 会切换到 `RIGID_TRACKING`，生成连续轨迹到 `park_pos`，满足位置和速度阈值并持续稳定后切换 `RIGID_HOLD`，最后执行失能
+
+终端每秒输出最差位置误差和最大速度；严格判据超时后，如果实测状态满足 `relaxed_tolerance_ratio` 放大的宽松判据，则继续保持并失能；否则保持 ACTIVE 并取消失能
+
+菜单 21 保留立即停止并失能；该路径不会回停放姿态，重力负载机械臂可能直接下落
+
+`park_pos` 不能仅凭数学零位确定；必须确认无碰撞、远离机械限位，并且失能后能够被机械结构、支架或外部支撑承托
+
 ### 4.3. Safety
 
 ```yaml
@@ -298,6 +320,8 @@ damiao:
   serial_port: /dev/ttyACM0
   baudrate: 921600
   refresh_state_in_read: false
+  feedback_timeout_s: 0.05
+  activation_retries: 3
   startup_read_cycles: 5
   stop_kp: 3.0
   stop_kd: 0.10
@@ -354,7 +378,7 @@ dynamics:
 - `JOINT_POS_LIMIT` 表示当前实测位置超过 Joint 硬限位
 - `ACTUATOR_OFFLINE` 表示目标执行器没有有效反馈
 - `ENABLE_FAILED` 表示达妙使能失败
-- `MODE_SWITCH_FAILED` 表示 MIT 模式切换失败
+- `MODE_SWITCH_FAILED` 表示 MIT 模式切换在配置的重试次数内仍失败；当前流程会按 `disable → enable → switch MIT` 重试
 - `STATE_TIMEOUT` 表示状态周期超时
 
 ### 6.3. 查看全部状态
@@ -447,6 +471,26 @@ tau = RNEA(q, dq, ddq_ref)
 ddq_check = ABA(q, dq, tau)
 ddq_check ≈ ddq_ref
 ```
+
+
+### 7.6. FAULT 刚性保持
+
+以下故障优先进入刚性保持而不是立即失能
+
+```text
+ACTUATOR_OFFLINE
+STATE_TIMEOUT
+JOINT_POS_LIMIT
+JOINT_VEL_LIMIT
+命令限位和命令步长故障
+周期读取失败
+```
+
+FAULT 刚性保持使用最近一次合法关节位置、`rigid_hold` 增益和当前重力补偿；终端后台线程继续刷新保持命令
+
+菜单 4 在故障保持有效并且执行器状态恢复正常时会软恢复到 `ACTIVE`；如果故障保持没有建立，则执行原有硬件 `recover()` 并回到 `INACTIVE`
+
+菜单 21 可以从 `ACTIVE` 或 `FAULT` 立即停止并失能；真实总线无法写入保持命令时仍会降级失能
 
 ## 8. 重力补偿调参
 
@@ -724,6 +768,7 @@ tau_ff = RNEA(q, dq, joint_ref_acc)
 - 周期是否被终端输入阻塞
 - 激活后的首帧时间基准
 - `refresh_state_in_read`
+- `feedback_timeout_s`
 
 ### 11.7. `MOTOR_BUS_ACTIVATE_FAILED`
 
@@ -848,3 +893,98 @@ DM_ARM_BUILD_DAMIAO=ON
 ```
 
 `set_model_feedforward_mode()` 必须在 `start()` 前调用；运行期间通过 `snapshot.last_error` 检查工作线程错误；FAULT 复位前先确保工作线程已经停止
+
+## 13. joint4 优先动力学标定
+
+第四轴需要先完成映射和负载标定，再讨论整机模型精度；不得通过将 `gravity_scale` 提高到 1 以上掩盖模型错误
+
+### 13.1. 确认第四轴正方向
+
+1. 支撑腕部和末端负载
+2. 使用 `NONE + RIGID_TRACKING`
+3. 对 joint4 分别发送 `+0.05 rad` 和 `-0.05 rad` 相对运动
+4. 对照 URDF 中 `<axis xyz="0 -1 0"/>` 判断物理正方向
+5. 若方向相反，修正 `mapping.direction[3]`，不要修改重力向量
+
+### 13.2. 标定第四轴零位
+
+在 CAD 或机械基准定义的 joint4 零位记录执行器位置 `q_act_ref`
+
+```text
+q_joint = joint_zero_offset + direction × (q_actuator - actuator_zero_offset) / pos_ratio
+```
+
+推荐令 `joint_zero_offset[3]` 等于该基准在 URDF 中的角度，并将 `actuator_zero_offset[3]` 设为实测 `q_act_ref`
+
+零位相位错误会使重力曲线整体左右平移；这种错误不能通过 `gravity_scale` 修复
+
+### 13.3. 标定第四轴力矩比例
+
+锁定 joint5 和 joint6；在 joint4 轴外已知距离 `r` 处悬挂已知质量 `m`
+
+```text
+tau_external = m × 9.81 × r_perpendicular
+```
+
+分别记录无负载和有负载的执行器反馈力矩；扣除零偏和静摩擦后计算
+
+```text
+tor_ratio[3] = tau_external / abs(tau_actuator_loaded - tau_actuator_unloaded)
+```
+
+随后以很小的正负附加力矩验证命令方向；正力矩必须沿 URDF joint4 正方向产生趋势
+
+### 13.4. 采集第四轴静态重力曲线
+
+固定 joint2、joint3、joint5 和 joint6；在 joint4 安全范围内选择至少 7 个姿态
+
+```text
+-1.0 -0.7 -0.4 -0.1 0.2 0.5 0.8 rad
+```
+
+每个姿态保持 3 s，记录
+
+```text
+q4
+gravity_model_4
+tau_feedback_4
+保持该姿态所需的附加力矩
+```
+
+使用静态模型拟合
+
+```text
+tau4(q4) = a × sin(q4) + b × cos(q4) + c
+```
+
+判断规则
+
+```text
+相位不一致
+→ 优先修正 joint4 零位或 axis
+
+幅值整体不足
+→ 检查下游质量、质心距离和 tor_ratio
+
+常量偏置明显
+→ 检查力矩零偏、线缆力和静摩擦
+```
+
+### 13.5. 更新第四轴下游负载
+
+joint4 的重力由其后的全部质量决定；需要核对 `link4-5`、`link5-6`、`link6-7`、夹爪、相机、转接板、线缆和工具
+
+优先更新真实质量和质心；惯量主要影响动态过程，静态重力标定阶段先保证质量和质心准确
+
+### 13.6. 第四轴验收
+
+完成映射、零位和负载更新后，将 joint4 `gravity_scale` 设为 1；在多个姿态使用 `COMPLIANT_DRAG` 或低刚度 `COMPLIANT_HOLD` 验证
+
+```text
+scale = 1 时不持续下沉
+scale = 1 时不持续自行抬升
+模型重力曲线与实测保持力矩相位一致
+多个姿态不需要不同的经验比例
+```
+
+第四轴通过后，再使用相同方法检查 joint2 和 joint3；前三个承重轴都只能在映射、零位和负载参数正确后判断整机动力学模型是否准确

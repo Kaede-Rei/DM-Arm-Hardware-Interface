@@ -4,6 +4,8 @@
 #include "dm_arm/hardware/motor_bus.hpp"
 #include "dm_hw/damiao.hpp"
 
+#include <chrono>
+
 namespace dm_arm {
 
 // ! ========================= 接 口 变 量 / 结 构 体 / 枚 举 声 明 ========================= ! //
@@ -112,6 +114,12 @@ private:
      */
     tl::expected<ActuatorState, MotorBusErr> read_impl(bool refresh);
     /**
+     * @brief 以可重试流程准备并使能单个电机
+     * @param index 电机索引
+     * @return 如果准备成功，则返回空的 tl::expected，否则返回错误码
+     */
+    tl::expected<void, MotorBusErr> activate_motor(std::size_t index);
+    /**
      * @brief 解析 DamiaoMotorBus 的电机类型
      * @param value 电机类型字符串
      * @return 如果解析成功，则返回 damiao::DmMotorType，否则返回错误码
@@ -128,14 +136,20 @@ private:
     void release_connection_noexcept(bool keep_config) noexcept;
 
 private:
+    using Clock = std::chrono::steady_clock;
+    using TimePoint = Clock::time_point;
+
+private:
     DamiaoBusCfg cfg_;                      ///< DamiaoMotorBus 的配置参数
     std::shared_ptr<SerialPort> serial_;    ///< 串口对象
 
     std::shared_ptr<damiao::MotorControl> motor_ctrl_;      ///< Damiao 电机控制对象
     std::vector<std::shared_ptr<damiao::Motor>> motors_;    ///< Damiao 电机对象列表
 
-    std::vector<std::uint8_t> online_;      ///< 电机在线状态列表
-    std::vector<std::uint8_t> enabled_;     ///< 电机使能状态列表
+    std::vector<std::uint8_t> online_;            ///< 电机在线状态列表
+    std::vector<std::uint8_t> enabled_;           ///< 电机使能状态列表
+    std::vector<std::uint8_t> has_feedback_;      ///< 是否接收过电机反馈
+    std::vector<TimePoint> last_feedback_time_;   ///< 最近一次电机反馈时间
 
     ActuatorState last_state_;              ///< 上一次读取的电机状态
     std::vector<DamiaoActuatorInfo> actuator_info_;  ///< 达妙执行器静态信息

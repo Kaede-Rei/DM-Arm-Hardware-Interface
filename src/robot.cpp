@@ -289,7 +289,7 @@ tl::expected<RobotCycleOutput, RobotFault> Robot::cycle(TimePoint now) {
     const auto actuator_state = motor_bus_->read();
     if(!actuator_state) {
         const RobotFault fault = make_bus_fault(RobotErr::MOTOR_BUS_READ_FAILED, actuator_state.error());
-        enter_fault(fault, SafetyAction::DISABLE);
+        enter_fault(fault, SafetyAction::STOP_HOLD);
         return tl::make_unexpected(fault);
     }
 
@@ -416,11 +416,78 @@ tl::expected<void, RobotFault> Robot::deactivate() {
 }
 
 /**
+ * @brief 无条件停止并失能，允许从 ACTIVE 或 FAULT 回到 INACTIVE
+ */
+tl::expected<void, RobotFault> Robot::force_deactivate() {
+    if(state_ == RobotState::UNCONFIGURED) return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
+    if(state_ == RobotState::INACTIVE) return {};
+
+    fault_hold_active_ = false;
+    fault_hold_cmd_ = ActuatorMitCmd{};
+    const auto result = motor_bus_->deactivate();
+    if(!result && result.error() != MotorBusErr::NOT_CONNECTED) {
+        const RobotFault fault = make_bus_fault(RobotErr::MOTOR_BUS_DEACTIVATE_FAILED, result.error());
+        last_fault_ = fault;
+        state_ = RobotState::FAULT;
+        return tl::make_unexpected(fault);
+    }
+
+    ctrller_.reset();
+    safety_.clear_cmd_history();
+    clear_runtime_state();
+    state_ = RobotState::INACTIVE;
+    return {};
+}
+
+/**
  * @brief 清除 FAULT 锁存并回到 INACTIVE
  */
 tl::expected<void, RobotFault> Robot::reset_fault() {
     if(state_ == RobotState::UNCONFIGURED) return tl::make_unexpected(make_fault(RobotErr::NOT_CONFIGURED));
     if(state_ != RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::NOT_FAULTED));
+
+    if(fault_hold_active_) {
+        const auto actuator_state = motor_bus_->read();
+        if(!actuator_state) return tl::make_unexpected(make_bus_fault(RobotErr::MOTOR_BUS_READ_FAILED, actuator_state.error()));
+
+        const auto joint_state = mapper_.to_joint_state(actuator_state.value());
+        if(!joint_state) return tl::make_unexpected(make_mapper_fault(joint_state.error()));
+
+        const auto checked_state = safety_.check_state(joint_state.value(), actuator_state.value(), 0.0);
+        if(!checked_state) return tl::make_unexpected(make_safety_fault(checked_state.error()));
+
+        ctrller_.reset();
+        const auto initialized = ctrller_.initialize(joint_state.value());
+        if(!initialized) return tl::make_unexpected(make_ctrller_fault(initialized.error()));
+
+        const auto history = safety_.reset_cmd_history(joint_state.value());
+        if(!history) return tl::make_unexpected(make_safety_fault(history.error()));
+
+        actuator_state_ = actuator_state.value();
+        joint_state_ = joint_state.value();
+        joint_acc_.assign(cfg_.joint_names.size(), 0.0);
+        joint_ref_acc_.assign(cfg_.joint_names.size(), 0.0);
+        model_feedforward_cache_.assign(cfg_.joint_names.size(), 0.0);
+        last_joint_cmd_.pos = joint_state_.pos;
+        last_joint_cmd_.vel.assign(cfg_.joint_names.size(), 0.0);
+        last_joint_cmd_.tor.assign(cfg_.joint_names.size(), 0.0);
+        last_joint_cmd_.kp.assign(cfg_.joint_names.size(), 0.0);
+        last_joint_cmd_.kd.assign(cfg_.joint_names.size(), 0.0);
+
+        const TimePoint resumed_at = Clock::now();
+        last_cycle_time_ = resumed_at;
+        last_state_time_ = resumed_at;
+        last_cmd_time_ = resumed_at;
+        has_state_ = true;
+        has_completed_cycle_ = false;
+        has_external_cmd_ = false;
+        has_last_joint_cmd_ = true;
+        fault_hold_active_ = false;
+        fault_hold_cmd_ = ActuatorMitCmd{};
+        last_fault_.reset();
+        state_ = RobotState::ACTIVE;
+        return {};
+    }
 
     const auto recovered = motor_bus_->recover();
     if(!recovered) {
@@ -434,6 +501,22 @@ tl::expected<void, RobotFault> Robot::reset_fault() {
     clear_runtime_state();
     last_fault_.reset();
     state_ = RobotState::INACTIVE;
+    return {};
+}
+
+/**
+ * @brief 在 FAULT 状态持续刷新刚性保持命令
+ */
+tl::expected<void, RobotFault> Robot::maintain_fault_hold() {
+    if(state_ != RobotState::FAULT) return tl::make_unexpected(make_fault(RobotErr::NOT_FAULTED));
+    if(!fault_hold_active_) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
+
+    const auto result = motor_bus_->write(fault_hold_cmd_);
+    if(!result) {
+        fault_hold_active_ = false;
+        disable_noexcept();
+        return tl::make_unexpected(make_bus_fault(RobotErr::MOTOR_BUS_WRITE_FAILED, result.error()));
+    }
     return {};
 }
 
@@ -498,6 +581,13 @@ const ActuatorState& Robot::get_actuator_state() const noexcept {
  */
 const tl::optional<RobotFault>& Robot::get_last_fault() const noexcept {
     return last_fault_;
+}
+
+/**
+ * @brief 获取当前是否正在执行故障刚性保持
+ */
+bool Robot::is_fault_holding() const noexcept {
+    return fault_hold_active_;
 }
 
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //
@@ -608,8 +698,15 @@ RobotFault Robot::make_model_fault(ModelFeedforwardErr err) const noexcept {
  * @brief 进入 FAULT 状态并执行对应安全动作
  */
 void Robot::enter_fault(const RobotFault& fault, SafetyAction action) noexcept {
-    if(action == SafetyAction::STOP_HOLD) stop_or_disable_noexcept();
-    else disable_noexcept();
+    fault_hold_active_ = false;
+    fault_hold_cmd_ = ActuatorMitCmd{};
+    if(action == SafetyAction::STOP_HOLD) {
+        fault_hold_active_ = start_fault_hold_noexcept();
+        if(!fault_hold_active_) stop_or_disable_noexcept();
+    }
+    else {
+        disable_noexcept();
+    }
 
     ctrller_.reset();
     safety_.clear_cmd_history();
@@ -625,6 +722,40 @@ void Robot::stop_or_disable_noexcept() noexcept {
     if(!motor_bus_) return;
     const auto stopped = motor_bus_->stop();
     if(!stopped) (void)motor_bus_->deactivate();
+}
+
+/**
+ * @brief 使用最近一次合法状态构造并发送故障刚性保持命令
+ */
+bool Robot::start_fault_hold_noexcept() noexcept {
+    if(!motor_bus_ || !has_state_ || joint_state_.pos.size() != cfg_.joint_names.size()) return false;
+
+    JointCtrlCmd hold_cmd;
+    hold_cmd.pos = joint_state_.pos;
+    hold_cmd.vel.assign(cfg_.joint_names.size(), 0.0);
+    hold_cmd.tor.assign(cfg_.joint_names.size(), 0.0);
+    hold_cmd.kp = cfg_.ctrller.rigid_hold_gains.kp;
+    hold_cmd.kd = cfg_.ctrller.rigid_hold_gains.kd;
+
+    if(model_feedforward_) {
+        try {
+            const JointVector zero(cfg_.joint_names.size(), 0.0);
+            const double nominal_dt = 1.0 / cfg_.runtime.ctrl_frequency_hz;
+            const auto gravity = model_feedforward_(ModelFeedforwardMode::GRAVITY, joint_state_, zero, zero, nominal_dt);
+            if(gravity && gravity->size() == cfg_.joint_names.size() && finite_vector(gravity.value())) hold_cmd.tor = gravity.value();
+        }
+        catch(...) {
+            std::fill(hold_cmd.tor.begin(), hold_cmd.tor.end(), 0.0);
+        }
+    }
+
+    const auto actuator_cmd = mapper_.to_actuator_cmd(hold_cmd);
+    if(!actuator_cmd) return false;
+    const auto written = motor_bus_->write(actuator_cmd.value());
+    if(!written) return false;
+
+    fault_hold_cmd_ = actuator_cmd.value();
+    return true;
 }
 
 /**
@@ -649,6 +780,8 @@ void Robot::clear_runtime_state() noexcept {
     has_completed_cycle_ = false;
     has_external_cmd_ = false;
     has_last_joint_cmd_ = false;
+    fault_hold_active_ = false;
+    fault_hold_cmd_ = ActuatorMitCmd{};
     last_cycle_time_ = TimePoint{};
     last_state_time_ = TimePoint{};
     last_cmd_time_ = TimePoint{};

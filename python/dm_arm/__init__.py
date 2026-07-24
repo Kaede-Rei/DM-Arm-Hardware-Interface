@@ -45,6 +45,7 @@ from ._dm_arm import RobotCycleOutput
 from ._dm_arm import RobotSessionSnapshot
 from ._dm_arm import RobotState
 from ._dm_arm import RuntimeCfg
+from ._dm_arm import ShutdownCfg
 from ._dm_arm import Safety
 from ._dm_arm import SafetyAction
 from ._dm_arm import SafetyCfg
@@ -198,6 +199,7 @@ __all__ = [
     "RobotSessionSnapshot",
     "RobotState",
     "RuntimeCfg",
+    "ShutdownCfg",
     "Safety",
     "SafetyAction",
     "SafetyCfg",

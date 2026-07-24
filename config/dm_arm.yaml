@@ -9,6 +9,17 @@ runtime:
   write_enabled: true             # 真机确认前保持 false
   model_feedforward_mode: NONE    # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
 
+# 正常停机配置
+shutdown:
+  park_before_disable: true                         # 正常停机前先回到停放姿态
+  park_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]          # 当前停放姿态，真机使用前必须确认无碰撞且可承托
+  speed_scale: 0.10                                 # 停放轨迹速度比例
+  position_tolerance: 0.03                          # 严格停放位置误差阈值 rad
+  velocity_tolerance: 0.05                          # 严格停放速度阈值 rad/s
+  settle_time_s: 0.25                               # 严格判据下持续稳定时间
+  relaxed_tolerance_ratio: 2.0                      # 超时前宽松判据倍率
+  timeout_s: 15.0                                   # 停放流程超时时间
+
 # 安全策略
 safety:
   cmd_timeout_s: 0.10                   # 跟踪模式收到过命令后允许的最大命令超时时间
@@ -21,14 +32,14 @@ safety:
 
 # Joint 侧安全限制
 limits:
-  min_pos: [-2.0943951024, -0.03, -0.03, -1.95, -1.5707963268, -3.1415926536]                     # 关节最小位置
+  min_pos: [-2.0943951024, -0.05, -0.05, -1.95, -1.5707963268, -3.1415926536]                     # 关节最小位置
   max_pos: [2.0943951024, 3.1415926536, 4.7123889804, 1.5707963268, 1.5707963268, 3.1415926536]   # 关节最大位置
   max_vel: [5.4, 5.4, 5.4, 5.4, 5.4, 5.4]                   # 关节最大速度
   max_acc: [10.8, 10.8, 10.8, 10.8, 10.8, 10.8]             # 关节最大加速度
   max_effort: [100.0, 100.0, 100.0, 20.0, 20.0, 20.0]       # 关节最大力矩
   max_kp: [100.0, 100.0, 100.0, 50.0, 50.0, 50.0]           # 关节最大位置增益
   max_kd: [5.0, 5.0, 5.0, 3.0, 3.0, 3.0]                    # 关节最大速度增益
-  pos_margin: [0.03, 0.0, 0.0, 0.03, 0.03, 0.03]            # 命令位置距离硬限位的边距
+  pos_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]                # 命令位置距离硬限位的边距
 
 # 映射配置
 mapping:
@@ -76,9 +87,11 @@ damiao:
   serial_port: /dev/ttyACM0     # 串口设备
   baudrate: 921600              # 波特率
   refresh_state_in_read: false  # read() 是否主动逐轴查询
+  feedback_timeout_s: 0.05      # 单个执行器连续未收到反馈后判定离线的时间
+  activation_retries: 3         # 单轴使能和 MIT 模式切换失败后的重试次数
   startup_read_cycles: 5        # 激活后状态确认读取次数
-  stop_kp: 3.0                  # 安全停止时的比例增益
-  stop_kd: 0.10                 # 安全停止时的微分增益
+  stop_kp: 10.0                 # 安全停止时的比例增益
+  stop_kd: 0.15                 # 安全停止时的微分增益
   stop_cycles: 5                # 安全停止时的通信周期数
   # 执行器配置
   actuators:

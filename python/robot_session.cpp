@@ -361,7 +361,7 @@ std::vector<RobotSessionActuatorInfo> PyRobotSession::get_actuator_info() const 
  */
 void PyRobotSession::loop() noexcept {
     const double target_dt = 1.0 / cfg_.runtime.ctrl_frequency_hz;
-    const auto period = std::chrono::duration<double>(target_dt);
+    const auto period = std::chrono::duration_cast<Robot::Clock::duration>(std::chrono::duration<double>(target_dt));
     auto previous_time = Robot::Clock::now();
     auto next_time = previous_time;
 
@@ -370,8 +370,8 @@ void PyRobotSession::loop() noexcept {
     JointImpedanceMode applied_impedance_mode = JointImpedanceMode::RIGID_HOLD;
 
     while(running_.load()) {
-        next_time += std::chrono::duration_cast<Robot::Clock::duration>(period);
         const auto now = Robot::Clock::now();
+        if(now > next_time) next_time = now;
         double dt = std::chrono::duration<double>(now - previous_time).count();
         previous_time = now;
         if(!std::isfinite(dt) || dt <= 0.0) {
@@ -445,10 +445,7 @@ void PyRobotSession::loop() noexcept {
             snapshot_.last_error.clear();
         }
 
-        const auto after_cycle = Robot::Clock::now();
-        if(next_time < after_cycle) {
-            next_time = after_cycle;
-        }
+        next_time += period;
         std::this_thread::sleep_until(next_time);
     }
 

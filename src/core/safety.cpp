@@ -192,16 +192,20 @@ tl::expected<JointCtrlCmd, SafetyFault> Safety::check_joint_cmd(const JointState
     const JointVector& reference_vel = has_last_accepted_cmd_ ? last_accepted_cmd_.vel : state.vel;
 
     for(std::size_t i = 0; i < cfg_.joints_count; ++i) {
-        const double max_pos_delta = cfg_.limits.max_vel[i] * dt + 0.5 * cfg_.limits.max_acc[i] * dt * dt;
-        const double pos_delta = safe_cmd.pos[i] - reference_pos[i];
-        if(std::abs(pos_delta) > max_pos_delta + cfg_.numeric_tolerance) {
-            return tl::make_unexpected(fault(SafetyErr::CMD_POS_STEP_LIMIT, i, pos_delta, max_pos_delta));
+        if(safe_cmd.kp[i] > cfg_.numeric_tolerance) {
+            const double max_pos_delta = cfg_.limits.max_vel[i] * dt + 0.5 * cfg_.limits.max_acc[i] * dt * dt;
+            const double pos_delta = safe_cmd.pos[i] - reference_pos[i];
+            if(std::abs(pos_delta) > max_pos_delta + cfg_.numeric_tolerance) {
+                return tl::make_unexpected(fault(SafetyErr::CMD_POS_STEP_LIMIT, i, pos_delta, max_pos_delta));
+            }
         }
 
-        const double max_vel_delta = cfg_.limits.max_acc[i] * dt;
-        const double vel_delta = safe_cmd.vel[i] - reference_vel[i];
-        if(std::abs(vel_delta) > max_vel_delta + cfg_.numeric_tolerance) {
-            return tl::make_unexpected(fault(SafetyErr::CMD_VEL_STEP_LIMIT, i, vel_delta, max_vel_delta));
+        if(safe_cmd.kd[i] > cfg_.numeric_tolerance) {
+            const double max_vel_delta = cfg_.limits.max_acc[i] * dt;
+            const double vel_delta = safe_cmd.vel[i] - reference_vel[i];
+            if(std::abs(vel_delta) > max_vel_delta + cfg_.numeric_tolerance) {
+                return tl::make_unexpected(fault(SafetyErr::CMD_VEL_STEP_LIMIT, i, vel_delta, max_vel_delta));
+            }
         }
     }
 
@@ -264,18 +268,18 @@ SafetyAction Safety::action_for(SafetyErr err) const noexcept {
         case SafetyErr::CMD_POS_STEP_LIMIT:
         case SafetyErr::CMD_VEL_STEP_LIMIT:
         case SafetyErr::JOINT_VEL_LIMIT:
+        case SafetyErr::STATE_TIMEOUT:
+        case SafetyErr::JOINT_POS_LIMIT:
+        case SafetyErr::ACTUATOR_OFFLINE:
             return SafetyAction::STOP_HOLD;
 
         case SafetyErr::NOT_CONFIGURED:
         case SafetyErr::INVALID_CFG:
         case SafetyErr::INVALID_STATE_AGE:
-        case SafetyErr::STATE_TIMEOUT:
         case SafetyErr::INVALID_JOINT_STATE_SIZE:
         case SafetyErr::INVALID_ACTUATOR_STATE_SIZE:
         case SafetyErr::NON_FINITE_JOINT_STATE:
         case SafetyErr::NON_FINITE_ACTUATOR_STATE:
-        case SafetyErr::JOINT_POS_LIMIT:
-        case SafetyErr::ACTUATOR_OFFLINE:
         case SafetyErr::ACTUATOR_NOT_ENABLED:
         case SafetyErr::ACTUATOR_FAULT:
             return SafetyAction::DISABLE;

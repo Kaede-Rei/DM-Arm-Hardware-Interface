@@ -14,7 +14,7 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 - 三种受约束关节参考命令
 - Joint 与 Actuator 双向映射
 - 状态、命令、超时、限位和突变检查
-- Robot 生命周期和 FAULT 锁存
+- Robot 生命周期、FAULT 锁存和故障刚性保持
 - 达妙 MIT 串口后端
 - Pinocchio reduced model
 - 集中式动力学 `update()` 和只读缓存 getter
@@ -108,8 +108,9 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 4. 标定 `direction`、`pos_ratio`、`tor_ratio` 和零位偏移
 5. 依据真实机械范围设置 Joint 硬限位和命令边距
 6. 从低速度、低补偿比例和安全姿态开始测试
-7. 确认 `stop()`、`deactivate()` 和 `recover()` 的真实行为
-8. 在未确认真机安全前保持 `write_enabled: false`
+7. 确认停放姿态、立即失能、故障停止和 `recover()` 的真实行为
+8. 确认 `shutdown.park_pos` 无碰撞且失能后能够被机械结构承托
+9. 在未确认真机安全前保持 `write_enabled: false`
 
 本项目不能替代工业安全控制器、硬限位、制动器、急停回路和正式风险评估
 
@@ -337,6 +338,28 @@ cmake --install build --prefix install
 
 ---
 
+## 正常停机
+
+正常停机由终端应用层执行连续停放轨迹；底层 `Robot::deactivate()` 和 `MotorBus::deactivate()` 仍保持立即停止并失能语义
+
+```yaml
+shutdown:
+  park_before_disable: true
+  park_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  speed_scale: 0.10
+  position_tolerance: 0.03
+  velocity_tolerance: 0.05
+  settle_time_s: 0.25
+  relaxed_tolerance_ratio: 2.0
+  timeout_s: 15.0
+```
+
+严格判据超时但实测位置和速度满足宽松判据时，终端会打印最差关节并继续执行保持与失能；如果宽松判据仍不满足，终端保持 ACTIVE 和 `RIGID_HOLD`，不会自动失能
+
+`park_pos` 必须根据真实机械结构确认；没有抱闸的机械臂只有在停放姿态能够被机械结构承托时，失能后才不会继续下落
+
+---
+
 ## 运行终端
 
 终端只支持真实达妙后端；启动命令
@@ -361,7 +384,7 @@ runtime:
 5. 查看 Joint 和 Actuator 状态
 6. 查看动力学向量和矩阵
 7. 执行小幅跟踪运动
-8. `deactivate()`
+8. 使用菜单 3 回到停放姿态并失能
 9. 逐轴增加重力补偿比例
 10. 切换到 `GRAVITY` 后重新测试
 
@@ -372,7 +395,7 @@ runtime:
 当前菜单包含
 
 - Robot 状态和 getter 输出
-- `activate()`、`deactivate()` 和 `reset_fault()`
+- `activate()`、回停放姿态失能、立即失能和 `reset_fault()`
 - 五种阻抗模式切换
 - 三种模型前馈模式切换
 - 绝对位置和相对位置梯形参考

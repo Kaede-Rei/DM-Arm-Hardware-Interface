@@ -18,18 +18,19 @@ namespace dm_arm {
  * @brief 动力学模块错误类型
  */
 enum class DynamicsErr {
-    NOT_CONFIGURED,      ///< 动力学模型尚未完成配置
-    ALREADY_CONFIGURED,  ///< 动力学模型已经配置，不能重复配置
-    NOT_UPDATED,         ///< 动力学缓存尚未完成首次更新
-    INVALID_CFG,         ///< 动力学配置内容无效
-    URDF_LOAD_FAILED,    ///< URDF 文件读取或模型构建失败
-    JOINT_NOT_FOUND,     ///< 配置指定的关节在模型中不存在
-    JOINT_NOT_1DOF,      ///< 配置指定的关节不是受支持的单自由度关节
-    MODEL_SIZE_MISMATCH, ///< 模型维度、关节数量或索引映射不一致
-    FRAME_NOT_FOUND,     ///< 请求的坐标系在模型中不存在
-    INVALID_INPUT_SIZE,  ///< 输入关节向量长度与配置的关节数量不一致
-    NON_FINITE_INPUT,    ///< 输入包含 NaN 或无穷值
-    COMPUTE_FAILED,      ///< 底层运动学或动力学计算失败
+    NOT_CONFIGURED,                 ///< 动力学模型尚未完成配置
+    ALREADY_CONFIGURED,             ///< 动力学模型已经配置，不能重复配置
+    NOT_UPDATED,                    ///< 动力学缓存尚未完成首次更新
+    INVALID_CFG,                    ///< 动力学配置内容无效
+    URDF_LOAD_FAILED,               ///< URDF 文件读取或模型构建失败
+    JOINT_NOT_FOUND,                ///< 配置指定的关节在模型中不存在
+    JOINT_NOT_1DOF,                 ///< 配置指定的关节不是受支持的单自由度关节
+    MODEL_SIZE_MISMATCH,            ///< 模型维度、关节数量或索引映射不一致
+    FRAME_NOT_FOUND,                ///< 请求的坐标系在模型中不存在
+    INVALID_INPUT_SIZE,             ///< 输入关节向量长度与配置的关节数量不一致
+    NON_FINITE_INPUT,               ///< 输入包含 NaN 或无穷值
+    GRAVITY_SCALE_OUT_OF_RANGE,     ///< 重力补偿缩放系数超出 [0, 1]
+    COMPUTE_FAILED,                 ///< 底层运动学或动力学计算失败
 };
 
 /**

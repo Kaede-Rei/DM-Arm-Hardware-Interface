@@ -174,10 +174,20 @@ public:
      */
     tl::expected<void, RobotFault> deactivate();
     /**
+     * @brief 无条件停止并失能，允许从 ACTIVE 或 FAULT 回到 INACTIVE
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> force_deactivate();
+    /**
      * @brief 清除 FAULT 锁存并回到 INACTIVE
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> reset_fault();
+    /**
+     * @brief 在 FAULT 状态持续刷新刚性保持命令
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> maintain_fault_hold();
 
     /**
      * @brief 获取当前 Robot 生命周期状态
@@ -224,6 +234,11 @@ public:
      * @return 最近一次故障信息，若无故障则为空
      */
     const tl::optional<RobotFault>& get_last_fault() const noexcept;
+    /**
+     * @brief 获取当前是否正在执行故障刚性保持
+     * @return 故障刚性保持是否有效
+     */
+    bool is_fault_holding() const noexcept;
 
 private:
     /**
@@ -306,6 +321,12 @@ private:
     void stop_or_disable_noexcept() noexcept;
 
     /**
+     * @brief 使用最近一次合法状态构造并发送故障刚性保持命令
+     * @return 命令发送成功返回 true，否则返回 false
+     */
+    bool start_fault_hold_noexcept() noexcept;
+
+    /**
      * @brief 直接失能硬件，忽略错误
      */
     void disable_noexcept() noexcept;
@@ -344,6 +365,7 @@ private:
     JointVector model_feedforward_cache_;           ///< 最近一次模型前馈力矩
     JointCtrlCmd last_joint_cmd_;                   ///< 最近一次合法关节控制命令
     ActuatorState actuator_state_;                  ///< 最近一次合法 ActuatorState
+    ActuatorMitCmd fault_hold_cmd_;                 ///< 故障状态持续刷新的执行器保持命令
     tl::optional<RobotFault> last_fault_;           ///< 锁存的最近故障
 
     TimePoint last_cycle_time_{};                   ///< 上一成功周期时间
@@ -354,6 +376,7 @@ private:
     bool has_completed_cycle_{ false };             ///< 是否已经完成至少一个周期
     bool has_external_cmd_{ false };                ///< 跟踪模式是否收到过外部命令
     bool has_last_joint_cmd_{ false };              ///< 是否已有合法关节控制命令
+    bool fault_hold_active_{ false };               ///< 是否已建立故障刚性保持命令
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

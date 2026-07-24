@@ -2,6 +2,9 @@
 
 #include "dm_hw/serial_port.hpp"
 
+#include <limits>
+#include <thread>
+
 namespace dm_arm {
 
 // ! ========================= 宏 定 义 ========================= ! //
@@ -115,6 +118,8 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
         const std::size_t n = motors_.size();
         online_.assign(n, 0);
         enabled_.assign(n, 0);
+        has_feedback_.assign(n, 0);
+        last_feedback_time_.assign(n, TimePoint{});
         last_state_.pos.assign(n, 0.0);
         last_state_.vel.assign(n, 0.0);
         last_state_.tor.assign(n, 0.0);
@@ -130,6 +135,8 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
         serial_.reset();
         online_.clear();
         enabled_.clear();
+        has_feedback_.clear();
+        last_feedback_time_.clear();
         last_state_ = ActuatorState{};
         connected_ = false;
         active_ = false;
@@ -147,20 +154,27 @@ tl::expected<ActuatorState, MotorBusErr> DamiaoMotorBus::read_impl(bool refresh)
 
     try {
         ActuatorState state = last_state_;
-        if(!refresh) {
-            std::vector<std::uint64_t> previous_seq;
-            previous_seq.reserve(motors_.size());
-            for(const auto& motor : motors_) previous_seq.push_back(motor->get_state_seq());
+        std::vector<std::uint64_t> previous_seq;
+        previous_seq.reserve(motors_.size());
+        for(const auto& motor : motors_) previous_seq.push_back(motor->get_state_seq());
 
-            for(std::size_t i = 0; i < motors_.size(); ++i) motor_ctrl_->receive();
-
-            for(std::size_t i = 0; i < motors_.size(); ++i) {
-                online_[i] = motors_[i]->get_state_seq() != previous_seq[i] ? 1 : 0;
-            }
+        if(refresh) {
+            for(std::size_t i = 0; i < motors_.size(); ++i) motor_ctrl_->refresh_motor_status(*motors_[i]);
         }
-        for(std::size_t i = 0; i < motors_.size(); ++i) {
-            if(refresh) online_[i] = motor_ctrl_->refresh_motor_status(*motors_[i]) ? 1 : 0;
+        else {
+            for(std::size_t i = 0; i < motors_.size(); ++i) motor_ctrl_->receive();
+        }
 
+        const TimePoint now = Clock::now();
+        for(std::size_t i = 0; i < motors_.size(); ++i) {
+            if(motors_[i]->get_state_seq() != previous_seq[i]) {
+                has_feedback_[i] = 1;
+                last_feedback_time_[i] = now;
+            }
+
+            double feedback_age_s = std::numeric_limits<double>::infinity();
+            if(has_feedback_[i]) feedback_age_s = std::chrono::duration<double>(now - last_feedback_time_[i]).count();
+            online_[i] = feedback_age_s <= cfg_.feedback_timeout_s ? 1 : 0;
             state.pos[i] = motors_[i]->get_position();
             state.vel[i] = motors_[i]->get_velocity();
             state.tor[i] = motors_[i]->get_tau();
@@ -204,22 +218,11 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::activate() {
         std::fill(enabled_.begin(), enabled_.end(), 0);
 
         for(std::size_t i = 0; i < motors_.size(); ++i) {
-            if(!motor_ctrl_->disable(*motors_[i])) {
+            const auto result = activate_motor(i);
+            if(!result) {
                 disable_enabled_noexcept();
-                return tl::make_unexpected(MotorBusErr::DISABLE_FAILED);
+                return result;
             }
-
-            serial_->flush_input();
-            if(!motor_ctrl_->switch_control_mode(*motors_[i], damiao::MIT_MODE)) {
-                disable_enabled_noexcept();
-                return tl::make_unexpected(MotorBusErr::MODE_SWITCH_FAILED);
-            }
-
-            if(!motor_ctrl_->enable(*motors_[i])) {
-                disable_enabled_noexcept();
-                return tl::make_unexpected(MotorBusErr::ENABLE_FAILED);
-            }
-            enabled_[i] = 1;
         }
 
         active_ = true;
@@ -422,13 +425,52 @@ const std::vector<DamiaoActuatorInfo>& DamiaoMotorBus::get_actuator_info() const
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //
 
 /**
+ * @brief 以可重试流程准备并使能单个电机
+ * @param index 电机索引
+ * @return 如果准备成功，则返回空的 tl::expected，否则返回错误码
+ */
+tl::expected<void, MotorBusErr> DamiaoMotorBus::activate_motor(std::size_t index) {
+    if(index >= motors_.size() || !motor_ctrl_ || !serial_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+
+    bool disable_sent = false;
+    bool enable_sent = false;
+    for(std::size_t attempt = 0; attempt < cfg_.activation_retries; ++attempt) {
+        serial_->flush_input();
+        disable_sent = motor_ctrl_->disable(*motors_[index]);
+        enabled_[index] = 0;
+        if(!disable_sent) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        enable_sent = motor_ctrl_->enable(*motors_[index]);
+        if(!enable_sent) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+        enabled_[index] = 1;
+
+        if(motor_ctrl_->switch_control_mode(*motors_[index], damiao::MIT_MODE)) return {};
+
+        (void)motor_ctrl_->disable(*motors_[index]);
+        enabled_[index] = 0;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if(!disable_sent) return tl::make_unexpected(MotorBusErr::DISABLE_FAILED);
+    if(!enable_sent) return tl::make_unexpected(MotorBusErr::ENABLE_FAILED);
+    return tl::make_unexpected(MotorBusErr::MODE_SWITCH_FAILED);
+}
+
+/**
  * @brief 验证 DamiaoMotorBus 的配置参数
  * @param cfg 配置参数
  * @return 如果配置参数有效，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::validate_cfg(const DamiaoBusCfg& cfg) const {
     if(cfg.serial_port.empty() || to_speed_t(cfg.baudrate) == 0 || cfg.actuators.empty() ||
-        cfg.startup_read_cycles == 0 || cfg.stop_cycles == 0 ||
+        cfg.activation_retries == 0 || cfg.startup_read_cycles == 0 || cfg.stop_cycles == 0 ||
+        !std::isfinite(cfg.feedback_timeout_s) || cfg.feedback_timeout_s <= 0.0 ||
         !std::isfinite(cfg.stop_kp) || !std::isfinite(cfg.stop_kd) ||
         cfg.stop_kp < 0.0 || cfg.stop_kp > 500.0 || cfg.stop_kd < 0.0 || cfg.stop_kd > 5.0) {
         return tl::make_unexpected(MotorBusErr::INVALID_CFG);
@@ -531,6 +573,8 @@ void DamiaoMotorBus::release_connection_noexcept(bool keep_config) noexcept {
     serial_.reset();
     online_.clear();
     enabled_.clear();
+    has_feedback_.clear();
+    last_feedback_time_.clear();
     last_state_ = ActuatorState{};
     connected_ = false;
     active_ = false;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -218,6 +219,7 @@ std::string to_string(DynamicsErr value) {
         case DynamicsErr::FRAME_NOT_FOUND: return "FRAME_NOT_FOUND";
         case DynamicsErr::INVALID_INPUT_SIZE: return "INVALID_INPUT_SIZE";
         case DynamicsErr::NON_FINITE_INPUT: return "NON_FINITE_INPUT";
+        case DynamicsErr::GRAVITY_SCALE_OUT_OF_RANGE: return "GRAVITY_SCALE_OUT_OF_RANGE";
         case DynamicsErr::COMPUTE_FAILED: return "COMPUTE_FAILED";
     }
     return "UNKNOWN";
@@ -351,6 +353,10 @@ bool is_tracking_mode(JointImpedanceMode mode) {
     return mode == JointImpedanceMode::RIGID_TRACKING || mode == JointImpedanceMode::COMPLIANT_TRACKING;
 }
 
+bool is_zero_vector(const JointVector& values) {
+    return std::all_of(values.begin(), values.end(), [](double value) { return value == 0.0; });
+}
+
 class TerminalApp {
 public:
     TerminalApp(RobotCfg cfg, std::string config_path) : cfg_(std::move(cfg)), config_path_(std::move(config_path)) {
@@ -432,17 +438,25 @@ private:
     }
 
     void worker_loop() {
-        const auto period = std::chrono::duration<double>(1.0 / cfg_.runtime.ctrl_frequency_hz);
+        const auto period = std::chrono::duration_cast<Robot::Clock::duration>(std::chrono::duration<double>(1.0 / cfg_.runtime.ctrl_frequency_hz));
         auto next_wakeup = Robot::Clock::now();
         while(worker_running_.load()) {
-            next_wakeup += std::chrono::duration_cast<Robot::Clock::duration>(period);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                if(robot_.get_state() == RobotState::ACTIVE) run_control_cycle(Robot::Clock::now());
+                const auto now = Robot::Clock::now();
+                if(now > next_wakeup) next_wakeup = now;
+                if(robot_.get_state() == RobotState::ACTIVE) run_control_cycle(now);
+                else if(robot_.get_state() == RobotState::FAULT && robot_.is_fault_holding()) {
+                    const auto hold_result = robot_.maintain_fault_hold();
+                    if(!hold_result) {
+                        std::cout << "\n[故障保持刷新失败，硬件已降级失能]\n";
+                        print_fault(hold_result.error());
+                        std::cout << "请输入菜单编号继续\n";
+                    }
+                }
             }
+            next_wakeup += period;
             std::this_thread::sleep_until(next_wakeup);
-            const auto now = Robot::Clock::now();
-            if(now - next_wakeup > std::chrono::duration_cast<Robot::Clock::duration>(period * 4.0)) next_wakeup = now;
         }
     }
 
@@ -475,6 +489,7 @@ private:
             return;
         }
         last_output_ = cycle_result.value();
+        cycle_cv_.notify_all();
     }
 
     tl::expected<void, RobotFault> update_stream(Robot::TimePoint now) {
@@ -525,7 +540,7 @@ private:
         stream_.has_last_update_time = true;
         if(complete && !stream_.completion_reported) {
             stream_.completion_reported = true;
-            std::cout << "\n[轨迹] 已到达目标，继续周期刷新目标位置\n请输入菜单编号继续\n";
+            std::cout << "\n[轨迹] 参考已到达目标，继续刷新并等待实测停放判据\n请输入菜单编号继续\n";
         }
         return {};
     }
@@ -538,6 +553,7 @@ private:
         print_fault(fault);
         if(last_dynamics_err_) std::cout << "  DynamicsErr: " << to_string(*last_dynamics_err_) << '\n';
         std::cout << "请输入菜单编号继续\n";
+        cycle_cv_.notify_all();
     }
 
     void print_banner() const {
@@ -553,7 +569,7 @@ private:
         std::cout << "\n------------ 主菜单 ------------\n";
         std::cout << " 1. 查看 Robot 状态与 getter 输出\n";
         std::cout << " 2. activate()\n";
-        std::cout << " 3. deactivate()\n";
+        std::cout << " 3. 回到停放姿态并失能\n";
         std::cout << " 4. reset_fault()\n";
         std::cout << " 5. 切换阻抗模式\n";
         std::cout << " 6. 切换模型前馈模式（仅 INACTIVE）\n";
@@ -571,15 +587,16 @@ private:
         std::cout << "18. 设置重力补偿比例（仅 INACTIVE）\n";
         std::cout << "19. 查看完整配置摘要\n";
         std::cout << "20. 读取指定 Frame 的缓存位姿与 Jacobian\n";
-        std::cout << " 0. 安全退出\n";
+        std::cout << "21. 立即停止并失能（危险）\n";
+        std::cout << " 0. 回到停放姿态并安全退出\n";
     }
 
     bool handle_menu(int selection) {
         switch(selection) {
-            case 0: safe_exit(); return false;
+            case 0: if(safe_exit()) return false; break;
             case 1: show_robot_summary(); break;
             case 2: activate(); break;
-            case 3: deactivate(); break;
+            case 3: park_and_deactivate(); break;
             case 4: reset_fault(); break;
             case 5: set_impedance_mode(); break;
             case 6: set_model_feedforward_mode(); break;
@@ -597,6 +614,7 @@ private:
             case 18: set_gravity_scale(); break;
             case 19: show_config_summary(); break;
             case 20: show_frame_state(); break;
+            case 21: immediate_deactivate(); break;
             default: std::cout << "未知菜单编号\n"; break;
         }
         return true;
@@ -614,20 +632,153 @@ private:
         last_output_.reset();
         background_fault_reported_ = false;
         std::cout << "activate() 成功，后台 cycle() 自动运行\n";
+        if(robot_.get_model_feedforward_mode() == ModelFeedforwardMode::GRAVITY && is_zero_vector(dynamics_.get_gravity_scale())) {
+            std::cout << "[提示] 当前已选择 GRAVITY，但 gravity_scale 全为 0，实际重力补偿力矩仍为 0\n";
+        }
     }
 
-    void deactivate() {
-        std::lock_guard<std::mutex> lock(mutex_);
+    void park_and_deactivate() {
+        std::unique_lock<std::mutex> lock(mutex_);
         clear_command_sources();
+        if(robot_.get_state() == RobotState::INACTIVE) {
+            std::cout << "Robot 已经处于 INACTIVE\n";
+            return;
+        }
+        if(robot_.get_state() == RobotState::FAULT) {
+            std::cout << "Robot 当前处于 FAULT，不能执行停放轨迹，请先处理故障或使用立即失能\n";
+            return;
+        }
+        if(!cfg_.shutdown.park_before_disable) {
+            std::cout << "shutdown.park_before_disable=false，将直接执行立即失能\n";
+            immediate_deactivate_locked();
+            return;
+        }
+
+        const auto mode_result = robot_.set_impedance_mode(JointImpedanceMode::RIGID_TRACKING, Robot::Clock::now());
+        if(!mode_result) {
+            std::cout << "切换 RIGID_TRACKING 失败：\n";
+            print_fault(mode_result.error());
+            return;
+        }
+
+        stream_.enabled = true;
+        stream_.completion_reported = false;
+        stream_.speed_scale = cfg_.shutdown.speed_scale;
+        stream_.target_pos = cfg_.shutdown.park_pos;
+        stream_.ref_pos = robot_.get_joint_state().pos;
+        stream_.ref_vel.assign(cfg_.joint_names.size(), 0.0);
+        stream_.last_update_time = Robot::Clock::now();
+        stream_.has_last_update_time = true;
+        last_output_.reset();
+        background_fault_reported_ = false;
+
+        std::cout << "开始回到配置的停放姿态\n";
+        print_vector("park_pos", cfg_.shutdown.park_pos);
+
+        const Robot::TimePoint started_at = Robot::Clock::now();
+        Robot::TimePoint last_progress_at = started_at;
+        std::optional<Robot::TimePoint> settled_at;
+        while(robot_.get_state() == RobotState::ACTIVE) {
+            cycle_cv_.wait_for(lock, std::chrono::milliseconds(20));
+            const Robot::TimePoint now = Robot::Clock::now();
+            if(!last_output_) continue;
+
+            double max_position_error = 0.0;
+            double max_velocity = 0.0;
+            std::size_t position_index = 0;
+            std::size_t velocity_index = 0;
+            for(std::size_t i = 0; i < cfg_.joint_names.size(); ++i) {
+                const double position_error = std::abs(last_output_->joint_state.pos[i] - cfg_.shutdown.park_pos[i]);
+                const double velocity = std::abs(last_output_->joint_state.vel[i]);
+                if(position_error > max_position_error) {
+                    max_position_error = position_error;
+                    position_index = i;
+                }
+                if(velocity > max_velocity) {
+                    max_velocity = velocity;
+                    velocity_index = i;
+                }
+            }
+
+            const bool reached = max_position_error <= cfg_.shutdown.position_tolerance && max_velocity <= cfg_.shutdown.velocity_tolerance;
+            if(reached) {
+                if(!settled_at) settled_at = now;
+                if(std::chrono::duration<double>(now - *settled_at).count() >= cfg_.shutdown.settle_time_s) break;
+            }
+            else {
+                settled_at.reset();
+            }
+
+            if(std::chrono::duration<double>(now - last_progress_at).count() >= 1.0) {
+                std::cout << "[停放] 最大位置误差=" << max_position_error << " rad (" << cfg_.joint_names[position_index] << ")，最大速度="
+                    << max_velocity << " rad/s (" << cfg_.joint_names[velocity_index] << ")\n";
+                last_progress_at = now;
+            }
+
+            if(std::chrono::duration<double>(now - started_at).count() > cfg_.shutdown.timeout_s) {
+                const double relaxed_position_tolerance = cfg_.shutdown.position_tolerance * cfg_.shutdown.relaxed_tolerance_ratio;
+                const double relaxed_velocity_tolerance = cfg_.shutdown.velocity_tolerance * cfg_.shutdown.relaxed_tolerance_ratio;
+                if(max_position_error <= relaxed_position_tolerance && max_velocity <= relaxed_velocity_tolerance) {
+                    std::cout << "[停放] 严格判据超时，但实测状态已满足宽松判据，将继续保持并失能\n";
+                    break;
+                }
+
+                clear_command_sources();
+                (void)robot_.set_impedance_mode(JointImpedanceMode::RIGID_HOLD, now);
+                std::cout << "停放流程超时，已切换 RIGID_HOLD 并取消失能\n";
+                std::cout << "最差位置误差=" << max_position_error << " rad (" << cfg_.joint_names[position_index] << ")，允许="
+                    << cfg_.shutdown.position_tolerance << " rad，宽松允许=" << relaxed_position_tolerance << " rad\n";
+                std::cout << "最差速度=" << max_velocity << " rad/s (" << cfg_.joint_names[velocity_index] << ")，允许="
+                    << cfg_.shutdown.velocity_tolerance << " rad/s，宽松允许=" << relaxed_velocity_tolerance << " rad/s\n";
+                return;
+            }
+        }
+
+        if(robot_.get_state() != RobotState::ACTIVE) {
+            std::cout << "停放过程中 Robot 离开 ACTIVE：" << to_string(robot_.get_state()) << '\n';
+            return;
+        }
+
+        clear_command_sources();
+        const auto hold_result = robot_.set_impedance_mode(JointImpedanceMode::RIGID_HOLD, Robot::Clock::now());
+        if(!hold_result) {
+            std::cout << "停放后切换 RIGID_HOLD 失败：\n";
+            print_fault(hold_result.error());
+            return;
+        }
+
+        const Robot::TimePoint hold_until = Robot::Clock::now() + std::chrono::milliseconds(200);
+        while(robot_.get_state() == RobotState::ACTIVE && Robot::Clock::now() < hold_until) {
+            cycle_cv_.wait_for(lock, std::chrono::milliseconds(20));
+        }
+
         const auto result = robot_.deactivate();
         if(!result) {
-            std::cout << "deactivate() 失败：\n";
+            std::cout << "停放后 deactivate() 失败：\n";
             print_fault(result.error());
             return;
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "deactivate() 成功，Robot 回到 INACTIVE\n";
+        std::cout << "已到达停放姿态并失能，Robot 回到 INACTIVE\n";
+    }
+
+    void immediate_deactivate() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        immediate_deactivate_locked();
+    }
+
+    void immediate_deactivate_locked() {
+        clear_command_sources();
+        const auto result = robot_.force_deactivate();
+        if(!result) {
+            std::cout << "立即失能失败：\n";
+            print_fault(result.error());
+            return;
+        }
+        last_output_.reset();
+        background_fault_reported_ = false;
+        std::cout << "已立即失能，重力负载机械臂可能下落\n";
     }
 
     void reset_fault() {
@@ -641,7 +792,8 @@ private:
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        std::cout << "reset_fault() 成功，Robot 回到 INACTIVE\n";
+        if(robot_.get_state() == RobotState::ACTIVE) std::cout << "reset_fault() 成功，故障刚性保持已恢复为 ACTIVE\n";
+        else std::cout << "reset_fault() 成功，Robot 回到 INACTIVE\n";
     }
 
     void set_impedance_mode() {
@@ -684,6 +836,9 @@ private:
         }
         cfg_.runtime.model_feedforward_mode = mode;
         std::cout << "模型前馈模式已切换为 " << to_string(mode) << "\n";
+        if(mode == ModelFeedforwardMode::GRAVITY && is_zero_vector(dynamics_.get_gravity_scale())) {
+            std::cout << "[提示] gravity_scale 全为 0，当前 GRAVITY 模式不会产生实际补偿，请在 INACTIVE 状态使用菜单 18 设置\n";
+        }
     }
 
     void start_absolute_stream() {
@@ -855,6 +1010,7 @@ private:
         std::cout << "ModelFeedforwardMode    : " << to_string(robot_.get_model_feedforward_mode()) << '\n';
         std::cout << "Dynamics configured     : " << std::boolalpha << dynamics_.is_configured() << '\n';
         std::cout << "Dynamics updated        : " << std::boolalpha << dynamics_.is_updated() << '\n';
+        std::cout << "Fault rigid hold        : " << std::boolalpha << robot_.is_fault_holding() << '\n';
         std::cout << "Streaming command       : " << std::boolalpha << stream_.enabled << '\n';
         std::cout << "Latched JointCmd        : " << std::boolalpha << latched_cmd_.has_value() << '\n';
         std::cout << "Latched full cmd        : " << std::boolalpha << latched_full_cmd_.has_value() << '\n';
@@ -1023,6 +1179,9 @@ private:
         const auto result = dynamics_.set_gravity_scale(*scale);
         if(!result) {
             std::cout << "set_gravity_scale() 失败: " << to_string(result.error()) << '\n';
+            if(result.error() == DynamicsErr::GRAVITY_SCALE_OUT_OF_RANGE) {
+                std::cout << "重力补偿比例必须位于 [0, 1]，本次输入整组未生效\n";
+            }
             return;
         }
         cfg_.dynamics.gravity_scale = *scale;
@@ -1035,12 +1194,22 @@ private:
         std::cout << "joint_acc_filter_alpha  : " << cfg_.runtime.joint_acc_filter_alpha << '\n';
         std::cout << "write_enabled           : " << std::boolalpha << cfg_.runtime.write_enabled << '\n';
         std::cout << "model_feedforward_mode  : " << to_string(robot_.get_model_feedforward_mode()) << '\n';
+        std::cout << "park_before_disable     : " << std::boolalpha << cfg_.shutdown.park_before_disable << '\n';
+        print_vector("park_pos", cfg_.shutdown.park_pos);
+        std::cout << "park_speed_scale        : " << cfg_.shutdown.speed_scale << '\n';
+        std::cout << "park_position_tolerance : " << cfg_.shutdown.position_tolerance << '\n';
+        std::cout << "park_velocity_tolerance : " << cfg_.shutdown.velocity_tolerance << '\n';
+        std::cout << "park_settle_time_s      : " << cfg_.shutdown.settle_time_s << '\n';
+        std::cout << "park_relaxed_ratio      : " << cfg_.shutdown.relaxed_tolerance_ratio << '\n';
+        std::cout << "park_timeout_s          : " << cfg_.shutdown.timeout_s << '\n';
         std::cout << "cmd_timeout_s           : " << cfg_.safety.cmd_timeout_s << '\n';
         std::cout << "state_timeout_s         : " << cfg_.safety.state_timeout_s << '\n';
         std::cout << "max_dt_s                : " << cfg_.safety.max_dt_s << '\n';
         std::cout << "serial_port             : " << cfg_.damiao.serial_port << '\n';
         std::cout << "baudrate                : " << cfg_.damiao.baudrate << '\n';
         std::cout << "refresh_state_in_read   : " << std::boolalpha << cfg_.damiao.refresh_state_in_read << '\n';
+        std::cout << "feedback_timeout_s      : " << cfg_.damiao.feedback_timeout_s << '\n';
+        std::cout << "activation_retries     : " << cfg_.damiao.activation_retries << '\n';
         std::cout << "urdf_path               : " << cfg_.dynamics.urdf_path << '\n';
         std::cout << "base_frame              : " << cfg_.dynamics.base_frame << '\n';
         std::cout << "tool_frame              : " << cfg_.dynamics.tool_frame << '\n';
@@ -1075,18 +1244,18 @@ private:
         print_matrix(frame_name + " Jacobian", jacobian.value());
     }
 
-    void safe_exit() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        clear_command_sources();
-        if(robot_.get_state() == RobotState::ACTIVE) {
-            const auto result = robot_.deactivate();
-            if(!result) {
-                std::cout << "退出时 deactivate() 失败：\n";
-                print_fault(result.error());
+    bool safe_exit() {
+        park_and_deactivate();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if(robot_.get_state() == RobotState::ACTIVE) {
+                std::cout << "安全退出取消，机械臂仍处于 ACTIVE\n";
+                return false;
             }
+            quit_.store(true);
         }
-        quit_.store(true);
         std::cout << "终端退出\n";
+        return true;
     }
 
     void clear_command_sources() {
@@ -1102,6 +1271,7 @@ private:
     std::vector<DamiaoActuatorInfo> actuator_info_;
 
     mutable std::mutex mutex_;
+    std::condition_variable cycle_cv_;
     std::thread worker_;
     std::atomic<bool> worker_running_{ false };
     std::atomic<bool> quit_{ false };

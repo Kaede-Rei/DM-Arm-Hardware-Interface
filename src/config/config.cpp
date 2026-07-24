@@ -223,6 +223,22 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
         cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
 
+        cfg.shutdown.park_pos.assign(cfg.joint_names.size(), 0.0);
+        const YAML::Node shutdown = root["shutdown"];
+        if(shutdown) {
+            if(!shutdown.IsMap()) {
+                throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(shutdown.Mark()) + "root.shutdown must be a map");
+            }
+            cfg.shutdown.park_before_disable = require_as<bool>(shutdown, "park_before_disable", "shutdown");
+            cfg.shutdown.park_pos = require_as<JointVector>(shutdown, "park_pos", "shutdown");
+            cfg.shutdown.speed_scale = require_as<double>(shutdown, "speed_scale", "shutdown");
+            cfg.shutdown.position_tolerance = require_as<double>(shutdown, "position_tolerance", "shutdown");
+            cfg.shutdown.velocity_tolerance = require_as<double>(shutdown, "velocity_tolerance", "shutdown");
+            cfg.shutdown.settle_time_s = require_as<double>(shutdown, "settle_time_s", "shutdown");
+            cfg.shutdown.relaxed_tolerance_ratio = shutdown["relaxed_tolerance_ratio"] ? require_as<double>(shutdown, "relaxed_tolerance_ratio", "shutdown") : 2.0;
+            cfg.shutdown.timeout_s = require_as<double>(shutdown, "timeout_s", "shutdown");
+        }
+
         const YAML::Node safety = require_map(root, "safety", "root");
         cfg.safety.cmd_timeout_s = require_as<double>(safety, "cmd_timeout_s", "safety");
         cfg.safety.state_timeout_s = require_as<double>(safety, "state_timeout_s", "safety");
@@ -281,6 +297,8 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.damiao.serial_port = require_as<std::string>(damiao, "serial_port", "damiao");
         cfg.damiao.baudrate = require_as<int>(damiao, "baudrate", "damiao");
         cfg.damiao.refresh_state_in_read = require_as<bool>(damiao, "refresh_state_in_read", "damiao");
+        cfg.damiao.feedback_timeout_s = require_as<double>(damiao, "feedback_timeout_s", "damiao");
+        cfg.damiao.activation_retries = damiao["activation_retries"] ? require_as<std::size_t>(damiao, "activation_retries", "damiao") : 3;
         cfg.damiao.startup_read_cycles = require_as<std::size_t>(damiao, "startup_read_cycles", "damiao");
         cfg.damiao.stop_kp = require_as<double>(damiao, "stop_kp", "damiao");
         cfg.damiao.stop_kd = require_as<double>(damiao, "stop_kd", "damiao");
@@ -342,8 +360,19 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
 
     const auto size_is_n = [n](const auto& values) {
         return values.size() == n;
-    };
+        };
     const auto& limits = cfg.safety.limits;
+    if(!size_is_n(cfg.shutdown.park_pos)) {
+        return fail(ConfigErr::INVALID_SIZE, "shutdown.park_pos must have length " + std::to_string(n));
+    }
+    if(!finite_vector(cfg.shutdown.park_pos) || !std::isfinite(cfg.shutdown.speed_scale) ||
+        !std::isfinite(cfg.shutdown.position_tolerance) || !std::isfinite(cfg.shutdown.velocity_tolerance) ||
+        !std::isfinite(cfg.shutdown.settle_time_s) || !std::isfinite(cfg.shutdown.relaxed_tolerance_ratio) || !std::isfinite(cfg.shutdown.timeout_s) ||
+        cfg.shutdown.speed_scale <= 0.0 || cfg.shutdown.speed_scale > 1.0 ||
+        cfg.shutdown.position_tolerance <= 0.0 || cfg.shutdown.velocity_tolerance <= 0.0 ||
+        cfg.shutdown.settle_time_s < 0.0 || cfg.shutdown.relaxed_tolerance_ratio < 1.0 || cfg.shutdown.timeout_s <= 0.0) {
+        return fail(ConfigErr::INVALID_VALUE, "invalid shutdown configuration");
+    }
     if(!size_is_n(limits.min_pos) || !size_is_n(limits.max_pos) ||
         !size_is_n(limits.max_vel) || !size_is_n(limits.max_acc) ||
         !size_is_n(limits.max_effort) || !size_is_n(limits.max_kp) ||
@@ -418,6 +447,11 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
                 return fail(ConfigErr::INVALID_VALUE, "controller gain exceeds configured Safety limit at index " + std::to_string(i));
             }
         }
+        const double park_min = limits.min_pos[i] + limits.pos_margin[i];
+        const double park_max = limits.max_pos[i] - limits.pos_margin[i];
+        if(cfg.shutdown.park_pos[i] < park_min || cfg.shutdown.park_pos[i] > park_max) {
+            return fail(ConfigErr::INVALID_VALUE, "shutdown.park_pos is outside the command range at index " + std::to_string(i));
+        }
     }
 
     if(cfg.dynamics.urdf_path.empty() || cfg.dynamics.base_frame.empty() || cfg.dynamics.tool_frame.empty()) {
@@ -460,7 +494,7 @@ tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
     }
 
     if(cfg.damiao.serial_port.empty() || cfg.damiao.baudrate <= 0 ||
-        cfg.damiao.startup_read_cycles == 0 || cfg.damiao.stop_cycles == 0 ||
+        cfg.damiao.activation_retries == 0 || cfg.damiao.startup_read_cycles == 0 || cfg.damiao.stop_cycles == 0 ||
         !std::isfinite(cfg.damiao.stop_kp) ||
         !std::isfinite(cfg.damiao.stop_kd) ||
         cfg.damiao.stop_kp < 0.0 || cfg.damiao.stop_kd < 0.0) {

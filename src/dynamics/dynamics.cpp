@@ -64,7 +64,7 @@ namespace {
 bool finite_vector(const JointVector& values) {
     return std::all_of(values.begin(), values.end(), [](double value) {
         return std::isfinite(value);
-    });
+        });
 }
 
 /**
@@ -96,13 +96,15 @@ tl::expected<void, DynamicsErr> validate_gravity_scale(const JointVector& gravit
         return tl::make_unexpected(DynamicsErr::INVALID_INPUT_SIZE);
     }
 
-    const bool valid = std::all_of(gravity_scale.begin(), gravity_scale.end(), [](double value) {
-        return std::isfinite(value) && value >= 0.0 && value <= 1.0;
-    });
+    const bool finite = std::all_of(gravity_scale.begin(), gravity_scale.end(), [](double value) {
+        return std::isfinite(value);
+        });
+    if(!finite) return tl::make_unexpected(DynamicsErr::NON_FINITE_INPUT);
 
-    if(!valid) {
-        return tl::make_unexpected(DynamicsErr::NON_FINITE_INPUT);
-    }
+    const bool in_range = std::all_of(gravity_scale.begin(), gravity_scale.end(), [](double value) {
+        return value >= 0.0 && value <= 1.0;
+        });
+    if(!in_range) return tl::make_unexpected(DynamicsErr::GRAVITY_SCALE_OUT_OF_RANGE);
 
     return {};
 }

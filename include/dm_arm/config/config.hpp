@@ -29,6 +29,20 @@ struct RuntimeCfg {
 };
 
 /**
+ * @brief 正常停机配置
+ */
+struct ShutdownCfg {
+    bool park_before_disable{ true };          ///< 正常停机前是否先回到停放姿态
+    JointVector park_pos;                      ///< 停放姿态关节位置
+    double speed_scale{ 0.1 };                 ///< 停放轨迹速度比例
+    double position_tolerance{ 0.03 };         ///< 停放姿态位置误差阈值
+    double velocity_tolerance{ 0.05 };         ///< 停放姿态速度阈值
+    double settle_time_s{ 0.25 };              ///< 严格判据下持续稳定时间
+    double relaxed_tolerance_ratio{ 2.0 };     ///< 超时前允许使用的宽松判据倍率
+    double timeout_s{ 15.0 };                  ///< 停放流程最大允许时间
+};
+
+/**
  * @brief 单个达妙执行器的文本配置
  */
 struct DamiaoActuatorCfg {
@@ -46,6 +60,8 @@ struct DamiaoBusCfg {
     std::string serial_port{ "/dev/ttyACM0" };  ///< 串口设备
     int baudrate{ 921600 };                     ///< 波特率
     bool refresh_state_in_read{ false };        ///< read() 是否主动逐轴查询
+    double feedback_timeout_s{ 0.05 };          ///< 单个执行器反馈超时时间
+    std::size_t activation_retries{ 3 };        ///< 单轴使能与模式切换重试次数
     std::size_t startup_read_cycles{ 5 };       ///< 激活后用于确认状态的读取次数
     double stop_kp{ 3.0 };                      ///< 停止保持的执行器侧 kp
     double stop_kd{ 0.1 };                      ///< 停止保持的执行器侧 kd
@@ -71,6 +87,7 @@ struct DynamicsCfg {
 struct RobotCfg {
     std::vector<std::string> joint_names;  ///< 固定的 Joint 顺序
     RuntimeCfg runtime;                    ///< Robot 运行参数
+    ShutdownCfg shutdown;                  ///< 正常停机参数
     JointCtrllerCfg ctrller;               ///< Joint 控制器参数
     JointActuatorMapCfg mapper;            ///< Joint/Actuator 映射
     SafetyCfg safety;                      ///< Joint/Actuator 安全配置

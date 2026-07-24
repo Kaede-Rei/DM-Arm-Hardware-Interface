@@ -399,6 +399,7 @@ void bind_enums(py::module_& module) {
         .value("FRAME_NOT_FOUND", DynamicsErr::FRAME_NOT_FOUND)
         .value("INVALID_INPUT_SIZE", DynamicsErr::INVALID_INPUT_SIZE)
         .value("NON_FINITE_INPUT", DynamicsErr::NON_FINITE_INPUT)
+        .value("GRAVITY_SCALE_OUT_OF_RANGE", DynamicsErr::GRAVITY_SCALE_OUT_OF_RANGE)
         .value("COMPUTE_FAILED", DynamicsErr::COMPUTE_FAILED);
 
     py::enum_<SafetyErr>(module, "SafetyErr")
@@ -547,6 +548,17 @@ void bind_config(py::module_& module) {
         .def_readwrite("write_enabled", &RuntimeCfg::write_enabled)
         .def_readwrite("model_feedforward_mode", &RuntimeCfg::model_feedforward_mode);
 
+    py::class_<ShutdownCfg>(module, "ShutdownCfg")
+        .def(py::init<>())
+        .def_readwrite("park_before_disable", &ShutdownCfg::park_before_disable)
+        .def_readwrite("park_pos", &ShutdownCfg::park_pos)
+        .def_readwrite("speed_scale", &ShutdownCfg::speed_scale)
+        .def_readwrite("position_tolerance", &ShutdownCfg::position_tolerance)
+        .def_readwrite("velocity_tolerance", &ShutdownCfg::velocity_tolerance)
+        .def_readwrite("settle_time_s", &ShutdownCfg::settle_time_s)
+        .def_readwrite("relaxed_tolerance_ratio", &ShutdownCfg::relaxed_tolerance_ratio)
+        .def_readwrite("timeout_s", &ShutdownCfg::timeout_s);
+
     py::class_<DamiaoActuatorCfg>(module, "DamiaoActuatorCfg")
         .def(py::init<>())
         .def_readwrite("name", &DamiaoActuatorCfg::name)
@@ -560,6 +572,8 @@ void bind_config(py::module_& module) {
         .def_readwrite("serial_port", &DamiaoBusCfg::serial_port)
         .def_readwrite("baudrate", &DamiaoBusCfg::baudrate)
         .def_readwrite("refresh_state_in_read", &DamiaoBusCfg::refresh_state_in_read)
+        .def_readwrite("feedback_timeout_s", &DamiaoBusCfg::feedback_timeout_s)
+        .def_readwrite("activation_retries", &DamiaoBusCfg::activation_retries)
         .def_readwrite("startup_read_cycles", &DamiaoBusCfg::startup_read_cycles)
         .def_readwrite("stop_kp", &DamiaoBusCfg::stop_kp)
         .def_readwrite("stop_kd", &DamiaoBusCfg::stop_kd)
@@ -579,6 +593,7 @@ void bind_config(py::module_& module) {
         .def(py::init<>())
         .def_readwrite("joint_names", &RobotCfg::joint_names)
         .def_readwrite("runtime", &RobotCfg::runtime)
+        .def_readwrite("shutdown", &RobotCfg::shutdown)
         .def_readwrite("ctrller", &RobotCfg::ctrller)
         .def_readwrite("mapper", &RobotCfg::mapper)
         .def_readwrite("safety", &RobotCfg::safety)
