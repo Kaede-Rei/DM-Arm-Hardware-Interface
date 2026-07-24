@@ -167,7 +167,7 @@
         <inertial>
             <origin xyz="0.041697 2.4368E-05 0.00014464" rpy="0 0 0" />
             <inertia ixx="0.00038" ixy="0" ixz="0" iyy="0.00028" iyz="0" izz="0.00050" />
-            <mass value="0.65" />
+            <mass value="0.7" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
@@ -194,59 +194,6 @@
         <origin xyz="0.072 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
         <parent link="link6-7" />
         <child link="link_tcp" />
-    </joint>
-    <link name="finger_left">
-        <inertial>
-            <origin xyz="0.08 0.04 0" rpy="0 0 0" />
-            <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
-            <mass value="0.07" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/finger_left.glb" />
-            </geometry>
-        </visual>
-        <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/finger_left.stl" />
-            </geometry>
-        </collision>
-    </link>
-    <joint name="gripper_left" type="prismatic">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="link6-7" />
-        <child link="finger_left" />
-        <axis xyz="0 1 0" />
-        <limit lower="-0.045" upper="0.001" effort="20" velocity="0.18" />
-    </joint>
-    <link name="finger_right">
-        <inertial>
-            <origin xyz="0.08 -0.04 0" rpy="0 0 0" />
-            <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
-            <mass value="0.07" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/finger_right.glb" />
-            </geometry>
-        </visual>
-        <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/finger_right.stl" />
-            </geometry>
-        </collision>
-    </link>
-    <joint name="gripper_right" type="prismatic">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="link6-7" />
-        <child link="finger_right" />
-        <axis xyz="0 -1 0" />
-        <limit lower="-0.045" upper="0.001" effort="20" velocity="0.18" />
-        <mimic joint="gripper_left" multiplier="1.0" offset="0.0"/>
     </joint>
     <link name="tool0" />
     <joint name="gripper_tool0" type="fixed">
