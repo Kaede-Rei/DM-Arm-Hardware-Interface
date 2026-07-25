@@ -165,7 +165,7 @@
     </joint>
     <link name="link6-7">
         <inertial>
-            <origin xyz="0.041697 2.4368E-05 0.00014464" rpy="0 0 0" />
+            <origin xyz="0.041697 2.4368E-05 -0.01314464" rpy="0 0 0" />
             <inertia ixx="0.00038" ixy="0" ixz="0" iyy="0.00028" iyz="0" izz="0.00050" />
             <mass value="0.7" />
         </inertial>
@@ -197,7 +197,7 @@
     </joint>
     <link name="finger_left">
         <inertial>
-            <origin xyz="0.08 0.04 0" rpy="0 0 0" />
+            <origin xyz="0.08 0.04 -0.06" rpy="0 0 0" />
             <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
             <mass value="0.05" />
         </inertial>
@@ -223,7 +223,7 @@
     </joint>
     <link name="finger_right">
         <inertial>
-            <origin xyz="0.08 -0.04 0" rpy="0 0 0" />
+            <origin xyz="0.08 -0.04 -0.06" rpy="0 0 0" />
             <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
             <mass value="0.05" />
         </inertial>
