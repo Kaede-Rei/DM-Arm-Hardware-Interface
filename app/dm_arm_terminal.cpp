@@ -34,8 +34,11 @@ constexpr std::size_t kInvalidIndex = std::numeric_limits<std::size_t>::max();
 
 struct CliOptions {
     std::string config_path{ DM_ARM_DEFAULT_CONFIG_PATH };
+    std::string compare_lhs_path;
+    std::string compare_rhs_path;
     bool allow_hardware{ false };
     bool show_help{ false };
+    bool compare_config{ false };
 };
 
 struct StreamState {
@@ -294,6 +297,12 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
         else if(arg == "--allow-hardware") {
             options.allow_hardware = true;
         }
+        else if(arg == "--compare-config") {
+            if(i + 2 >= argc) return false;
+            options.compare_config = true;
+            options.compare_lhs_path = argv[++i];
+            options.compare_rhs_path = argv[++i];
+        }
         else if(arg == "--help" || arg == "-h") {
             options.show_help = true;
         }
@@ -307,6 +316,7 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
 
 void print_usage(const char* program) {
     std::cout << "用法: " << program << " [--config <path>] --allow-hardware\n";
+    std::cout << "比较: " << program << " --compare-config <config-a.yaml> <config-b.yaml>\n";
     std::cout << "说明: 终端仅支持 Damiao 真机后端\n";
 }
 
@@ -1295,6 +1305,21 @@ int main(int argc, char** argv) {
     }
     if(options.show_help) {
         print_usage(argv[0]);
+        return EXIT_SUCCESS;
+    }
+    if(options.compare_config) {
+        const auto diffs = compare_robot_cfg(options.compare_lhs_path, options.compare_rhs_path);
+        if(!diffs) {
+            std::cerr << "配置比较失败: " << diffs.error().message << '\n';
+            return EXIT_FAILURE;
+        }
+        std::cout << "Config compare: " << options.compare_lhs_path << " <-> " << options.compare_rhs_path << '\n';
+        if(diffs->empty()) {
+            std::cout << "未发现差异\n";
+        }
+        else {
+            for(const auto& diff : *diffs) std::cout << "DIFF " << diff << '\n';
+        }
         return EXIT_SUCCESS;
     }
     if(!options.allow_hardware) {

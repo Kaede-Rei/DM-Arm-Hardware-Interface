@@ -1,0 +1,147 @@
+# DM-Arm White Config
+#
+# 目录
+# 01 robot            机器人身份
+# 02 model            URDF 与模型基础信息
+# 03 hardware         达妙硬件与电机型号
+# 04 calibration      单机方向、比例与零位
+# 05 control          运行时与控制增益
+# 06 safety_policy    运行安全策略与收窄值
+# 07 payload          末端负载状态
+# 08 shutdown         停放姿态
+
+# 01 robot
+robot:
+  id: dm_arm_white        # 机器人 ID
+  serial: dm_arm_white    # 机器人序列号
+  gripper: true           # white 版本包含夹爪
+
+# 02 model
+model:
+  urdf_path: ../description/urdf/dm_arm.urdf               # 有夹爪 URDF，路径相对当前 YAML
+  joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]  # 受控关节名称
+  base_frame: base_link                                    # 动力学基坐标系
+  tool_frame: tool0                                        # 动力学末端坐标系
+  gravity: [0.0, 0.0, -9.81]                               # 世界坐标系重力加速度
+  gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]            # 重力补偿比例
+
+# 03 hardware
+hardware:
+  damiao:
+    serial_port: /dev/ttyACM0     # 串口设备
+    baudrate: 921600              # 波特率
+    refresh_state_in_read: false  # read() 是否主动逐轴查询
+    feedback_timeout_s: 0.05      # 单个执行器反馈超时时间
+    activation_retries: 3         # 单轴使能与模式切换重试次数
+    startup_read_cycles: 5        # 激活后状态确认读取次数
+    stop_kp: 10.0                 # 安全停止时的执行器侧 kp
+    stop_kd: 0.15                 # 安全停止时的执行器侧 kd
+    stop_cycles: 5                # 安全停止命令发送次数
+    actuators:
+      joint1: {name: actuator1, motor_id: 1, master_id: 0, motor_type: DM4340}  # joint1 对应执行器
+      joint2: {name: actuator2, motor_id: 2, master_id: 0, motor_type: DM4340}
+      joint3: {name: actuator3, motor_id: 3, master_id: 0, motor_type: DM4340}
+      joint4: {name: actuator4, motor_id: 4, master_id: 0, motor_type: DM4310}
+      joint5: {name: actuator5, motor_id: 5, master_id: 0, motor_type: DM4310}
+      joint6: {name: actuator6, motor_id: 6, master_id: 0, motor_type: DM4310}
+
+# 04 calibration
+calibration:
+  calibrated: false  # 当前未完成真实单机标定
+  joints:
+    joint1: {actuator: actuator1, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}  # 方向、比例与零位
+    joint2: {actuator: actuator2, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint3: {actuator: actuator3, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint4: {actuator: actuator4, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint5: {actuator: actuator5, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint6: {actuator: actuator6, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+
+# 05 control
+control:
+  runtime:
+    ctrl_frequency_hz: 200.0        # Robot cycle 目标频率
+    joint_acc_filter_alpha: 0.2     # 关节加速度低通滤波系数
+    write_enabled: true             # 真机确认前保持 false
+    model_feedforward_mode: NONE    # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+  controller:
+    allow_full_cmd: false           # 是否允许完整 MIT 风格 Joint 命令
+    rigid_hold:
+      kp: {joint1: 50.0, joint2: 80.0, joint3: 80.0, joint4: 40.0, joint5: 30.0, joint6: 20.0}
+      kd: {joint1: 0.5, joint2: 0.8, joint3: 0.8, joint4: 0.4, joint5: 0.3, joint6: 0.2}
+    rigid_tracking:
+      kp: {joint1: 50.0, joint2: 80.0, joint3: 80.0, joint4: 40.0, joint5: 30.0, joint6: 20.0}
+      kd: {joint1: 0.5, joint2: 0.8, joint3: 0.8, joint4: 0.4, joint5: 0.3, joint6: 0.2}
+    compliant_hold:
+      kp: {joint1: 10.0, joint2: 10.0, joint3: 10.0, joint4: 8.0, joint5: 8.0, joint6: 8.0}
+      kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
+    compliant_drag:
+      kp: {joint1: 0.0, joint2: 0.0, joint3: 0.0, joint4: 0.0, joint5: 0.0, joint6: 0.0}
+      kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
+    compliant_tracking:
+      kp: {joint1: 10.0, joint2: 10.0, joint3: 10.0, joint4: 8.0, joint5: 8.0, joint6: 8.0}
+      kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
+
+# 06 safety_policy
+safety_policy:
+  position_margin: 0.0      # 命令位置距离 URDF 硬限位的边距
+  cmd_vel_scale: 1.0        # 命令速度相对 URDF velocity 的比例
+  state_vel_scale: 1.0      # 状态速度检查相对 URDF velocity 的比例
+  max_acc:
+    joint1: 10.8
+    joint2: 10.8
+    joint3: 10.8
+    joint4: 10.8
+    joint5: 10.8
+    joint6: 10.8
+  max_kp_override:
+    joint1: 100.0
+    joint2: 100.0
+    joint3: 100.0
+    joint4: 50.0
+    joint5: 50.0
+    joint6: 50.0
+  max_kd_override:
+    joint1: 5.0
+    joint2: 5.0
+    joint3: 5.0
+    joint4: 3.0
+    joint5: 3.0
+    joint6: 3.0
+  max_dt_s: 0.02                        # Safety 接受的最大控制周期
+  state_timeout_s: 0.05                 # 两帧合法硬件状态之间允许的最大间隔
+  cmd_timeout_s: 0.10                   # 跟踪模式收到过命令后的最大命令超时时间
+  require_all_actuators_online: true    # 是否要求所有执行器在线
+  require_all_actuators_enabled: true   # 是否要求所有执行器使能
+  reject_motor_error: true              # 是否拒绝执行器错误码
+
+# 07 payload
+payload:
+  payload_id: printed_gripper  # 打印夹爪负载
+  calibrated: false            # 未取得真实质量属性前保持 false
+  parent_frame: tool0          # 负载挂载坐标系
+  mass: 0.0                    # 未标定质量不编造
+  com: [0.0, 0.0, 0.0]         # 未标定质心不编造
+  inertia:
+    ixx: 0.0
+    ixy: 0.0
+    ixz: 0.0
+    iyy: 0.0
+    iyz: 0.0
+    izz: 0.0
+
+# 08 shutdown
+shutdown:
+  park_before_disable: true  # 正常停机前先回到停放姿态
+  park_pos:
+    joint1: 0.0
+    joint2: 0.0
+    joint3: 0.0
+    joint4: 0.0
+    joint5: 0.0
+    joint6: 0.0
+  speed_scale: 0.10              # 停放轨迹速度比例
+  position_tolerance: 0.05       # 严格停放位置误差阈值 rad
+  velocity_tolerance: 0.05       # 严格停放速度阈值 rad/s
+  settle_time_s: 0.25            # 严格判据下持续稳定时间
+  relaxed_tolerance_ratio: 2.0   # 超时前宽松判据倍率
+  timeout_s: 15.0                # 停放流程超时时间

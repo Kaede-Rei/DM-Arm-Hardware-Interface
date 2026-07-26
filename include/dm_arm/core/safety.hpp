@@ -92,6 +92,7 @@ struct SafetyCfg {
 
     bool require_all_actuators_online{ true };  ///< ACTIVE 时要求所有执行器在线
     bool require_all_actuators_enabled{ true }; ///< ACTIVE 时要求所有执行器已使能
+    bool reject_motor_error{ true };            ///< ACTIVE 时拒绝执行器错误码
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //

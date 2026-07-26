@@ -1,5 +1,9 @@
 #include "dm_arm/config/config.hpp"
 
+#include "dm_arm/config/limit_resolver.hpp"
+#include "dm_arm/hardware/hardware_capability.hpp"
+#include "dm_arm/model/model_loader.hpp"
+
 #include <yaml-cpp/yaml.h>
 
 #include <array>
@@ -196,6 +200,17 @@ std::array<const JointImpedanceGains*, 5> all_gains(const JointCtrllerCfg& cfg) 
     };
 }
 
+/**
+ * @brief 按 Joint 名称读取 double map
+ */
+JointVector load_named_joint_vector(const YAML::Node& node, const std::vector<std::string>& joint_names, const char* context) {
+    if(!node || !node.IsMap()) throw ConfigLoadException(ConfigErr::MISSING_FIELD, std::string(context) + " must be a map");
+    JointVector values;
+    values.reserve(joint_names.size());
+    for(const auto& joint_name : joint_names) values.push_back(require_as<double>(node, joint_name.c_str(), context));
+    return values;
+}
+
 } // namespace
 
 // ! ========================= 接 口 类 方 法 / 函 数 实 现 ========================= ! //
@@ -205,7 +220,7 @@ std::array<const JointImpedanceGains*, 5> all_gains(const JointCtrllerCfg& cfg) 
  * @param path YAML 文件路径
  * @return 配置加载结果，成功时包含 RobotCfg，失败时包含 ConfigErrInfo
  */
-tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
+tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& path) {
     try {
         const YAML::Node root = YAML::LoadFile(path);
         if(!root || !root.IsMap()) {
@@ -247,6 +262,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         cfg.safety.state_vel_fault_ratio = safety["state_vel_fault_ratio"] ? require_as<double>(safety, "state_vel_fault_ratio", "safety") : 1.5;
         cfg.safety.require_all_actuators_online = require_as<bool>(safety, "require_all_actuators_online", "safety");
         cfg.safety.require_all_actuators_enabled = require_as<bool>(safety, "require_all_actuators_enabled", "safety");
+        cfg.safety.reject_motor_error = safety["reject_motor_error"] ? require_as<bool>(safety, "reject_motor_error", "safety") : true;
 
         const YAML::Node limits = require_map(root, "limits", "root");
         cfg.safety.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
@@ -344,6 +360,163 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
     }
     catch(const std::exception& error) {
         return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, error.what()));
+    }
+}
+
+tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string& path);
+
+/**
+ * @brief 使用 yaml-cpp 加载完整机器人配置
+ * @param path YAML 文件路径
+ * @return 配置加载结果，成功时包含 RobotCfg，失败时包含 ConfigErrInfo
+ */
+tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
+    try {
+        const YAML::Node root = YAML::LoadFile(path);
+        if(!root || !root.IsMap()) {
+            return tl::make_unexpected(make_err(ConfigErr::SYNTAX_ERROR, "configuration root must be a YAML map"));
+        }
+        if(root["model"] && root["hardware"] && root["calibration"] && root["control"] && root["safety_policy"]) return load_sectioned_robot_cfg(path);
+        return load_flat_robot_cfg(path);
+    }
+    catch(const YAML::BadFile&) {
+        return tl::make_unexpected(make_err(ConfigErr::FILE_OPEN_FAILED, "failed to open configuration file: " + path));
+    }
+    catch(const YAML::Exception& error) {
+        return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, yaml_location(error.mark) + error.msg));
+    }
+}
+
+/**
+ * @brief 加载分区式单文件配置
+ */
+tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string& path) {
+    try {
+        const std::filesystem::path config_path = std::filesystem::absolute(path).lexically_normal();
+        const YAML::Node root = YAML::LoadFile(path);
+
+        const YAML::Node model_node = require_map(root, "model", "root");
+        const YAML::Node hardware_node = require_map(root, "hardware", "root");
+        const YAML::Node calibration_node = require_map(root, "calibration", "root");
+        const YAML::Node control_node = require_map(root, "control", "root");
+        const YAML::Node safety_node = require_map(root, "safety_policy", "root");
+        const YAML::Node payload_node = require_map(root, "payload", "root");
+        const YAML::Node shutdown_node = require_map(root, "shutdown", "root");
+
+        RobotCfg cfg;
+        cfg.joint_names = require_as<std::vector<std::string>>(model_node, "joint_names", "model");
+        std::filesystem::path urdf_path = require_as<std::string>(model_node, "urdf_path", "model");
+        if(urdf_path.is_relative()) urdf_path = config_path.parent_path() / urdf_path;
+        cfg.dynamics.urdf_path = urdf_path.lexically_normal().string();
+        cfg.dynamics.joint_names = cfg.joint_names;
+        cfg.dynamics.base_frame = require_as<std::string>(model_node, "base_frame", "model");
+        cfg.dynamics.tool_frame = require_as<std::string>(model_node, "tool_frame", "model");
+        const JointVector gravity = require_as<JointVector>(model_node, "gravity", "model");
+        if(gravity.size() != 3) throw ConfigLoadException(ConfigErr::INVALID_SIZE, "model.gravity must have length 3");
+        cfg.dynamics.gravity = { gravity[0], gravity[1], gravity[2] };
+        cfg.dynamics.gravity_scale = require_as<JointVector>(model_node, "gravity_scale", "model");
+
+        const YAML::Node runtime = require_map(control_node, "runtime", "control");
+        cfg.runtime.ctrl_frequency_hz = require_as<double>(runtime, "ctrl_frequency_hz", "runtime");
+        cfg.runtime.joint_acc_filter_alpha = runtime["joint_acc_filter_alpha"] ? require_as<double>(runtime, "joint_acc_filter_alpha", "runtime") : 0.2;
+        cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
+        cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
+        const YAML::Node controller = require_map(control_node, "controller", "control");
+        cfg.ctrller.allow_full_cmd = require_as<bool>(controller, "allow_full_cmd", "controller");
+        cfg.ctrller.rigid_hold_gains.kp = load_named_joint_vector(require_map(controller, "rigid_hold", "controller")["kp"], cfg.joint_names, "controller.rigid_hold.kp");
+        cfg.ctrller.rigid_hold_gains.kd = load_named_joint_vector(require_map(controller, "rigid_hold", "controller")["kd"], cfg.joint_names, "controller.rigid_hold.kd");
+        cfg.ctrller.rigid_tracking_gains.kp = load_named_joint_vector(require_map(controller, "rigid_tracking", "controller")["kp"], cfg.joint_names, "controller.rigid_tracking.kp");
+        cfg.ctrller.rigid_tracking_gains.kd = load_named_joint_vector(require_map(controller, "rigid_tracking", "controller")["kd"], cfg.joint_names, "controller.rigid_tracking.kd");
+        cfg.ctrller.compliant_hold_gains.kp = load_named_joint_vector(require_map(controller, "compliant_hold", "controller")["kp"], cfg.joint_names, "controller.compliant_hold.kp");
+        cfg.ctrller.compliant_hold_gains.kd = load_named_joint_vector(require_map(controller, "compliant_hold", "controller")["kd"], cfg.joint_names, "controller.compliant_hold.kd");
+        cfg.ctrller.compliant_drag_gains.kp = load_named_joint_vector(require_map(controller, "compliant_drag", "controller")["kp"], cfg.joint_names, "controller.compliant_drag.kp");
+        cfg.ctrller.compliant_drag_gains.kd = load_named_joint_vector(require_map(controller, "compliant_drag", "controller")["kd"], cfg.joint_names, "controller.compliant_drag.kd");
+        cfg.ctrller.compliant_tracking_gains.kp = load_named_joint_vector(require_map(controller, "compliant_tracking", "controller")["kp"], cfg.joint_names, "controller.compliant_tracking.kp");
+        cfg.ctrller.compliant_tracking_gains.kd = load_named_joint_vector(require_map(controller, "compliant_tracking", "controller")["kd"], cfg.joint_names, "controller.compliant_tracking.kd");
+
+        const YAML::Node damiao = require_map(hardware_node, "damiao", "hardware");
+        cfg.damiao.serial_port = require_as<std::string>(damiao, "serial_port", "damiao");
+        cfg.damiao.baudrate = require_as<int>(damiao, "baudrate", "damiao");
+        cfg.damiao.refresh_state_in_read = require_as<bool>(damiao, "refresh_state_in_read", "damiao");
+        cfg.damiao.feedback_timeout_s = require_as<double>(damiao, "feedback_timeout_s", "damiao");
+        cfg.damiao.activation_retries = require_as<std::size_t>(damiao, "activation_retries", "damiao");
+        cfg.damiao.startup_read_cycles = require_as<std::size_t>(damiao, "startup_read_cycles", "damiao");
+        cfg.damiao.stop_kp = require_as<double>(damiao, "stop_kp", "damiao");
+        cfg.damiao.stop_kd = require_as<double>(damiao, "stop_kd", "damiao");
+        cfg.damiao.stop_cycles = require_as<std::size_t>(damiao, "stop_cycles", "damiao");
+        const YAML::Node actuators = require_map(damiao, "actuators", "damiao");
+        for(const auto& joint_name : cfg.joint_names) {
+            const YAML::Node item = require_map(actuators, joint_name.c_str(), "damiao.actuators");
+            DamiaoActuatorCfg actuator;
+            actuator.name = require_as<std::string>(item, "name", joint_name.c_str());
+            actuator.joint_name = joint_name;
+            actuator.motor_id = require_as<std::uint32_t>(item, "motor_id", joint_name.c_str());
+            actuator.master_id = require_as<std::uint32_t>(item, "master_id", joint_name.c_str());
+            actuator.motor_type = require_as<std::string>(item, "motor_type", joint_name.c_str());
+            cfg.damiao.actuators.push_back(std::move(actuator));
+        }
+
+        const YAML::Node joints = require_map(calibration_node, "joints", "calibration");
+        for(const auto& joint_name : cfg.joint_names) {
+            const YAML::Node item = require_map(joints, joint_name.c_str(), "calibration.joints");
+            cfg.mapper.pos_ratio.push_back(require_as<double>(item, "pos_ratio", joint_name.c_str()));
+            cfg.mapper.tor_ratio.push_back(require_as<double>(item, "tor_ratio", joint_name.c_str()));
+            cfg.mapper.direction.push_back(static_cast<int>(require_as<double>(item, "direction", joint_name.c_str())));
+            cfg.mapper.joint_zero_offset.push_back(require_as<double>(item, "joint_zero_offset", joint_name.c_str()));
+            cfg.mapper.actuator_zero_offset.push_back(require_as<double>(item, "actuator_zero_offset", joint_name.c_str()));
+        }
+
+        SafetyPolicyCfg policy;
+        policy.position_margin = require_as<double>(safety_node, "position_margin", "safety");
+        policy.cmd_vel_scale = require_as<double>(safety_node, "cmd_vel_scale", "safety");
+        policy.state_vel_scale = require_as<double>(safety_node, "state_vel_scale", "safety");
+        policy.max_acc = load_named_joint_vector(require_map(safety_node, "max_acc", "safety"), cfg.joint_names, "safety.max_acc");
+        if(safety_node["max_effort_override"]) policy.max_effort_override = load_named_joint_vector(safety_node["max_effort_override"], cfg.joint_names, "safety.max_effort_override");
+        if(safety_node["max_kp_override"]) policy.max_kp_override = load_named_joint_vector(safety_node["max_kp_override"], cfg.joint_names, "safety.max_kp_override");
+        if(safety_node["max_kd_override"]) policy.max_kd_override = load_named_joint_vector(safety_node["max_kd_override"], cfg.joint_names, "safety.max_kd_override");
+        policy.max_dt_s = require_as<double>(safety_node, "max_dt_s", "safety");
+        policy.state_timeout_s = require_as<double>(safety_node, "state_timeout_s", "safety");
+        policy.cmd_timeout_s = require_as<double>(safety_node, "cmd_timeout_s", "safety");
+        policy.require_all_actuators_online = require_as<bool>(safety_node, "require_all_actuators_online", "safety");
+        policy.require_all_actuators_enabled = require_as<bool>(safety_node, "require_all_actuators_enabled", "safety");
+        policy.reject_motor_error = require_as<bool>(safety_node, "reject_motor_error", "safety");
+
+        cfg.shutdown.park_before_disable = require_as<bool>(shutdown_node, "park_before_disable", "shutdown");
+        cfg.shutdown.park_pos = load_named_joint_vector(require_map(shutdown_node, "park_pos", "shutdown"), cfg.joint_names, "shutdown.park_pos");
+        cfg.shutdown.speed_scale = require_as<double>(shutdown_node, "speed_scale", "shutdown");
+        cfg.shutdown.position_tolerance = require_as<double>(shutdown_node, "position_tolerance", "shutdown");
+        cfg.shutdown.velocity_tolerance = require_as<double>(shutdown_node, "velocity_tolerance", "shutdown");
+        cfg.shutdown.settle_time_s = require_as<double>(shutdown_node, "settle_time_s", "shutdown");
+        cfg.shutdown.relaxed_tolerance_ratio = require_as<double>(shutdown_node, "relaxed_tolerance_ratio", "shutdown");
+        cfg.shutdown.timeout_s = require_as<double>(shutdown_node, "timeout_s", "shutdown");
+
+        cfg.payload.payload_id = require_as<std::string>(payload_node, "payload_id", "payload");
+        cfg.payload.calibrated = require_as<bool>(payload_node, "calibrated", "payload");
+        cfg.payload.parent_frame = require_as<std::string>(payload_node, "parent_frame", "payload");
+        cfg.payload.mass = require_as<double>(payload_node, "mass", "payload");
+
+        cfg.ctrller.joints_count = cfg.joint_names.size();
+        cfg.mapper.joints_count = cfg.joint_names.size();
+        const auto model_info = ModelLoader{}.load(cfg.dynamics.urdf_path, cfg.joint_names);
+        if(!model_info) return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, "ModelLoader failed"));
+        const auto capabilities = load_damiao_capabilities(cfg.damiao);
+        if(!capabilities) return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, "Damiao hardware capability failed"));
+        const auto resolved = LimitResolver{}.resolve(*model_info, cfg.damiao, cfg.mapper, *capabilities, policy);
+        if(!resolved) return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, "LimitResolver failed"));
+        cfg.safety = to_safety_cfg(*resolved);
+
+        auto validated = validate_robot_cfg(cfg);
+        if(!validated) return tl::make_unexpected(validated.error());
+        return cfg;
+    }
+    catch(const ConfigLoadException& error) {
+        return tl::make_unexpected(make_err(error.code(), error.what()));
+    }
+    catch(const YAML::BadFile&) {
+        return tl::make_unexpected(make_err(ConfigErr::FILE_OPEN_FAILED, "failed to open configuration file: " + path));
+    }
+    catch(const YAML::Exception& error) {
+        return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, yaml_location(error.mark) + error.msg));
     }
 }
 
@@ -521,6 +694,51 @@ tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg) {
     }
 
     return {};
+}
+
+/**
+ * @brief 只读比较两个配置解析后的最终配置差异
+ */
+tl::expected<std::vector<std::string>, ConfigErrInfo> compare_robot_cfg(const std::string& lhs_path, const std::string& rhs_path) {
+    const auto lhs = load_robot_cfg(lhs_path);
+    if(!lhs) return tl::make_unexpected(lhs.error());
+    const auto rhs = load_robot_cfg(rhs_path);
+    if(!rhs) return tl::make_unexpected(rhs.error());
+
+    std::vector<std::string> diffs;
+    const auto add = [&diffs](const std::string& name) {
+        diffs.push_back(name);
+    };
+    if(lhs->joint_names != rhs->joint_names) add("joint_names");
+    if(lhs->mapper.pos_ratio != rhs->mapper.pos_ratio || lhs->mapper.tor_ratio != rhs->mapper.tor_ratio ||
+        lhs->mapper.direction != rhs->mapper.direction || lhs->mapper.joint_zero_offset != rhs->mapper.joint_zero_offset ||
+        lhs->mapper.actuator_zero_offset != rhs->mapper.actuator_zero_offset) add("mapping");
+    if(lhs->runtime.ctrl_frequency_hz != rhs->runtime.ctrl_frequency_hz) add("runtime.ctrl_frequency_hz");
+    if(lhs->ctrller.rigid_hold_gains.kp != rhs->ctrller.rigid_hold_gains.kp || lhs->ctrller.rigid_hold_gains.kd != rhs->ctrller.rigid_hold_gains.kd ||
+        lhs->ctrller.rigid_tracking_gains.kp != rhs->ctrller.rigid_tracking_gains.kp || lhs->ctrller.rigid_tracking_gains.kd != rhs->ctrller.rigid_tracking_gains.kd ||
+        lhs->ctrller.compliant_hold_gains.kp != rhs->ctrller.compliant_hold_gains.kp || lhs->ctrller.compliant_hold_gains.kd != rhs->ctrller.compliant_hold_gains.kd ||
+        lhs->ctrller.compliant_drag_gains.kp != rhs->ctrller.compliant_drag_gains.kp || lhs->ctrller.compliant_drag_gains.kd != rhs->ctrller.compliant_drag_gains.kd ||
+        lhs->ctrller.compliant_tracking_gains.kp != rhs->ctrller.compliant_tracking_gains.kp || lhs->ctrller.compliant_tracking_gains.kd != rhs->ctrller.compliant_tracking_gains.kd) add("controller.impedance_gains");
+    if(lhs->safety.limits.min_pos != rhs->safety.limits.min_pos || lhs->safety.limits.max_pos != rhs->safety.limits.max_pos) add("limits.position");
+    if(lhs->safety.limits.max_vel != rhs->safety.limits.max_vel) add("limits.max_cmd_vel_or_state_base");
+    if(lhs->safety.limits.max_acc != rhs->safety.limits.max_acc) add("limits.max_acc");
+    if(lhs->safety.limits.max_effort != rhs->safety.limits.max_effort) add("limits.max_effort");
+    if(lhs->safety.limits.max_kp != rhs->safety.limits.max_kp) add("limits.max_kp");
+    if(lhs->safety.limits.max_kd != rhs->safety.limits.max_kd) add("limits.max_kd");
+    if(lhs->safety.cmd_timeout_s != rhs->safety.cmd_timeout_s || lhs->safety.state_timeout_s != rhs->safety.state_timeout_s || lhs->safety.max_dt_s != rhs->safety.max_dt_s) add("safety.timeout");
+    if(lhs->damiao.actuators.size() != rhs->damiao.actuators.size()) add("damiao.actuators");
+    else {
+        for(std::size_t i = 0; i < lhs->damiao.actuators.size(); ++i) {
+            if(lhs->damiao.actuators[i].motor_id != rhs->damiao.actuators[i].motor_id || lhs->damiao.actuators[i].motor_type != rhs->damiao.actuators[i].motor_type) {
+                add("damiao.motor_id_or_type");
+                break;
+            }
+        }
+    }
+    if(lhs->dynamics.urdf_path != rhs->dynamics.urdf_path) add("dynamics.urdf_path");
+    if(lhs->shutdown.park_before_disable != rhs->shutdown.park_before_disable || lhs->shutdown.park_pos != rhs->shutdown.park_pos ||
+        lhs->shutdown.speed_scale != rhs->shutdown.speed_scale || lhs->shutdown.timeout_s != rhs->shutdown.timeout_s) add("shutdown");
+    return diffs;
 }
 
 // ! ========================= 私 有 类 方 法 实 现 ========================= ! //

@@ -49,6 +49,7 @@ endfunction()
 
 # 配置模块始终需要 yaml-cpp
 find_package(yaml-cpp REQUIRED)
+find_package(pinocchio CONFIG REQUIRED)
 
 if(TARGET yaml-cpp::yaml-cpp)
     set(DM_ARM_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
@@ -57,6 +58,16 @@ elseif(TARGET yaml-cpp)
 else()
     message(FATAL_ERROR
         "yaml-cpp was found, but neither yaml-cpp::yaml-cpp nor yaml-cpp target exists")
+endif()
+
+if(TARGET pinocchio::pinocchio)
+    set(DM_ARM_PINOCCHIO_TARGET pinocchio::pinocchio)
+elseif(pinocchio_LIBRARIES)
+    set(DM_ARM_PINOCCHIO_TARGET ${pinocchio_LIBRARIES})
+else()
+    message(FATAL_ERROR
+        "Pinocchio was found, but neither pinocchio::pinocchio nor "
+        "pinocchio_LIBRARIES is available")
 endif()
 
 set(DM_ARM_TL_INCLUDE_DIR
@@ -99,6 +110,9 @@ list(APPEND DM_ARM_INSTALL_TARGETS dm_arm_core)
 
 add_library(dm_arm_config
     src/config/config.cpp
+    src/config/limit_resolver.cpp
+    src/model/model_loader.cpp
+    src/hardware/hardware_capability.cpp
 )
 add_library(dm_arm::config ALIAS dm_arm_config)
 set_target_properties(dm_arm_config PROPERTIES EXPORT_NAME config)
@@ -107,13 +121,18 @@ target_link_libraries(dm_arm_config
     PUBLIC
         dm_arm_core
         ${DM_ARM_YAML_CPP_TARGET}
+        ${DM_ARM_PINOCCHIO_TARGET}
 )
 target_include_directories(dm_arm_config
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${DM_ARM_TL_INCLUDE_DIR}>
+        $<BUILD_INTERFACE:${DM_ARM_DAMIAO_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+if(pinocchio_INCLUDE_DIRS)
+    target_include_directories(dm_arm_config PUBLIC ${pinocchio_INCLUDE_DIRS})
+endif()
 target_compile_features(dm_arm_config PUBLIC cxx_std_17)
 dm_arm_enable_warnings(dm_arm_config)
 
@@ -180,8 +199,6 @@ endif()
 if(DM_ARM_ENABLE_DYNAMICS)
     # Dynamics 公共接口使用 Eigen，具体模型与算法由 Pinocchio 提供
     find_package(Eigen3 REQUIRED NO_MODULE)
-    find_package(pinocchio CONFIG REQUIRED)
-
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/dynamics/dynamics.cpp")
         message(FATAL_ERROR
             "DM_ARM_ENABLE_DYNAMICS=ON, but src/dynamics/dynamics.cpp does not exist. "

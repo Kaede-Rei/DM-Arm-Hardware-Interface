@@ -98,7 +98,7 @@ tl::expected<void, SafetyFault> Safety::check_state(
         if(cfg_.require_all_actuators_enabled && actuator_state.enabled[i] == 0) {
             return tl::make_unexpected(fault(SafetyErr::ACTUATOR_NOT_ENABLED, i, static_cast<double>(actuator_state.enabled[i]), 1.0));
         }
-        if(actuator_state.err_code[i] != 0) {
+        if(cfg_.reject_motor_error && actuator_state.err_code[i] != 0) {
             return tl::make_unexpected(fault(SafetyErr::ACTUATOR_FAULT, i, static_cast<double>(actuator_state.err_code[i]), 0.0));
         }
 
