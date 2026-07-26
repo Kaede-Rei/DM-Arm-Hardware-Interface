@@ -30,6 +30,7 @@ struct SafetyPolicyCfg {
     bool require_all_actuators_online{ true };  ///< 是否要求所有执行器在线
     bool require_all_actuators_enabled{ true }; ///< 是否要求所有执行器使能
     bool reject_motor_error{ true };            ///< 是否拒绝电机错误码
+    bool require_continuous_cmd{ true };         ///< 是否要求相邻命令连续
 };
 
 /**
@@ -61,6 +62,7 @@ struct ResolvedSafetyCfg {
     bool require_all_actuators_online{ true };       ///< 是否要求所有执行器在线
     bool require_all_actuators_enabled{ true };      ///< 是否要求所有执行器使能
     bool reject_motor_error{ true };                 ///< 是否拒绝电机错误码
+    bool require_continuous_cmd{ true };             ///< 是否要求相邻命令连续
 };
 
 /**

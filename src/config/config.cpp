@@ -263,6 +263,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& pat
         cfg.safety.require_all_actuators_online = require_as<bool>(safety, "require_all_actuators_online", "safety");
         cfg.safety.require_all_actuators_enabled = require_as<bool>(safety, "require_all_actuators_enabled", "safety");
         cfg.safety.reject_motor_error = safety["reject_motor_error"] ? require_as<bool>(safety, "reject_motor_error", "safety") : true;
+        cfg.safety.require_continuous_cmd = safety["require_continuous_cmd"] ? require_as<bool>(safety, "require_continuous_cmd", "safety") : true;
 
         const YAML::Node limits = require_map(root, "limits", "root");
         cfg.safety.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
@@ -479,6 +480,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         policy.require_all_actuators_online = require_as<bool>(safety_node, "require_all_actuators_online", "safety");
         policy.require_all_actuators_enabled = require_as<bool>(safety_node, "require_all_actuators_enabled", "safety");
         policy.reject_motor_error = require_as<bool>(safety_node, "reject_motor_error", "safety");
+        policy.require_continuous_cmd = safety_node["require_continuous_cmd"] ? require_as<bool>(safety_node, "require_continuous_cmd", "safety") : true;
 
         cfg.shutdown.park_before_disable = require_as<bool>(shutdown_node, "park_before_disable", "shutdown");
         cfg.shutdown.park_pos = load_named_joint_vector(require_map(shutdown_node, "park_pos", "shutdown"), cfg.joint_names, "shutdown.park_pos");

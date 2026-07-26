@@ -55,6 +55,7 @@ tl::expected<ResolvedSafetyCfg, LimitResolverErr> LimitResolver::resolve(const R
     output.require_all_actuators_online = policy.require_all_actuators_online;
     output.require_all_actuators_enabled = policy.require_all_actuators_enabled;
     output.reject_motor_error = policy.reject_motor_error;
+    output.require_continuous_cmd = policy.require_continuous_cmd;
     output.joints.reserve(n);
 
     for(std::size_t i = 0; i < n; ++i) {
@@ -114,6 +115,8 @@ SafetyCfg to_safety_cfg(const ResolvedSafetyCfg& resolved) {
     cfg.max_dt_s = resolved.max_dt_s;
     cfg.require_all_actuators_online = resolved.require_all_actuators_online;
     cfg.require_all_actuators_enabled = resolved.require_all_actuators_enabled;
+    cfg.reject_motor_error = resolved.reject_motor_error;
+    cfg.require_continuous_cmd = resolved.require_continuous_cmd;
 
     cfg.limits.min_pos.reserve(resolved.joints.size());
     cfg.limits.max_pos.reserve(resolved.joints.size());
@@ -146,7 +149,8 @@ ResolvedSafetyCfg resolve_from_safety_cfg(const std::vector<std::string>& joint_
     resolved.cmd_timeout_s = cfg.cmd_timeout_s;
     resolved.require_all_actuators_online = cfg.require_all_actuators_online;
     resolved.require_all_actuators_enabled = cfg.require_all_actuators_enabled;
-    resolved.reject_motor_error = true;
+    resolved.reject_motor_error = cfg.reject_motor_error;
+    resolved.require_continuous_cmd = cfg.require_continuous_cmd;
     resolved.joints.reserve(joint_names.size());
     for(std::size_t i = 0; i < joint_names.size(); ++i) {
         ResolvedJointLimitCfg joint;

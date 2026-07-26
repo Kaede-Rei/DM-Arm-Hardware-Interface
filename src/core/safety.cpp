@@ -188,23 +188,25 @@ tl::expected<JointCtrlCmd, SafetyFault> Safety::check_joint_cmd(const JointState
         }
     }
 
-    const JointVector& reference_pos = has_last_accepted_cmd_ ? last_accepted_cmd_.pos : state.pos;
-    const JointVector& reference_vel = has_last_accepted_cmd_ ? last_accepted_cmd_.vel : state.vel;
+    if(cfg_.require_continuous_cmd) {
+        const JointVector& reference_pos = has_last_accepted_cmd_ ? last_accepted_cmd_.pos : state.pos;
+        const JointVector& reference_vel = has_last_accepted_cmd_ ? last_accepted_cmd_.vel : state.vel;
 
-    for(std::size_t i = 0; i < cfg_.joints_count; ++i) {
-        if(safe_cmd.kp[i] > cfg_.numeric_tolerance) {
-            const double max_pos_delta = cfg_.limits.max_vel[i] * dt + 0.5 * cfg_.limits.max_acc[i] * dt * dt;
-            const double pos_delta = safe_cmd.pos[i] - reference_pos[i];
-            if(std::abs(pos_delta) > max_pos_delta + cfg_.numeric_tolerance) {
-                return tl::make_unexpected(fault(SafetyErr::CMD_POS_STEP_LIMIT, i, pos_delta, max_pos_delta));
+        for(std::size_t i = 0; i < cfg_.joints_count; ++i) {
+            if(safe_cmd.kp[i] > cfg_.numeric_tolerance) {
+                const double max_pos_delta = cfg_.limits.max_vel[i] * dt + 0.5 * cfg_.limits.max_acc[i] * dt * dt;
+                const double pos_delta = safe_cmd.pos[i] - reference_pos[i];
+                if(std::abs(pos_delta) > max_pos_delta + cfg_.numeric_tolerance) {
+                    return tl::make_unexpected(fault(SafetyErr::CMD_POS_STEP_LIMIT, i, pos_delta, max_pos_delta));
+                }
             }
-        }
 
-        if(safe_cmd.kd[i] > cfg_.numeric_tolerance) {
-            const double max_vel_delta = cfg_.limits.max_acc[i] * dt;
-            const double vel_delta = safe_cmd.vel[i] - reference_vel[i];
-            if(std::abs(vel_delta) > max_vel_delta + cfg_.numeric_tolerance) {
-                return tl::make_unexpected(fault(SafetyErr::CMD_VEL_STEP_LIMIT, i, vel_delta, max_vel_delta));
+            if(safe_cmd.kd[i] > cfg_.numeric_tolerance) {
+                const double max_vel_delta = cfg_.limits.max_acc[i] * dt;
+                const double vel_delta = safe_cmd.vel[i] - reference_vel[i];
+                if(std::abs(vel_delta) > max_vel_delta + cfg_.numeric_tolerance) {
+                    return tl::make_unexpected(fault(SafetyErr::CMD_VEL_STEP_LIMIT, i, vel_delta, max_vel_delta));
+                }
             }
         }
     }

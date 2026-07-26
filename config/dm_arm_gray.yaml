@@ -61,7 +61,7 @@ control:
     ctrl_frequency_hz: 200.0        # Robot cycle 目标频率
     joint_acc_filter_alpha: 0.2     # 关节加速度低通滤波系数
     write_enabled: true             # 真机确认前保持 false
-    model_feedforward_mode: NONE    # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+    model_feedforward_mode: GRAVITY # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
   controller:
     allow_full_cmd: false           # 是否允许完整 MIT 风格 Joint 命令
     # 刚性保持参数
@@ -117,6 +117,7 @@ safety_policy:
   require_all_actuators_online: true    # 是否要求所有执行器在线
   require_all_actuators_enabled: true   # 是否要求所有执行器使能
   reject_motor_error: true              # 是否拒绝执行器错误码
+  require_continuous_cmd: false         # 是否要求相邻命令连续，关闭后允许离散输入
 
 # 07 shutdown
 shutdown:
