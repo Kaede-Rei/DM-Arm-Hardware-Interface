@@ -7,8 +7,7 @@
 # 04 calibration      单机方向、比例与零位
 # 05 control          运行时与控制增益
 # 06 safety_policy    运行安全策略与收窄值
-# 07 payload          末端负载状态
-# 08 shutdown         停放姿态
+# 07 shutdown         停放姿态
 
 # 01 robot
 robot:
@@ -18,12 +17,12 @@ robot:
 
 # 02 model
 model:
-  urdf_path: ../description/urdf/dm_arm_no_gripper.urdf  # 无夹爪 URDF，路径相对当前 YAML
-  joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]  # 受控关节名称
-  base_frame: base_link                                   # 动力学基坐标系
-  tool_frame: tool0                                       # 动力学末端坐标系
-  gravity: [0.0, 0.0, -9.81]                              # 世界坐标系重力加速度
-  gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]           # 重力补偿比例
+  urdf_path: ../description/urdf/dm_arm_no_gripper.urdf           # 无夹爪 URDF，路径相对当前 YAML
+  joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]   # 受控关节名称
+  base_frame: base_link                                           # 动力学基坐标系
+  tool_frame: tool0                                               # 动力学末端坐标系
+  gravity: [0.0, 0.0, -9.81]                                      # 世界坐标系重力加速度
+  gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]                   # 重力补偿比例
 
 # 03 hardware
 hardware:
@@ -38,7 +37,7 @@ hardware:
     stop_kd: 0.15                 # 安全停止时的执行器侧 kd
     stop_cycles: 5                # 安全停止命令发送次数
     actuators:
-      joint1: {name: actuator1, motor_id: 1, master_id: 0, motor_type: DM4340}  # joint1 对应执行器
+      joint1: {name: actuator1, motor_id: 1, master_id: 0, motor_type: DM4340}  # 名称、ID、主控 ID、型号
       joint2: {name: actuator2, motor_id: 2, master_id: 0, motor_type: DM4340}
       joint3: {name: actuator3, motor_id: 3, master_id: 0, motor_type: DM4340}
       joint4: {name: actuator4, motor_id: 4, master_id: 0, motor_type: DM4310}
@@ -65,18 +64,23 @@ control:
     model_feedforward_mode: NONE    # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
   controller:
     allow_full_cmd: false           # 是否允许完整 MIT 风格 Joint 命令
+    # 刚性保持参数
     rigid_hold:
       kp: {joint1: 50.0, joint2: 80.0, joint3: 80.0, joint4: 40.0, joint5: 30.0, joint6: 20.0}
       kd: {joint1: 0.5, joint2: 0.8, joint3: 0.8, joint4: 0.4, joint5: 0.3, joint6: 0.2}
+    # 刚性跟踪参数
     rigid_tracking:
       kp: {joint1: 50.0, joint2: 80.0, joint3: 80.0, joint4: 40.0, joint5: 30.0, joint6: 20.0}
       kd: {joint1: 0.5, joint2: 0.8, joint3: 0.8, joint4: 0.4, joint5: 0.3, joint6: 0.2}
+    # 柔性保持参数
     compliant_hold:
       kp: {joint1: 10.0, joint2: 10.0, joint3: 10.0, joint4: 8.0, joint5: 8.0, joint6: 8.0}
       kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
+    # 柔性拖拽参数
     compliant_drag:
       kp: {joint1: 0.0, joint2: 0.0, joint3: 0.0, joint4: 0.0, joint5: 0.0, joint6: 0.0}
       kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
+    # 柔性跟踪参数
     compliant_tracking:
       kp: {joint1: 10.0, joint2: 10.0, joint3: 10.0, joint4: 8.0, joint5: 8.0, joint6: 8.0}
       kd: {joint1: 0.10, joint2: 0.10, joint3: 0.10, joint4: 0.08, joint5: 0.08, joint6: 0.08}
@@ -114,22 +118,7 @@ safety_policy:
   require_all_actuators_enabled: true   # 是否要求所有执行器使能
   reject_motor_error: true              # 是否拒绝执行器错误码
 
-# 07 payload
-payload:
-  payload_id: none           # 无额外负载
-  calibrated: true           # 零负载配置可直接使用
-  parent_frame: tool0        # 负载挂载坐标系
-  mass: 0.0                  # 质量
-  com: [0.0, 0.0, 0.0]       # 质心
-  inertia:
-    ixx: 0.0
-    ixy: 0.0
-    ixz: 0.0
-    iyy: 0.0
-    iyz: 0.0
-    izz: 0.0
-
-# 08 shutdown
+# 07 shutdown
 shutdown:
   park_before_disable: true  # 正常停机前先回到停放姿态
   park_pos:

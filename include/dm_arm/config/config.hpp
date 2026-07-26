@@ -82,18 +82,6 @@ struct DynamicsCfg {
 };
 
 /**
- * @brief 末端负载配置
- */
-struct PayloadCfg {
-    std::string payload_id;                                         ///< Payload ID
-    bool calibrated{ false };                                       ///< 质量属性是否已标定
-    std::string parent_frame{ "tool0" };                            ///< 负载挂载坐标系
-    double mass{ 0.0 };                                             ///< 质量
-    std::array<double, 3> com{ 0.0, 0.0, 0.0 };                     ///< 质心
-    std::array<double, 6> inertia{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };  ///< 惯性张量
-};
-
-/**
  * @brief 当前 DM-Arm 的完整静态配置
  */
 struct RobotCfg {
@@ -105,7 +93,6 @@ struct RobotCfg {
     SafetyCfg safety;                      ///< Joint/Actuator 安全配置
     DamiaoBusCfg damiao;                   ///< 达妙后端参数
     DynamicsCfg dynamics;                  ///< 动力学参数
-    PayloadCfg payload;                    ///< 末端负载参数
 };
 
 /**

@@ -376,7 +376,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path) {
         if(!root || !root.IsMap()) {
             return tl::make_unexpected(make_err(ConfigErr::SYNTAX_ERROR, "configuration root must be a YAML map"));
         }
-        if(root["model"] && root["hardware"] && root["calibration"] && root["control"] && root["safety_policy"]) return load_sectioned_robot_cfg(path);
+        if(root["model"] && root["hardware"] && root["calibration"] && root["control"] && root["safety_policy"] && root["shutdown"]) return load_sectioned_robot_cfg(path);
         return load_flat_robot_cfg(path);
     }
     catch(const YAML::BadFile&) {
@@ -400,7 +400,6 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         const YAML::Node calibration_node = require_map(root, "calibration", "root");
         const YAML::Node control_node = require_map(root, "control", "root");
         const YAML::Node safety_node = require_map(root, "safety_policy", "root");
-        const YAML::Node payload_node = require_map(root, "payload", "root");
         const YAML::Node shutdown_node = require_map(root, "shutdown", "root");
 
         RobotCfg cfg;
@@ -489,11 +488,6 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         cfg.shutdown.settle_time_s = require_as<double>(shutdown_node, "settle_time_s", "shutdown");
         cfg.shutdown.relaxed_tolerance_ratio = require_as<double>(shutdown_node, "relaxed_tolerance_ratio", "shutdown");
         cfg.shutdown.timeout_s = require_as<double>(shutdown_node, "timeout_s", "shutdown");
-
-        cfg.payload.payload_id = require_as<std::string>(payload_node, "payload_id", "payload");
-        cfg.payload.calibrated = require_as<bool>(payload_node, "calibrated", "payload");
-        cfg.payload.parent_frame = require_as<std::string>(payload_node, "parent_frame", "payload");
-        cfg.payload.mass = require_as<double>(payload_node, "mass", "payload");
 
         cfg.ctrller.joints_count = cfg.joint_names.size();
         cfg.mapper.joints_count = cfg.joint_names.size();
