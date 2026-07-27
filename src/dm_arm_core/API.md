@@ -1,106 +1,91 @@
-# DM-Arm API 文档
+# DM-Arm Core API
 
-命名空间为 `dm_arm`；语言标准为 C++17
+命名空间为 `dm_arm`；语言标准为 C++17；本文件只说明公开接口、语义、生命周期和调用约束
 
-## 1. CMake targets
+## 1. 文档说明
 
-### `dm_arm::core`
+### 1.1. 覆盖范围
 
-头文件
+本文覆盖
+
+- CMake package 与导出 Targets
+- Core 基础类型
+- Config、ModelLoader、Hardware Capability 和 LimitResolver
+- JointCtrller、JointActuatorMapper 和 Safety
+- MotorBus 与 DamiaoMotorBus
+- Dynamics 和 Robot
+- Python Binding 与 RobotSession
+- Adapter 接入契约
+
+### 1.2. 头文件与命名空间
 
 ```cpp
+#include <dm_arm/config/config.hpp>
+#include <dm_arm/config/limit_resolver.hpp>
 #include <dm_arm/core/types.hpp>
 #include <dm_arm/core/joints_ctrller.hpp>
 #include <dm_arm/core/joint_actuator_mapper.hpp>
 #include <dm_arm/core/safety.hpp>
-```
-
-能力
-
-- Joint 和 Actuator 数据类型
-- 阻抗模式
-- 关节控制器
-- Joint 与 Actuator 映射
-- Safety
-
-### `dm_arm::config`
-
-头文件
-
-```cpp
-#include <dm_arm/config/config.hpp>
-```
-
-能力
-
-- `RuntimeCfg`
-- `DamiaoBusCfg`
-- `DynamicsCfg`
-- `RobotCfg`
-- YAML 加载
-- 配置验证
-
-依赖
-
-```text
-dm_arm::core
-yaml-cpp
-```
-
-### `dm_arm::robot`
-
-头文件
-
-```cpp
+#include <dm_arm/model/model_loader.hpp>
+#include <dm_arm/hardware/hardware_capability.hpp>
+#include <dm_arm/hardware/motor_bus.hpp>
+#include <dm_arm/hardware/damiao_motor_bus.hpp>
+#include <dm_arm/dynamics/dynamics.hpp>
 #include <dm_arm/robot.hpp>
 ```
 
-能力
-
-- 生命周期
-- 周期闭环
-- 故障锁存
-- 关节加速度估计
-- 参考加速度估计
-- 模型前馈回调
-
-依赖
-
-```text
-dm_arm::core
-dm_arm::config
-```
-
-### `dm_arm::damiao`
-
-头文件
-
 ```cpp
-#include <dm_arm/hardware/damiao_motor_bus.hpp>
+namespace dm_arm
 ```
+
+### 1.3. API 兼容性
+
+当前版本为 `0.1.0`；尚未承诺 ABI 稳定；公共结构体仍可能随 Config、Payload 和多后端需求调整
+
+## 2. CMake Targets
+
+### 2.1. dm_arm::core
+
+包含
+
+- `JointCtrller`
+- `JointActuatorMapper`
+- `Safety`
+- Core 基础类型
+
+```cmake
+find_package(dm_arm_core CONFIG REQUIRED)
+target_link_libraries(my_target PRIVATE dm_arm::core)
+```
+
+### 2.2. dm_arm::config
+
+包含
+
+- YAML 加载与验证
+- `ModelLoader`
+- `Hardware Capability`
+- `LimitResolver`
+
+依赖 `dm_arm::core`、yaml-cpp 和 Pinocchio
+
+### 2.3. dm_arm::robot
+
+包含 Robot 生命周期、周期闭环、故障处理、加速度估计和模型前馈入口
+
+依赖 `dm_arm::core` 与 `dm_arm::config`
+
+### 2.4. dm_arm::damiao
 
 生成条件
 
 ```cmake
--DM_ARM_BUILD_DAMIAO=ON
+-DDM_ARM_BUILD_DAMIAO=ON
 ```
 
-能力
+包含达妙串口、MIT 协议、状态读取、使能、停止、失能和恢复
 
-- 达妙串口连接
-- MIT 控制
-- 状态读取
-- 使能和失能
-- stop 和 recover
-- 执行器静态信息
-
-### `dm_arm::dynamics`
-
-头文件
-
-```cpp
-#include <dm_arm/dynamics/dynamics.hpp>
-```
+### 2.5. dm_arm::dynamics
 
 生成条件
 
@@ -108,58 +93,60 @@ dm_arm::config
 -DDM_ARM_ENABLE_DYNAMICS=ON
 ```
 
-能力
+包含 Pinocchio 运动学和刚体动力学
 
-- URDF reduced model
-- 集中式 `update()`
-- Frame 位姿和 Jacobian
-- 重力项
-- 非线性项
-- 科氏和离心项
-- 质量矩阵
-- RNEA
-- ABA
+安装后使用 Dynamics 时应确保 Pinocchio CMake package 已进入 `CMAKE_PREFIX_PATH`；下游可显式执行
 
-## 2. 通用约定
-
-### 2.1. 命名空间
-
-```cpp
-namespace dm_arm
+```cmake
+find_package(pinocchio CONFIG REQUIRED)
+find_package(dm_arm_core CONFIG REQUIRED)
 ```
 
-### 2.2. Joint 顺序
+## 3. 通用约定
 
-当前系统固定六轴；所有向量按 `RobotCfg::joint_names` 顺序排列
+### 3.1. C++ 标准
 
-默认配置
+所有公开 Targets 使用 C++17
+
+```cmake
+target_compile_features(my_target PRIVATE cxx_std_17)
+```
+
+### 3.2. Joint 与 Actuator 顺序
+
+所有 `JointVector` 按 `RobotCfg::joint_names` 排列；Actuator 顺序必须与 Joint 和 `DamiaoBusCfg::actuators` 对应
+
+默认六轴顺序
 
 ```text
 joint1, joint2, joint3, joint4, joint5, joint6
 ```
 
-### 2.3. 单位
+### 3.3. 单位与坐标系
 
-| 数据 | Joint 侧单位 |
+| 数据 | 单位 |
 |---|---|
-| 位置 | rad |
-| 速度 | rad/s |
-| 加速度 | rad/s² |
-| 力矩 | N·m |
-| `kp` | Joint 侧位置增益 |
-| `kd` | Joint 侧速度增益 |
+| Joint 位置 | rad |
+| Joint 速度 | rad/s |
+| Joint 加速度 | rad/s² |
+| Joint 力矩 | N·m |
+| `kp` | N·m/rad |
+| `kd` | N·m·s/rad |
+| 平移 | m |
+| 质量 | kg |
+| 惯性张量 | kg·m² |
 
-Actuator 侧语义由具体 MotorBus 定义；达妙后端使用 SDK MIT 语义
+Dynamics 位姿表示 `frame` 相对 `base_frame` 的变换；Jacobians 使用 `LOCAL_WORLD_ALIGNED`
 
-### 2.4. 错误返回
+### 3.4. tl::expected
 
-主要操作使用
+主要 C++ 操作使用
 
 ```cpp
 tl::expected<T, Error>
 ```
 
-示例
+调用者必须检查返回值
 
 ```cpp
 const auto result = robot.activate();
@@ -168,29 +155,22 @@ if(!result) {
 }
 ```
 
-### 2.5. 所有权
+### 3.5. 所有权与线程安全
 
-`Robot::configure()` 接收 `std::unique_ptr<MotorBus>`；成功后 Robot 独占硬件后端
+- `Robot::configure()` 接收 `std::unique_ptr<MotorBus>` 并独占后端
+- `Robot`、`Dynamics`、`DamiaoMotorBus` 和 Core 控制类不提供通用内部互斥
+- 一个 Robot 实例只能由一个控制线程访问
+- Python RobotSession 和 ros2_control Adapter 在外层实现线程串行化
 
-### 2.6. 线程安全
+### 3.6. 实时与缓存语义
 
-当前公开类不提供内部互斥锁；生命周期、命令和 `cycle()` 应由应用层串行化
+- `Robot::cycle()` 是单周期接口
+- `Dynamics::update()` 是集中计算入口
+- Dynamics getter 只读取最近一次成功更新的缓存
+- Core 不保证硬实时
+- 控制周期目标由 `RuntimeCfg::ctrl_frequency_hz` 决定
 
-### 2.7. Dynamics 缓存语义
-
-`Dynamics::update()` 负责计算；getter 只读取最近一次成功更新的缓存
-
-```cpp
-const auto update_result = dynamics.update(state, acc, ref_acc);
-if(!update_result) {
-    return;
-}
-
-const auto& gravity = dynamics.get_gravity();
-const auto& mass_matrix = dynamics.get_mass_matrix();
-```
-
-## 3. 基础类型
+## 4. 基础类型
 
 头文件
 
@@ -198,54 +178,18 @@ const auto& mass_matrix = dynamics.get_mass_matrix();
 #include <dm_arm/core/types.hpp>
 ```
 
-### 3.1. 向量
+### 4.1. JointState 与 ActuatorState
 
 ```cpp
 using JointVector = std::vector<double>;
 using ActuatorVector = std::vector<double>;
-```
 
-### 3.2. 阻抗模式
-
-```cpp
-enum class JointImpedanceMode {
-    RIGID_HOLD,
-    RIGID_TRACKING,
-    COMPLIANT_HOLD,
-    COMPLIANT_DRAG,
-    COMPLIANT_TRACKING,
-};
-```
-
-| 模式 | 外部命令 | 语义 |
-|---|---:|---|
-| `RIGID_HOLD` | 否 | 切换时位置刚性保持 |
-| `RIGID_TRACKING` | 是 | 刚性跟踪外部参考 |
-| `COMPLIANT_HOLD` | 否 | 切换时位置柔性保持 |
-| `COMPLIANT_DRAG` | 否 | 当前实际位置和低阻尼拖拽 |
-| `COMPLIANT_TRACKING` | 是 | 柔性跟踪外部参考 |
-
-### 3.3. 模型前馈模式
-
-```cpp
-enum class ModelFeedforwardMode {
-    NONE,
-    GRAVITY,
-    FULL_INVERSE_DYNAMICS,
-};
-```
-
-### 3.4. 状态结构
-
-```cpp
 struct JointState {
     JointVector pos;
     JointVector vel;
     JointVector tor;
 };
-```
 
-```cpp
 struct ActuatorState {
     ActuatorVector pos;
     ActuatorVector vel;
@@ -256,7 +200,7 @@ struct ActuatorState {
 };
 ```
 
-### 3.5. 参考命令
+### 4.2. JointCmd
 
 ```cpp
 struct JointPosCmd {
@@ -273,13 +217,11 @@ struct JointPosVelTorCmd {
     JointVector vel;
     JointVector tor;
 };
-```
 
-```cpp
 using JointCmd = std::variant<JointPosCmd, JointPosVelCmd, JointPosVelTorCmd>;
 ```
 
-### 3.6. 完整命令
+### 4.3. JointCtrlCmd
 
 ```cpp
 struct JointCtrlCmd {
@@ -291,6 +233,10 @@ struct JointCtrlCmd {
 };
 ```
 
+该结构位于 Joint 侧；发送到硬件前必须经过 `JointActuatorMapper`
+
+### 4.4. ActuatorMitCmd
+
 ```cpp
 struct ActuatorMitCmd {
     ActuatorVector pos;
@@ -301,7 +247,25 @@ struct ActuatorMitCmd {
 };
 ```
 
-## 4. 配置 API
+### 4.5. 阻抗与前馈枚举
+
+```cpp
+enum class JointImpedanceMode {
+    RIGID_HOLD,
+    RIGID_TRACKING,
+    COMPLIANT_HOLD,
+    COMPLIANT_DRAG,
+    COMPLIANT_TRACKING,
+};
+
+enum class ModelFeedforwardMode {
+    NONE,
+    GRAVITY,
+    FULL_INVERSE_DYNAMICS,
+};
+```
+
+## 5. Config
 
 头文件
 
@@ -309,69 +273,7 @@ struct ActuatorMitCmd {
 #include <dm_arm/config/config.hpp>
 ```
 
-### 4.1. `RuntimeCfg`
-
-```cpp
-struct RuntimeCfg {
-    double ctrl_frequency_hz{ 200.0 };
-    double joint_acc_filter_alpha{ 0.2 };
-    bool write_enabled{ false };
-    ModelFeedforwardMode model_feedforward_mode{ ModelFeedforwardMode::NONE };
-};
-```
-
-### 4.2. `DamiaoActuatorCfg`
-
-```cpp
-struct ShutdownCfg {
-    bool park_before_disable{ true };
-    JointVector park_pos;
-    double speed_scale{ 0.1 };
-    double position_tolerance{ 0.02 };
-    double velocity_tolerance{ 0.03 };
-    double settle_time_s{ 0.5 };
-    double timeout_s{ 15.0 };
-};
-
-struct DamiaoActuatorCfg {
-    std::string name;
-    std::string joint_name;
-    std::uint32_t motor_id{ 0 };
-    std::uint32_t master_id{ 0 };
-    std::string motor_type;
-};
-```
-
-### 4.3. `DamiaoBusCfg`
-
-```cpp
-struct DamiaoBusCfg {
-    std::string serial_port{ "/dev/ttyACM0" };
-    int baudrate{ 921600 };
-    bool refresh_state_in_read{ false };
-    double feedback_timeout_s{ 0.05 };
-    std::size_t startup_read_cycles{ 5 };
-    double stop_kp{ 3.0 };
-    double stop_kd{ 0.1 };
-    std::size_t stop_cycles{ 5 };
-    std::vector<DamiaoActuatorCfg> actuators;
-};
-```
-
-### 4.4. `DynamicsCfg`
-
-```cpp
-struct DynamicsCfg {
-    std::string urdf_path;
-    std::vector<std::string> joint_names;
-    std::string base_frame{ "base_link" };
-    std::string tool_frame{ "tool0" };
-    std::array<double, 3> gravity{ 0.0, 0.0, -9.81 };
-    JointVector gravity_scale;
-};
-```
-
-### 4.5. `RobotCfg`
+### 5.1. RobotCfg
 
 ```cpp
 struct RobotCfg {
@@ -386,35 +288,37 @@ struct RobotCfg {
 };
 ```
 
-### 4.6. 加载函数
+YAML 采用分区格式；Loader 最终解析为扁平 `RobotCfg`
+
+### 5.2. RuntimeCfg
 
 ```cpp
-tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path);
-tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg);
-tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg);
+struct RuntimeCfg {
+    double ctrl_frequency_hz{ 200.0 };
+    double joint_acc_filter_alpha{ 0.2 };
+    bool write_enabled{ false };
+    ModelFeedforwardMode model_feedforward_mode{ ModelFeedforwardMode::NONE };
+};
 ```
 
-示例
+### 5.3. ShutdownCfg
 
 ```cpp
-const auto cfg_result = dm_arm::load_robot_cfg("config/dm_arm.yaml");
-if(!cfg_result) {
-    std::cerr << cfg_result.error().message << '\n';
-    return 1;
-}
-
-dm_arm::RobotCfg cfg = cfg_result.value();
+struct ShutdownCfg {
+    bool park_before_disable{ true };
+    JointVector park_pos;
+    double speed_scale{ 0.1 };
+    double position_tolerance{ 0.03 };
+    double velocity_tolerance{ 0.05 };
+    double settle_time_s{ 0.25 };
+    double relaxed_tolerance_ratio{ 2.0 };
+    double timeout_s{ 15.0 };
+};
 ```
 
-## 5. JointCtrller
+该配置供应用层生成停放轨迹；`Robot::deactivate()` 不读取 `park_pos`
 
-头文件
-
-```cpp
-#include <dm_arm/core/joints_ctrller.hpp>
-```
-
-### 5.1. 配置
+### 5.4. JointCtrllerCfg
 
 ```cpp
 struct JointCtrllerCfg {
@@ -428,37 +332,7 @@ struct JointCtrllerCfg {
 };
 ```
 
-### 5.2. 主要接口
-
-```cpp
-tl::expected<void, JointCtrllerErr> configure(const JointCtrllerCfg& cfg);
-tl::expected<void, JointCtrllerErr> initialize(const JointState& state);
-void reset() noexcept;
-tl::expected<void, JointCtrllerErr> set_impedance_mode(JointImpedanceMode mode, const JointState& state);
-tl::expected<void, JointCtrllerErr> set_cmd(const JointCmd& cmd);
-tl::expected<void, JointCtrllerErr> set_full_cmd(const JointCtrlCmd& cmd);
-tl::expected<JointCtrllerOutput, JointCtrllerErr> update(const JointCtrllerInput& input);
-JointCtrllerState get_state() const noexcept;
-JointImpedanceMode get_impedance_mode() const noexcept;
-```
-
-调用约束
-
-- 必须先 `configure()`
-- 激活时使用真实 JointState 调用 `initialize()`
-- 跟踪命令只允许在跟踪模式使用
-- `set_full_cmd()` 需要配置允许
-- `update()` 的模型前馈长度必须匹配关节数量
-
-## 6. JointActuatorMapper
-
-头文件
-
-```cpp
-#include <dm_arm/core/joint_actuator_mapper.hpp>
-```
-
-### 6.1. 配置
+### 5.5. JointActuatorMapCfg
 
 ```cpp
 struct JointActuatorMapCfg {
@@ -471,24 +345,7 @@ struct JointActuatorMapCfg {
 };
 ```
 
-### 6.2. 接口
-
-```cpp
-tl::expected<void, JointActuatorMapErr> configure(const JointActuatorMapCfg& cfg);
-tl::expected<ActuatorMitCmd, JointActuatorMapErr> to_actuator_cmd(const JointCtrlCmd& joint_cmd) const;
-tl::expected<JointState, JointActuatorMapErr> to_joint_state(const ActuatorState& actuator_state) const;
-std::size_t size() const noexcept;
-```
-
-## 7. Safety
-
-头文件
-
-```cpp
-#include <dm_arm/core/safety.hpp>
-```
-
-### 7.1. 配置
+### 5.6. SafetyCfg
 
 ```cpp
 struct JointLimitCfg {
@@ -501,9 +358,7 @@ struct JointLimitCfg {
     JointVector max_kd;
     JointVector pos_margin;
 };
-```
 
-```cpp
 struct SafetyCfg {
     std::size_t joints_count{ 0 };
     JointLimitCfg limits;
@@ -514,35 +369,523 @@ struct SafetyCfg {
     double state_vel_fault_ratio{ 1.5 };
     bool require_all_actuators_online{ true };
     bool require_all_actuators_enabled{ true };
+    bool reject_motor_error{ true };
+    bool require_continuous_cmd{ true };
 };
 ```
 
-### 7.2. 接口
+### 5.7. DamiaoBusCfg
+
+```cpp
+struct DamiaoActuatorCfg {
+    std::string name;
+    std::string joint_name;
+    std::uint32_t motor_id{ 0 };
+    std::uint32_t master_id{ 0 };
+    std::string motor_type;
+};
+
+struct DamiaoBusCfg {
+    std::string serial_port{ "/dev/ttyACM0" };
+    int baudrate{ 921600 };
+    bool refresh_state_in_read{ false };
+    double feedback_timeout_s{ 0.05 };
+    std::size_t activation_retries{ 3 };
+    std::size_t startup_read_cycles{ 5 };
+    double stop_kp{ 3.0 };
+    double stop_kd{ 0.1 };
+    std::size_t stop_cycles{ 5 };
+    std::vector<DamiaoActuatorCfg> actuators;
+};
+```
+
+### 5.8. DynamicsCfg
+
+```cpp
+struct DynamicsCfg {
+    std::string urdf_path;
+    std::vector<std::string> joint_names;
+    std::string base_frame{ "base_link" };
+    std::string tool_frame{ "tool0" };
+    std::array<double, 3> gravity{ 0.0, 0.0, -9.81 };
+    JointVector gravity_scale;
+};
+```
+
+### 5.9. load_robot_cfg()
+
+```cpp
+tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(const std::string& path);
+```
+
+行为
+
+1. 解析 YAML
+2. 按 Joint 名称读取分区字段
+3. 加载 URDF Model 信息
+4. 加载达妙 Hardware Capability
+5. 运行 LimitResolver
+6. 生成最终 `SafetyCfg`
+7. 验证 Core 和完整硬件配置
+
+### 5.10. compare_robot_cfg()
+
+```cpp
+tl::expected<std::vector<std::string>, ConfigErrInfo> compare_robot_cfg(const std::string& lhs_path, const std::string& rhs_path);
+```
+
+返回两个最终 `RobotCfg` 的字段差异；不连接硬件
+
+其他验证函数
+
+```cpp
+tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg);
+tl::expected<void, ConfigErrInfo> validate_robot_cfg(const RobotCfg& cfg);
+```
+
+## 6. ModelLoader
+
+头文件
+
+```cpp
+#include <dm_arm/model/model_loader.hpp>
+```
+
+### 6.1. RobotModelInfo
+
+```cpp
+struct RobotModelInfo {
+    std::string urdf_path;
+    std::vector<std::string> joint_names;
+    std::vector<ModelJointLimit> joint_limits;
+};
+```
+
+### 6.2. ModelJointLimit
+
+```cpp
+struct ModelJointLimit {
+    std::string name;
+    bool has_position_limit{ false };
+    double min_pos{ 0.0 };
+    double max_pos{ 0.0 };
+    double max_vel{ 0.0 };
+    double max_effort{ 0.0 };
+};
+```
+
+### 6.3. ModelLoader::load()
+
+```cpp
+tl::expected<RobotModelInfo, ModelErr> load(const std::string& urdf_path, const std::vector<std::string>& controlled_joint_names) const;
+```
+
+输出顺序严格匹配 `controlled_joint_names`
+
+### 6.4. URDF 限位语义
+
+- revolute Joint 必须具有合法 lower、upper、velocity 和 effort
+- continuous Joint 的 `has_position_limit` 为 false
+- fixed Joint 不能进入受控列表
+- 所有数值必须有限
+
+### 6.5. ModelErr
+
+```text
+FILE_OPEN_FAILED
+URDF_LOAD_FAILED
+MISSING_JOINT
+DUPLICATE_JOINT
+FIXED_JOINT_CONTROLLED
+INVALID_LIMIT
+```
+
+## 7. Hardware Capability
+
+头文件
+
+```cpp
+#include <dm_arm/hardware/hardware_capability.hpp>
+```
+
+### 7.1. ActuatorCapability
+
+```cpp
+struct ActuatorCapability {
+    std::string actuator_name;
+    double min_pos{ 0.0 };
+    double max_pos{ 0.0 };
+    double max_vel{ 0.0 };
+    double max_effort{ 0.0 };
+    double max_kp{ 0.0 };
+    double max_kd{ 0.0 };
+};
+```
+
+### 7.2. HardwareCapabilities
+
+```cpp
+using HardwareCapabilities = std::vector<ActuatorCapability>;
+```
+
+### 7.3. 达妙能力来源
+
+```cpp
+tl::expected<HardwareCapabilities, HardwareCapabilityErr> load_damiao_capabilities(const DamiaoBusCfg& cfg);
+```
+
+Capability 根据 `motor_type` 读取；执行器名称来自配置；能力值表示 Actuator 侧物理和协议边界
+
+### 7.4. HardwareCapabilityErr
+
+```text
+INVALID_CFG
+UNKNOWN_MOTOR_TYPE
+```
+
+## 8. LimitResolver
+
+头文件
+
+```cpp
+#include <dm_arm/config/limit_resolver.hpp>
+```
+
+### 8.1. SafetyPolicyCfg
+
+```cpp
+struct SafetyPolicyCfg {
+    double position_margin{ 0.0 };
+    double cmd_vel_scale{ 1.0 };
+    double state_vel_scale{ 1.0 };
+    JointVector max_acc;
+    JointVector max_effort_override;
+    JointVector max_kp_override;
+    JointVector max_kd_override;
+    double max_dt_s{ 0.0 };
+    double state_timeout_s{ 0.0 };
+    double cmd_timeout_s{ 0.0 };
+    bool require_all_actuators_online{ true };
+    bool require_all_actuators_enabled{ true };
+    bool reject_motor_error{ true };
+    bool require_continuous_cmd{ true };
+};
+```
+
+### 8.2. ResolvedJointLimitCfg
+
+```cpp
+struct ResolvedJointLimitCfg {
+    std::string joint_name;
+    bool has_position_limit{ false };
+    double hard_min_pos{ 0.0 };
+    double hard_max_pos{ 0.0 };
+    double cmd_min_pos{ 0.0 };
+    double cmd_max_pos{ 0.0 };
+    double max_cmd_vel{ 0.0 };
+    double max_state_vel{ 0.0 };
+    double max_acc{ 0.0 };
+    double max_effort{ 0.0 };
+    double max_kp{ 0.0 };
+    double max_kd{ 0.0 };
+};
+```
+
+### 8.3. ResolvedSafetyCfg
+
+```cpp
+struct ResolvedSafetyCfg {
+    std::vector<ResolvedJointLimitCfg> joints;
+    double max_dt_s{ 0.0 };
+    double state_timeout_s{ 0.0 };
+    double cmd_timeout_s{ 0.0 };
+    bool require_all_actuators_online{ true };
+    bool require_all_actuators_enabled{ true };
+    bool reject_motor_error{ true };
+    bool require_continuous_cmd{ true };
+};
+```
+
+### 8.4. resolve()
+
+```cpp
+tl::expected<ResolvedSafetyCfg, LimitResolverErr> resolve(const RobotModelInfo& model, const DamiaoBusCfg& hardware, const JointActuatorMapCfg& mapper, const HardwareCapabilities& capabilities, const SafetyPolicyCfg& policy) const;
+```
+
+### 8.5. 限位解析规则
+
+- `hard_min_pos` 和 `hard_max_pos` 来自 URDF
+- `cmd_min_pos` 和 `cmd_max_pos` 由硬限位收窄
+- `max_cmd_vel = urdf_velocity × cmd_vel_scale`
+- `max_state_vel = urdf_velocity × state_vel_scale`
+- Joint effort 结合 URDF effort、Actuator capability 和映射比例
+- Joint kp、kd 结合 Actuator 上限和映射比例
+- Override 只允许收窄
+
+兼容转换
+
+```cpp
+SafetyCfg to_safety_cfg(const ResolvedSafetyCfg& resolved);
+ResolvedSafetyCfg resolve_from_safety_cfg(const std::vector<std::string>& joint_names, const SafetyCfg& cfg);
+```
+
+### 8.6. LimitResolverErr
+
+```text
+INVALID_INPUT
+MISSING_ACTUATOR
+POLICY_WIDENS_LIMIT
+```
+
+## 9. JointCtrller
+
+头文件
+
+```cpp
+#include <dm_arm/core/joints_ctrller.hpp>
+```
+
+### 9.1. configure()
+
+```cpp
+tl::expected<void, JointCtrllerErr> configure(const JointCtrllerCfg& cfg);
+```
+
+状态从 `UNCONFIGURED` 进入 `CONFIGURED`
+
+### 9.2. initialize()
+
+```cpp
+tl::expected<void, JointCtrllerErr> initialize(const JointState& state);
+```
+
+使用真实状态初始化保持参考；进入 `INITIALIZED`
+
+### 9.3. set_impedance_mode()
+
+```cpp
+tl::expected<void, JointCtrllerErr> set_impedance_mode(JointImpedanceMode mode, const JointState& state);
+```
+
+保持和拖拽模式在切换时锁存当前状态
+
+### 9.4. set_cmd()
+
+```cpp
+tl::expected<void, JointCtrllerErr> set_cmd(const JointCmd& cmd);
+```
+
+仅跟踪模式接受外部参考
+
+### 9.5. set_full_cmd()
+
+```cpp
+tl::expected<void, JointCtrllerErr> set_full_cmd(const JointCtrlCmd& cmd);
+```
+
+要求 `allow_full_cmd=true`
+
+### 9.6. update()
+
+```cpp
+tl::expected<JointCtrllerOutput, JointCtrllerErr> update(const JointCtrllerInput& input);
+```
+
+控制器输出 Joint 侧完整命令；模型前馈叠加到 `tor`
+
+Getter
+
+```cpp
+JointCtrllerState get_state() const noexcept;
+JointImpedanceMode get_impedance_mode() const noexcept;
+```
+
+### 9.7. JointCtrllerErr
+
+```text
+OK
+NOT_CONFIGURED
+NOT_INITIALIZED
+ALREADY_INITIALIZED
+INVALID_CFG
+INVALID_STATE
+INVALID_DT
+INVALID_MODEL_FEEDFORWARD
+INVALID_IMPEDANCE_MODE
+INVALID_CMD_SIZE
+INVALID_CMD_VALUE
+INVALID_FULL_CMD
+CMD_NOT_ALLOWED_IN_MODE
+FULL_CMD_NOT_ALLOWED
+```
+
+## 10. JointActuatorMapper
+
+头文件
+
+```cpp
+#include <dm_arm/core/joint_actuator_mapper.hpp>
+```
+
+### 10.1. configure()
+
+```cpp
+tl::expected<void, JointActuatorMapErr> configure(const JointActuatorMapCfg& cfg);
+```
+
+### 10.2. to_joint_state()
+
+```cpp
+tl::expected<JointState, JointActuatorMapErr> to_joint_state(const ActuatorState& actuator_state) const;
+```
+
+### 10.3. to_actuator_cmd()
+
+```cpp
+tl::expected<ActuatorMitCmd, JointActuatorMapErr> to_actuator_cmd(const JointCtrlCmd& joint_cmd) const;
+```
+
+### 10.4. 比例、方向与零位
+
+定义
+
+```text
+pos_ratio = 执行器位置变化量 / Joint 位置变化量
+tor_ratio = Joint 力矩 / 执行器报告力矩
+```
+
+位置映射
+
+```text
+q_actuator = direction × pos_ratio × (q_joint - joint_zero_offset) + actuator_zero_offset
+```
+
+执行器 SDK 已经输出减速器输出端数据时，`pos_ratio` 和 `tor_ratio` 通常为 1
+
+Getter
+
+```cpp
+std::size_t size() const noexcept;
+```
+
+### 10.5. JointActuatorMapErr
+
+```text
+OK
+NOT_CONFIGURED
+INVALID_CFG
+INVALID_JOINT_STATE
+INVALID_ACTUATOR_STATE
+INVALID_JOINT_CMD
+INVALID_ACTUATOR_CMD
+INVALID_CONVERSION_VALUE
+```
+
+## 11. Safety
+
+头文件
+
+```cpp
+#include <dm_arm/core/safety.hpp>
+```
+
+### 11.1. configure()
 
 ```cpp
 tl::expected<void, SafetyFault> configure(const SafetyCfg& cfg);
-tl::expected<void, SafetyFault> check_state(const JointState& joint_state, const ActuatorState& actuator_state, double state_age_s) const;
-tl::expected<void, SafetyFault> check_cmd_age(double cmd_age_s) const;
-tl::expected<JointCtrlCmd, SafetyFault> check_joint_cmd(const JointState& state, const JointCtrlCmd& cmd, double dt);
-tl::expected<void, SafetyFault> reset_cmd_history(const JointState& state);
-void clear_cmd_history() noexcept;
-SafetyAction action_for(SafetyErr err) const noexcept;
-std::uint64_t clamp_count() const noexcept;
-bool is_configured() const noexcept;
 ```
 
-SafetyAction
+### 11.2. check_state()
 
 ```cpp
+tl::expected<void, SafetyFault> check_state(const JointState& joint_state, const ActuatorState& actuator_state, double state_age_s) const;
+```
+
+检查数组长度、有限值、Joint 位置、状态速度、Actuator 在线、使能和错误码
+
+### 11.3. check_joint_cmd()
+
+```cpp
+tl::expected<JointCtrlCmd, SafetyFault> check_joint_cmd(const JointState& state, const JointCtrlCmd& cmd, double dt);
+```
+
+检查位置、速度、effort、kp、kd 和可选连续命令约束；浮点误差级越界可被小范围 clamp
+
+### 11.4. on_timeout()
+
+当前公开 API 将超时拆为
+
+```cpp
+tl::expected<void, SafetyFault> check_cmd_age(double cmd_age_s) const;
+```
+
+状态超时通过 `check_state(..., state_age_s)` 检查
+
+### 11.5. SafetyFault 与 SafetyAction
+
+```cpp
+struct SafetyFault {
+    SafetyErr code;
+    std::size_t index;
+    double value;
+    double limit;
+};
+
 enum class SafetyAction {
     STOP_HOLD,
     DISABLE,
 };
 ```
 
-状态故障通常对应 `DISABLE`；命令故障通常对应 `STOP_HOLD`
+```cpp
+SafetyAction action_for(SafetyErr err) const noexcept;
+```
 
-## 8. MotorBus
+命令历史
+
+```cpp
+tl::expected<void, SafetyFault> reset_cmd_history(const JointState& state);
+void clear_cmd_history() noexcept;
+```
+
+状态查询
+
+```cpp
+bool is_configured() const noexcept;
+std::uint64_t clamp_count() const noexcept;
+```
+
+### 11.6. SafetyErr
+
+```text
+NOT_CONFIGURED
+INVALID_CFG
+INVALID_DT
+INVALID_STATE_AGE
+INVALID_CMD_AGE
+STATE_TIMEOUT
+CMD_TIMEOUT
+INVALID_JOINT_STATE_SIZE
+INVALID_ACTUATOR_STATE_SIZE
+NON_FINITE_JOINT_STATE
+NON_FINITE_ACTUATOR_STATE
+JOINT_POS_LIMIT
+JOINT_VEL_LIMIT
+ACTUATOR_OFFLINE
+ACTUATOR_NOT_ENABLED
+ACTUATOR_FAULT
+INVALID_CMD_SIZE
+NON_FINITE_CMD
+CMD_POS_LIMIT
+CMD_VEL_LIMIT
+CMD_EFFORT_LIMIT
+CMD_KP_LIMIT
+CMD_KD_LIMIT
+CMD_POS_STEP_LIMIT
+CMD_VEL_STEP_LIMIT
+```
+
+## 12. MotorBus
 
 头文件
 
@@ -550,34 +893,59 @@ enum class SafetyAction {
 #include <dm_arm/hardware/motor_bus.hpp>
 ```
 
-接口
+### 12.1. 接口职责
+
+`MotorBus` 是执行器后端抽象；Robot 通过它读取 `ActuatorState` 并写入 `ActuatorMitCmd`
+
+### 12.2. 生命周期
 
 ```cpp
-class MotorBus {
-public:
-    virtual ~MotorBus() = default;
-    virtual tl::expected<void, MotorBusErr> connect() = 0;
-    virtual tl::expected<ActuatorState, MotorBusErr> read() = 0;
-    virtual tl::expected<void, MotorBusErr> activate() = 0;
-    virtual tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) = 0;
-    virtual tl::expected<void, MotorBusErr> stop() = 0;
-    virtual tl::expected<void, MotorBusErr> deactivate() = 0;
-    virtual tl::expected<void, MotorBusErr> recover() = 0;
-    virtual void cleanup() noexcept = 0;
-    virtual std::size_t size() const noexcept = 0;
-};
+virtual tl::expected<void, MotorBusErr> connect() = 0;
+virtual tl::expected<ActuatorState, MotorBusErr> read() = 0;
+virtual tl::expected<void, MotorBusErr> activate() = 0;
+virtual tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) = 0;
+virtual tl::expected<void, MotorBusErr> stop() = 0;
+virtual tl::expected<void, MotorBusErr> deactivate() = 0;
+virtual tl::expected<void, MotorBusErr> recover() = 0;
+virtual void cleanup() noexcept = 0;
+virtual std::size_t size() const noexcept = 0;
 ```
 
-后端要求
+### 12.3. read() 与 write()
 
-- `read()` 返回固定长度 ActuatorState
-- `write()` 接受执行器侧 MIT 命令
-- `stop()` 优先执行可控保持
-- `deactivate()` 立即停止并失能硬件；回停放姿态属于终端或上层会话职责
-- `recover()` 清理故障残留并恢复到可再次激活的状态
-- 周期路径不读取 YAML
+- `read()` 返回执行器侧状态
+- `write()` 接收已经映射完成的 MIT 命令
+- 后端不应重复实现 Joint Safety
 
-## 9. DamiaoMotorBus
+### 12.4. deactivate() 与 recover()
+
+- `stop()` 发送低风险停止保持
+- `deactivate()` 停止并失能
+- `recover()` 清理旧通信状态并恢复到可重新激活状态
+
+### 12.5. MotorBusErr
+
+```text
+NOT_CONFIGURED
+NOT_CONNECTED
+NOT_ACTIVE
+INVALID_CFG
+OPEN_FAILED
+READ_FAILED
+WRITE_FAILED
+INVALID_STATE
+INVALID_CMD
+ACTUATOR_OFFLINE
+ACTUATOR_FAULT
+TIMEOUT
+ENABLE_FAILED
+MODE_SWITCH_FAILED
+STOP_FAILED
+DISABLE_FAILED
+RECOVER_FAILED
+```
+
+## 13. DamiaoMotorBus
 
 头文件
 
@@ -585,41 +953,41 @@ public:
 #include <dm_arm/hardware/damiao_motor_bus.hpp>
 ```
 
-### 9.1. 配置和生命周期
+### 13.1. configure()
 
 ```cpp
 tl::expected<void, MotorBusErr> configure(const DamiaoBusCfg& cfg);
-tl::expected<void, MotorBusErr> connect() override;
-tl::expected<ActuatorState, MotorBusErr> read() override;
-tl::expected<void, MotorBusErr> activate() override;
-tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) override;
-tl::expected<void, MotorBusErr> stop() override;
-tl::expected<void, MotorBusErr> deactivate() override;
-tl::expected<void, MotorBusErr> recover() override;
-void cleanup() noexcept override;
-std::size_t size() const noexcept override;
 ```
 
-### 9.2. 静态信息
+### 13.2. connect()
 
-```cpp
-struct DamiaoActuatorInfo {
-    std::string name;
-    std::string joint_name;
-    std::uint32_t motor_id{ 0 };
-    std::uint32_t master_id{ 0 };
-    std::string motor_type;
-    double q_max{ 0.0 };
-    double dq_max{ 0.0 };
-    double tau_max{ 0.0 };
-};
-```
+打开串口、创建 MotorControl 和 Motor 对象；不使能执行器
+
+### 13.3. activate()
+
+逐轴执行清理失能、使能和 MIT 模式切换；重试次数来自 `activation_retries`
+
+### 13.4. read() 与 write()
+
+- `read()` 返回缓存或主动查询后的状态
+- `feedback_timeout_s` 用于执行器在线判定
+- `write()` 校验并发送六轴 MIT 命令
+
+### 13.5. deactivate() 与 recover()
+
+- `stop()` 使用 `stop_kp`、`stop_kd` 和 `stop_cycles`
+- `deactivate()` 停止后失能
+- `recover()` 清理协议和串口状态，保留配置
+
+### 13.6. get_actuator_info()
 
 ```cpp
 const std::vector<DamiaoActuatorInfo>& get_actuator_info() const noexcept;
 ```
 
-## 10. Dynamics
+返回名称、Joint、ID、型号和 q、dq、tau 物理范围
+
+## 14. Dynamics
 
 头文件
 
@@ -627,136 +995,104 @@ const std::vector<DamiaoActuatorInfo>& get_actuator_info() const noexcept;
 #include <dm_arm/dynamics/dynamics.hpp>
 ```
 
-### 10.1. 错误码
+### 14.1. configure()
 
 ```cpp
-enum class DynamicsErr {
-    NOT_CONFIGURED,
-    ALREADY_CONFIGURED,
-    NOT_UPDATED,
-    INVALID_CFG,
-    URDF_LOAD_FAILED,
-    JOINT_NOT_FOUND,
-    JOINT_NOT_1DOF,
-    MODEL_SIZE_MISMATCH,
-    FRAME_NOT_FOUND,
-    INVALID_INPUT_SIZE,
-    NON_FINITE_INPUT,
-    COMPUTE_FAILED,
-};
-```
-
-### 10.2. 模型信息
-
-```cpp
-struct DynamicsInfo {
-    std::size_t joints_count{ 0 };
-    int nq{ 0 };
-    int nv{ 0 };
-    double total_mass{ 0.0 };
-    std::vector<std::string> joint_names;
-    std::vector<int> q_indices;
-    std::vector<int> v_indices;
-};
-```
-
-### 10.3. 周期缓存
-
-```cpp
-struct DynamicsState {
-    JointVector pos;
-    JointVector vel;
-    JointVector acc;
-    JointVector tor;
-    JointVector ref_acc;
-    JointVector gravity;
-    JointVector gravity_compensation;
-    JointVector nonlinear;
-    JointVector coriolis;
-    JointVector inverse_dynamics;
-    JointVector forward_dynamics;
-    Eigen::MatrixXd mass_matrix;
-    Eigen::Isometry3d tool_pose{ Eigen::Isometry3d::Identity() };
-    Eigen::MatrixXd tool_jacobian;
-};
-```
-
-### 10.4. 主要接口
-
-```cpp
-Dynamics();
-~Dynamics();
-Dynamics(Dynamics&& other) noexcept;
-Dynamics& operator=(Dynamics&& other) noexcept;
-
 tl::expected<void, DynamicsErr> configure(const DynamicsCfg& cfg);
+```
+
+加载 URDF，构造受控 Joint reduced model，解析 base 和 tool Frame
+
+### 14.2. update()
+
+```cpp
 tl::expected<void, DynamicsErr> update(const JointState& state, const JointVector& acc, const JointVector& ref_acc);
-tl::expected<void, DynamicsErr> set_gravity_scale(const JointVector& gravity_scale);
-void cleanup();
+```
 
-bool is_configured() const noexcept;
-bool is_updated() const noexcept;
-const DynamicsInfo& get_info() const noexcept;
-const DynamicsState& get_state() const noexcept;
-const JointVector& get_gravity_scale() const noexcept;
+一次性更新
 
-tl::expected<Eigen::Isometry3d, DynamicsErr> get_frame_pose(const std::string& frame_name) const;
-tl::expected<Eigen::MatrixXd, DynamicsErr> get_frame_jacobian(const std::string& frame_name) const;
+```text
+q、dq、ddq、反馈力矩、参考加速度
+gravity、gravity_compensation
+nonlinear、coriolis
+mass_matrix
+inverse_dynamics、forward_dynamics
+tool_pose、tool_jacobian
+```
 
+### 14.3. Gravity 与 Nonlinear
+
+```cpp
 const JointVector& get_gravity() const noexcept;
 const JointVector& get_gravity_compensation() const noexcept;
 const JointVector& get_nonlinear() const noexcept;
 const JointVector& get_coriolis() const noexcept;
+```
+
+### 14.4. Mass Matrix
+
+```cpp
 const Eigen::MatrixXd& get_mass_matrix() const noexcept;
+```
+
+### 14.5. Inverse 与 Forward Dynamics
+
+```cpp
 const JointVector& get_inverse_dynamics() const noexcept;
 const JointVector& get_forward_dynamics() const noexcept;
+```
+
+逆动力学使用 `ref_acc`；正动力学使用反馈力矩
+
+### 14.6. Pose 与 Jacobian
+
+```cpp
 const Eigen::Isometry3d& get_tool_pose() const noexcept;
 const Eigen::MatrixXd& get_tool_jacobian() const noexcept;
+tl::expected<Eigen::Isometry3d, DynamicsErr> get_frame_pose(const std::string& frame_name) const;
+tl::expected<Eigen::MatrixXd, DynamicsErr> get_frame_jacobian(const std::string& frame_name) const;
 ```
 
-### 10.5. 更新语义
+Frame getter 读取最近一次 `update()` 的缓存
 
-`update()` 同一周期集中执行
-
-- JointVector 到 Pinocchio 模型向量映射
-- `computeAllTerms()`
-- Frame placements
-- 全部 Frame Jacobian 缓存
-- `g(q)`
-- `nle(q, dq)`
-- `c(q, dq)`
-- `M(q)`
-- `RNEA(q, dq, ref_acc)`
-- `ABA(q, dq, tau_feedback)`
-
-### 10.6. 标准用法
+### 14.7. gravity_scale
 
 ```cpp
-dm_arm::Dynamics dynamics;
-
-const auto configure_result = dynamics.configure(cfg.dynamics);
-if(!configure_result) {
-    return 1;
-}
-
-const auto update_result = dynamics.update(joint_state, joint_acc, joint_ref_acc);
-if(!update_result) {
-    return 1;
-}
-
-const dm_arm::DynamicsState& model_state = dynamics.get_state();
+tl::expected<void, DynamicsErr> set_gravity_scale(const JointVector& gravity_scale);
+const JointVector& get_gravity_scale() const noexcept;
 ```
 
-### 10.7. Frame getter
+每轴范围为 `[0, 1]`
+
+其他状态
 
 ```cpp
-const auto pose = dynamics.get_frame_pose("tool0");
-const auto jacobian = dynamics.get_frame_jacobian("tool0");
+bool is_configured() const noexcept;
+bool is_updated() const noexcept;
+const DynamicsInfo& get_info() const noexcept;
+const DynamicsState& get_state() const noexcept;
+void cleanup();
 ```
 
-这两个 getter 只读取缓存；首次 `update()` 前返回 `DynamicsErr::NOT_UPDATED`
+### 14.8. DynamicsErr
 
-## 11. Robot
+```text
+NOT_CONFIGURED
+ALREADY_CONFIGURED
+NOT_UPDATED
+INVALID_CFG
+URDF_LOAD_FAILED
+JOINT_NOT_FOUND
+JOINT_NOT_1DOF
+MODEL_SIZE_MISMATCH
+FRAME_NOT_FOUND
+INVALID_INPUT_SIZE
+NON_FINITE_INPUT
+GRAVITY_SCALE_OUT_OF_RANGE
+COMPUTE_FAILED
+```
+
+## 15. Robot
 
 头文件
 
@@ -764,94 +1100,99 @@ const auto jacobian = dynamics.get_frame_jacobian("tool0");
 #include <dm_arm/robot.hpp>
 ```
 
-### 11.1. 生命周期
-
-```cpp
-enum class RobotState {
-    UNCONFIGURED,
-    INACTIVE,
-    ACTIVE,
-    FAULT,
-};
-```
-
-```text
-UNCONFIGURED
-    ↓ configure
-INACTIVE
-    ↓ activate
-ACTIVE
-    ↓ deactivate
-INACTIVE
-
-ACTIVE
-    ↓ fault
-FAULT
-    ↓ reset_fault
-INACTIVE
-```
-
-### 11.2. 模型前馈函数
-
-```cpp
-using ModelFeedforwardFn = std::function<tl::expected<JointVector, ModelFeedforwardErr>(ModelFeedforwardMode, const JointState&, const JointVector&, const JointVector&, double)>;
-```
-
-参数顺序
-
-```text
-mode
-JointState
-joint_acc
-joint_ref_acc
-dt
-```
-
-### 11.3. 配置和生命周期接口
+### 15.1. configure()
 
 ```cpp
 tl::expected<void, RobotFault> configure(const RobotCfg& cfg, std::unique_ptr<MotorBus> motor_bus, ModelFeedforwardFn model_feedforward = {});
-tl::expected<void, RobotFault> activate();
-tl::expected<void, RobotFault> deactivate();
-tl::expected<void, RobotFault> force_deactivate();
-tl::expected<void, RobotFault> reset_fault();
-tl::expected<void, RobotFault> maintain_fault_hold();
 ```
 
-### 11.4. 命令接口
+Robot 接管 MotorBus；配置 JointCtrller、Mapper 和 Safety；不连接硬件
+
+### 15.2. activate()
 
 ```cpp
-tl::expected<void, RobotFault> set_cmd(const JointCmd& cmd, TimePoint now = Clock::now());
-tl::expected<void, RobotFault> set_full_cmd(const JointCtrlCmd& cmd, TimePoint now = Clock::now());
-tl::expected<void, RobotFault> set_impedance_mode(JointImpedanceMode mode, TimePoint now = Clock::now());
-tl::expected<void, RobotFault> set_model_feedforward_mode(ModelFeedforwardMode mode);
+tl::expected<void, RobotFault> activate();
 ```
 
-`set_model_feedforward_mode()` 仅允许在 `INACTIVE` 使用
+连接和使能硬件，读取真实状态，初始化控制器和 Safety 命令历史
 
-### 11.5. 周期接口
+### 15.3. cycle()
 
 ```cpp
 tl::expected<RobotCycleOutput, RobotFault> cycle(TimePoint now = Clock::now());
-bool is_fault_holding() const noexcept;
 ```
 
-周期输出
+调用者负责固定频率调度；时间戳必须单调
+
+### 15.4. set_cmd()
 
 ```cpp
-struct RobotCycleOutput {
-    ActuatorState actuator_state;
-    JointState joint_state;
-    JointVector joint_acc;
-    JointVector joint_ref_acc;
-    JointVector model_feedforward;
-    JointCtrlCmd joint_cmd;
-    ActuatorMitCmd actuator_cmd;
-    double dt{ 0.0 };
+tl::expected<void, RobotFault> set_cmd(const JointCmd& cmd, TimePoint now = Clock::now());
+```
+
+更新跟踪参考和命令时间戳
+
+### 15.5. set_full_cmd()
+
+```cpp
+tl::expected<void, RobotFault> set_full_cmd(const JointCtrlCmd& cmd, TimePoint now = Clock::now());
+```
+
+要求 Controller 允许完整命令
+
+### 15.6. set_impedance_mode()
+
+```cpp
+tl::expected<void, RobotFault> set_impedance_mode(JointImpedanceMode mode, TimePoint now = Clock::now());
+```
+
+### 15.7. set_model_feedforward_mode()
+
+```cpp
+tl::expected<void, RobotFault> set_model_feedforward_mode(ModelFeedforwardMode mode);
+```
+
+仅 INACTIVE 状态可切换
+
+### 15.8. deactivate() 与 force_deactivate()
+
+```cpp
+tl::expected<void, RobotFault> deactivate();
+tl::expected<void, RobotFault> force_deactivate();
+```
+
+`deactivate()` 执行正常停止失能；`force_deactivate()` 允许从 ACTIVE 或 FAULT 强制失能
+
+### 15.9. reset_fault()
+
+```cpp
+tl::expected<void, RobotFault> reset_fault();
+```
+
+根据当前 FAULT 保持状态恢复到 ACTIVE 或 INACTIVE；调用者应检查最终 `get_state()`
+
+### 15.10. maintain_fault_hold()
+
+```cpp
+tl::expected<void, RobotFault> maintain_fault_hold();
+```
+
+仅 FAULT 刚性保持有效时调用；必须由外层 Worker 持续刷新
+
+### 15.11. RobotFault 与 RobotErr
+
+```cpp
+struct RobotFault {
+    RobotErr code;
+    MotorBusErr motor_bus_err;
+    JointActuatorMapErr mapper_err;
+    JointCtrllerErr ctrller_err;
+    SafetyFault safety_fault;
+    ModelFeedforwardErr model_feedforward_err;
 };
 ```
 
-### 11.6. Getter
+Getter
 
 ```cpp
 RobotState get_state() const noexcept;
@@ -863,376 +1204,336 @@ const JointVector& get_joint_ref_acc() const noexcept;
 const JointVector& get_model_feedforward() const noexcept;
 const ActuatorState& get_actuator_state() const noexcept;
 const tl::optional<RobotFault>& get_last_fault() const noexcept;
+bool is_fault_holding() const noexcept;
 ```
 
-### 11.7. Dynamics 回调示例
+RobotErr
+
+```text
+NOT_CONFIGURED
+ALREADY_CONFIGURED
+INVALID_CFG
+NULL_MOTOR_BUS
+MOTOR_BUS_SIZE_MISMATCH
+WRITE_DISABLED
+NOT_ACTIVE
+NOT_INACTIVE
+ALREADY_ACTIVE
+FAULTED
+NOT_FAULTED
+INVALID_TIME
+MOTOR_BUS_CONNECT_FAILED
+MOTOR_BUS_ACTIVATE_FAILED
+MOTOR_BUS_READ_FAILED
+MOTOR_BUS_WRITE_FAILED
+MOTOR_BUS_DEACTIVATE_FAILED
+MOTOR_BUS_RECOVER_FAILED
+MAPPER_FAILED
+CTRLLER_FAILED
+SAFETY_FAILED
+MODEL_FEEDFORWARD_FAILED
+INVALID_MODEL_FEEDFORWARD
+```
+
+## 16. 控制循环边界
+
+### 16.1. Robot::cycle() 单周期语义
+
+Core 实现控制周期内容，不实现固定调度线程
+
+### 16.2. runtime.ctrl_frequency_hz
 
 ```cpp
-auto model_feedforward = [&dynamics](dm_arm::ModelFeedforwardMode mode, const dm_arm::JointState& state, const dm_arm::JointVector& acc, const dm_arm::JointVector& ref_acc, double) -> tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr> {
-    const auto result = dynamics.update(state, acc, ref_acc);
-    if(!result) return tl::make_unexpected(dm_arm::ModelFeedforwardErr::COMPUTE_FAILED);
-
-    if(mode == dm_arm::ModelFeedforwardMode::NONE) return dm_arm::JointVector(state.pos.size(), 0.0);
-    if(mode == dm_arm::ModelFeedforwardMode::GRAVITY) return dynamics.get_gravity_compensation();
-    if(mode == dm_arm::ModelFeedforwardMode::FULL_INVERSE_DYNAMICS) return dynamics.get_inverse_dynamics();
-    return tl::make_unexpected(dm_arm::ModelFeedforwardErr::INVALID_MODE);
-};
+const double target_dt = 1.0 / cfg.runtime.ctrl_frequency_hz;
 ```
 
-## 12. 完整应用骨架
+该值是目标频率；实际周期由系统调度、串口、动力学计算和锁竞争共同决定
 
-```cpp
-#include <dm_arm/config/config.hpp>
-#include <dm_arm/dynamics/dynamics.hpp>
-#include <dm_arm/hardware/damiao_motor_bus.hpp>
-#include <dm_arm/robot.hpp>
+### 16.3. C++ Terminal Worker
 
-int main() {
-    const auto cfg_result = dm_arm::load_robot_cfg("config/dm_arm.yaml");
-    if(!cfg_result) return 1;
+终端 Worker 持有 Robot 外层互斥；菜单线程只提交命令和读取缓存
 
-    dm_arm::RobotCfg cfg = cfg_result.value();
-    dm_arm::Dynamics dynamics;
-    if(!dynamics.configure(cfg.dynamics)) return 1;
+### 16.4. Python RobotSession Worker
 
-    auto bus = std::make_unique<dm_arm::DamiaoMotorBus>();
-    if(!bus->configure(cfg.damiao)) return 1;
+C++ Worker 独占 Robot；Python 方法通过请求和快照与其交互
 
-    auto model_feedforward = [&dynamics](dm_arm::ModelFeedforwardMode mode, const dm_arm::JointState& state, const dm_arm::JointVector& acc, const dm_arm::JointVector& ref_acc, double) -> tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr> {
-        if(!dynamics.update(state, acc, ref_acc)) return tl::make_unexpected(dm_arm::ModelFeedforwardErr::COMPUTE_FAILED);
-        if(mode == dm_arm::ModelFeedforwardMode::NONE) return dm_arm::JointVector(state.pos.size(), 0.0);
-        if(mode == dm_arm::ModelFeedforwardMode::GRAVITY) return dynamics.get_gravity_compensation();
-        return dynamics.get_inverse_dynamics();
-    };
+### 16.5. ros2_control Worker
 
-    dm_arm::Robot robot;
-    if(!robot.configure(cfg, std::move(bus), model_feedforward)) return 1;
-    if(!robot.activate()) return 1;
+`DmArmSystem` Worker 独占 Robot；`read()` 与 `write()` 只复制缓存；不得让 controller_manager 和 Worker 同时访问 Robot
 
-    while(robot.get_state() == dm_arm::RobotState::ACTIVE) {
-        const auto cycle_result = robot.cycle();
-        if(!cycle_result) break;
-    }
+## 17. Python Binding
 
-    robot.deactivate();
-    return 0;
-}
-```
-
-## 13. 调用顺序
-
-### 13.1. 启动
-
-```text
-load_robot_cfg
-→ Dynamics::configure
-→ DamiaoMotorBus::configure
-→ Robot::configure
-→ Robot::activate
-```
-
-### 13.2. ACTIVE 周期
-
-```text
-set_cmd 可选
-→ Robot::cycle
-→ 读取 RobotCycleOutput
-→ 读取 Dynamics 缓存
-```
-
-### 13.3. 正常停机
-
-```text
-Robot::deactivate
-```
-
-### 13.4. FAULT 恢复
-
-```text
-Robot::reset_fault
-→ Robot::activate
-```
-
-## 14. 实时约束
-
-周期路径应避免
-
-- YAML 读取
-- 重建 Pinocchio 模型
-- 重建 Motor 对象
-- 大量日志
-- 长时间锁等待
-- 动态切换后端
-
-当前仍存在动态容器和 `tl::expected`；项目尚未宣称硬实时
-
-## 15. Python API
-
-Python 包名为 `dm_arm`；底层扩展模块名为 `_dm_arm`
-
-### 15.1. 构建入口
-
-根 CMake 开关
-
-```cmake
--DM_ARM_BUILD_PYTHON=ON
-```
-
-该开关要求
-
-```text
-DM_ARM_ENABLE_DYNAMICS=ON
-Python Interpreter
-Python Development.Module
-pybind11
-Threads
-```
-
-`DM_ARM_BUILD_DAMIAO=ON` 时编译可用的真机 `RobotSession`；关闭 Damiao 时 Config、Core 和 Dynamics 仍可绑定，但真机会话会在 configure 阶段明确拒绝
-
-wheel 构建入口
-
-```bash
-cd python
-python -m build --wheel
-```
-
-Python 包说明见 [`../python/README.md`](../python/README.md)
-
-### 15.2. 异常
-
-所有 `tl::expected` 错误统一转换为
+Python 包
 
 ```python
-dm_arm.DmArmError
+import dm_arm
 ```
 
-配置、控制、映射、Safety、Dynamics 和 Robot 错误枚举仍然可以用于诊断
-
-```python
-try:
-    cfg = dm_arm.load_robot_cfg("missing.yaml")
-except dm_arm.DmArmError as error:
-    print(error)
-```
-
-### 15.3. NumPy 规则
-
-输入向量接受 C contiguous 或可转换为 C contiguous 的数组；内部统一转换为 `float64`
+### 17.1. 模块结构
 
 ```text
-JointVector shape = (N,)
-六轴 q、dq、ddq、tau shape = (6,)
-质量矩阵 shape = (6, 6)
-Jacobian shape = (6, 6)
-位姿 shape = (4, 4)
+dm_arm/__init__.py
+_dm_arm*.so
 ```
 
-所有 C++ 向量、矩阵和位姿 getter 都返回 Python 独立副本；修改返回数组不会修改 C++ 缓存
+`_dm_arm*.so` 是 CMake 和 pybind11 编译的扩展；`__init__.py` 提供 Python 封装和公开导出
 
-### 15.4. 配置 API
+### 17.2. Config Binding
 
-公开类型
-
-```text
-RuntimeCfg
-JointCtrllerCfg
-JointActuatorMapCfg
-JointLimitCfg
-SafetyCfg
-DamiaoActuatorCfg
-DamiaoBusCfg
-DynamicsCfg
-RobotCfg
-ConfigErr
-ConfigErrInfo
-```
-
-公开函数
+Python 公开
 
 ```python
-cfg = dm_arm.load_robot_cfg("config/dm_arm.yaml")
-dm_arm.validate_robot_core_cfg(cfg)
-dm_arm.validate_robot_cfg(cfg)
+load_robot_cfg(path)
+validate_robot_core_cfg(cfg)
+validate_robot_cfg(cfg)
 ```
 
-### 15.5. 状态和命令类型
+`compare_robot_cfg()` 当前未导出到 Python
 
-公开类型
-
-```text
-JointState
-ActuatorState
-JointPosCmd
-JointPosVelCmd
-JointPosVelTorCmd
-JointCtrlCmd
-ActuatorMitCmd
-```
-
-向量成员通过 NumPy 属性读写
-
-```python
-state = dm_arm.JointState()
-state.pos = np.zeros(6)
-state.vel = np.zeros(6)
-state.tor = np.zeros(6)
-```
-
-### 15.6. JointCtrller
-
-```python
-ctrller = dm_arm.JointCtrller()
-ctrller.configure(cfg.ctrller)
-ctrller.initialize(state)
-ctrller.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING, state)
-ctrller.set_pos_vel_cmd(pos, vel)
-cmd = ctrller.update(state, model_feedforward, 0.005)
-```
-
-公开方法
-
-```text
-configure
-initialize
-reset
-set_impedance_mode
-set_pos_cmd
-set_pos_vel_cmd
-set_pos_vel_tor_cmd
-set_full_cmd
-update
-```
-
-### 15.7. JointActuatorMapper
-
-```python
-mapper = dm_arm.JointActuatorMapper()
-mapper.configure(cfg.mapper)
-actuator_cmd = mapper.to_actuator_cmd(joint_cmd)
-joint_state = mapper.to_joint_state(actuator_state)
-```
-
-### 15.8. Safety
-
-```python
-safety = dm_arm.Safety()
-safety.configure(cfg.safety)
-safety.check_state(joint_state, actuator_state, state_age_s=0.005)
-safe_cmd = safety.check_joint_cmd(joint_state, joint_cmd, dt=0.005)
-```
-
-公开诊断
-
-```text
-configured
-clamp_count
-action_for
-```
-
-### 15.9. Dynamics
+### 17.3. Dynamics Binding
 
 ```python
 dynamics = dm_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
-dynamics.update(q, dq, ddq, tau, ddq_ref)
+dynamics.update(pos, vel, acc, tor, ref_acc)
 ```
 
-更新后读取缓存
+NumPy 输入要求可转换为连续 `float64` 一维数组
+
+### 17.4. RobotSession
 
 ```python
-state = dynamics.state
-gravity = dynamics.gravity
-gravity_compensation = dynamics.gravity_compensation
-nonlinear = dynamics.nonlinear
-coriolis = dynamics.coriolis
-mass_matrix = dynamics.mass_matrix
-inverse_dynamics = dynamics.inverse_dynamics
-forward_dynamics = dynamics.forward_dynamics
-tool_pose = dynamics.tool_pose
-tool_jacobian = dynamics.tool_jacobian
+session = dm_arm.RobotSession(config_file, allow_hardware=False)
 ```
 
-指定 Frame
+构造阶段加载配置和构建 C++ 对象，不激活真机
 
-```python
-pose = dynamics.frame_pose("tool0")
-jacobian = dynamics.frame_jacobian("tool0")
-```
+### 17.5. RobotSessionSnapshot
 
-Dynamics 计算期间释放 GIL；NumPy 转换和返回值复制在持有 GIL 时完成
-
-### 15.10. RobotSession
-
-Python 不直接绑定由调用方驱动的 `Robot::cycle()` 真机循环；公开的 `RobotSession` 在 C++ 内部创建工作线程并独占 Robot、DamiaoMotorBus 和 Dynamics
-
-构造
-
-```python
-session = dm_arm.RobotSession("config/dm_arm.yaml", allow_hardware=True)
-```
-
-生命周期
-
-```python
-session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
-session.start()
-session.stop()
-session.reset_fault()
-```
-
-`set_model_feedforward_mode()` 只允许 INACTIVE；运行期间调用会抛出 `DmArmError`
-
-模式和目标
-
-```python
-session.set_impedance_mode(dm_arm.JointImpedanceMode.RIGID_TRACKING)
-session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
-session.move_to(np.array([0.0, 0.2, 0.2, 0.0, 0.0, 0.0]), speed_scale=0.2)
-session.hold_current()
-```
-
-状态
-
-```python
-snapshot = session.snapshot
-print(snapshot.robot_state)
-print(snapshot.valid)
-print(snapshot.last_error)
-print(snapshot.cycle.joint_state.pos)
-print(snapshot.cycle.actuator_state.pos)
-print(snapshot.cycle.joint_acc)
-print(snapshot.dynamics.gravity)
-```
-
-静态信息
-
-```python
-print(session.config)
-print(session.dynamics_info)
-print(session.actuator_info)
-```
-
-### 15.11. RobotSession 安全语义
-
-真机启动必须同时满足
+包含
 
 ```text
-Python 构造 allow_hardware=True
-YAML runtime.write_enabled=true
-CMake DM_ARM_BUILD_DAMIAO=ON
+robot_state
+cycle
+dynamics
+valid
+last_error
 ```
 
-`start()` 负责激活和启动 C++ 周期线程；`stop()` 停止线程并在 ACTIVE 时调用 `Robot::deactivate()`；工作线程错误写入 `snapshot.last_error` 并停止周期；FAULT 必须显式调用 `reset_fault()`
+快照返回副本；Python 不持有 C++ 实时缓存引用
 
-`move_to()` 使用 C++ 梯形位置速度参考；目标必须位于 Safety 软限位内；调用前必须请求 `RIGID_TRACKING` 或 `COMPLIANT_TRACKING`
+### 17.6. NumPy 与 GIL 语义
 
-### 15.12. 上下文管理器
+- 数组输入转换为连续 `numpy.float64`
+- C++ 长操作在绑定中按需要释放 GIL
+- Worker 不持有 Python GIL
+- Python 回调不进入 200 Hz 周期
+
+### 17.7. DmArmError
+
+C++ `tl::expected` 错误在 Python 中转换为统一 `DmArmError`
+
+RobotSession 主要方法
 
 ```python
-with dm_arm.RobotSession("config/dm_arm.yaml", allow_hardware=True) as session:
-    session.set_impedance_mode(dm_arm.JointImpedanceMode.COMPLIANT_DRAG)
-    snapshot = session.snapshot
+start()
+stop()
+reset_fault()
+set_impedance_mode(mode)
+set_model_feedforward_mode(mode)
+set_gravity_scale(scale)
+move_to(pos, speed_scale=0.3)
+hold_current()
 ```
 
-退出上下文时自动调用 `stop()`
+属性
+
+```python
+snapshot
+state
+configured
+running
+config
+dynamics_info
+actuator_info
+```
+
+`stop()` 不生成停放轨迹；应用层应先 `move_to(park_pos)` 和 `hold_current()`
+
+## 18. Adapter 接入契约
+
+### 18.1. Robot 所有权
+
+每个 Adapter 实例必须独占一个 Robot 和一个 MotorBus；禁止多线程直接共享 Robot
+
+### 18.2. Command 缓存
+
+上层命令应先进入固定大小缓存；控制 Worker 每周期读取最近合法命令并调用 `Robot::set_cmd()`
+
+### 18.3. State 快照
+
+Worker 在 `Robot::cycle()` 成功后更新快照；上层只读取快照，不直接访问硬件
+
+### 18.4. 生命周期映射
+
+推荐映射
+
+```text
+Adapter configure → Robot::configure
+Adapter activate  → Robot::activate + Worker start
+Adapter deactivate→ Worker stop + Robot::deactivate
+Adapter cleanup   → Robot 和后端析构
+```
+
+### 18.5. Safety 边界
+
+Adapter 不得绕过
+
+- `Robot::set_cmd()`
+- `Safety::check_state()`
+- `Safety::check_joint_cmd()`
+- `JointActuatorMapper`
+
+上层规划限制不能替代 Core Safety
+
+## 19. 示例
+
+### 19.1. 加载配置
+
+```cpp
+const auto result = dm_arm::load_robot_cfg("dm_arm_white.yaml");
+if(!result) return 1;
+const auto cfg = result.value();
+```
+
+### 19.2. 离线 Dynamics
+
+```cpp
+dm_arm::Dynamics dynamics;
+if(!dynamics.configure(cfg.dynamics)) return 1;
+
+dm_arm::JointState state;
+state.pos.assign(cfg.joint_names.size(), 0.0);
+state.vel.assign(cfg.joint_names.size(), 0.0);
+state.tor.assign(cfg.joint_names.size(), 0.0);
+
+dm_arm::JointVector acc(cfg.joint_names.size(), 0.0);
+dm_arm::JointVector ref_acc(cfg.joint_names.size(), 0.0);
+if(!dynamics.update(state, acc, ref_acc)) return 1;
+```
+
+### 19.3. C++ Robot
+
+```cpp
+auto bus = std::make_unique<dm_arm::DamiaoMotorBus>();
+if(!bus->configure(cfg.damiao)) return 1;
+
+dm_arm::Dynamics dynamics;
+if(!dynamics.configure(cfg.dynamics)) return 1;
+
+dm_arm::ModelFeedforwardFn feedforward = [&dynamics](dm_arm::ModelFeedforwardMode mode, const dm_arm::JointState& state, const dm_arm::JointVector& acc, const dm_arm::JointVector& ref_acc, double) {
+    const auto update_result = dynamics.update(state, acc, ref_acc);
+    if(!update_result) return tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr>(tl::make_unexpected(dm_arm::ModelFeedforwardErr::COMPUTE_FAILED));
+    if(mode == dm_arm::ModelFeedforwardMode::GRAVITY) return tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr>(dynamics.get_gravity_compensation());
+    if(mode == dm_arm::ModelFeedforwardMode::FULL_INVERSE_DYNAMICS) return tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr>(dynamics.get_inverse_dynamics());
+    return tl::expected<dm_arm::JointVector, dm_arm::ModelFeedforwardErr>(dm_arm::JointVector(state.pos.size(), 0.0));
+};
+
+dm_arm::Robot robot;
+if(!robot.configure(cfg, std::move(bus), std::move(feedforward))) return 1;
+```
+
+### 19.4. Python RobotSession
+
+```python
+import dm_arm
+import numpy as np
+
+session = dm_arm.RobotSession("dm_arm_white.yaml", allow_hardware=True)
+session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
+session.start()
+session.move_to(np.zeros(6), speed_scale=0.1)
+```
+
+### 19.5. 下游 CMake
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(dm_arm_app LANGUAGES CXX)
+
+find_package(pinocchio CONFIG REQUIRED)
+find_package(dm_arm_core CONFIG REQUIRED)
+
+add_executable(dm_arm_app main.cpp)
+target_link_libraries(dm_arm_app PRIVATE
+    dm_arm::config
+    dm_arm::robot
+    dm_arm::damiao
+    dm_arm::dynamics
+)
+target_compile_features(dm_arm_app PRIVATE cxx_std_17)
+```
+
+## 20. 错误码索引
+
+### 20.1. ConfigErr
+
+```text
+FILE_OPEN_FAILED
+SYNTAX_ERROR
+MISSING_FIELD
+INVALID_VALUE
+INVALID_SIZE
+DUPLICATE_NAME
+DUPLICATE_MOTOR_ID
+```
+
+### 20.2. ModelErr
+
+```text
+FILE_OPEN_FAILED
+URDF_LOAD_FAILED
+MISSING_JOINT
+DUPLICATE_JOINT
+FIXED_JOINT_CONTROLLED
+INVALID_LIMIT
+```
+
+### 20.3. HardwareCapabilityErr
+
+```text
+INVALID_CFG
+UNKNOWN_MOTOR_TYPE
+```
+
+### 20.4. LimitResolverErr
+
+```text
+INVALID_INPUT
+MISSING_ACTUATOR
+POLICY_WIDENS_LIMIT
+```
+
+### 20.5. JointCtrllerErr
+
+见 `9.7. JointCtrllerErr`
+
+### 20.6. JointActuatorMapErr
+
+见 `10.5. JointActuatorMapErr`
+
+### 20.7. SafetyErr
+
+见 `11.6. SafetyErr`
+
+### 20.8. MotorBusErr
+
+见 `12.5. MotorBusErr`
+
+### 20.9. DynamicsErr
+
+见 `14.8. DynamicsErr`
+
+### 20.10. RobotErr
+
+见 `15.11. RobotFault 与 RobotErr`
