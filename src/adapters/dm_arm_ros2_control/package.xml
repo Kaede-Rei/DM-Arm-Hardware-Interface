@@ -1,33 +1,28 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>dm_arm_ros2_control</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kaerei86@gmail.com">kaede-rei</maintainer>
-  <license>TODO: License declaration</license>
+    <name>dm_arm_ros2_control</name>
+    <version>0.1.0</version>
+    <description>ros2_control hardware interface for DM-Arm Damiao hardware</description>
+    <maintainer email="kaerei86@gmail.com">kaede-rei</maintainer>
+    <license>MIT</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
+    <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>rclcpp</depend>
-  <depend>rclcpp_lifecycle</depend>
-  <depend>hardware_interface</depend>
-  <depend>controller_interface</depend>
-  <depend>controller_manager</depend>
-  <depend>controller_manager_msgs</depend>
-  <depend>pluginlib</depend>
-  <depend>realtime_tools</depend>
-  <depend>joint_state_broadcaster</depend>
-  <depend>joint_trajectory_controller</depend>
-  <depend>diagnostic_msgs</depend>
-  <depend>diagnostic_updater</depend>
-  <depend>xacro</depend>
-  <depend>robot_state_publisher</depend>
+    <depend>dm_arm_core</depend>
+    <depend>rclcpp</depend>
+    <depend>rclcpp_lifecycle</depend>
+    <depend>hardware_interface</depend>
+    <depend>controller_manager</depend>
+    <depend>controller_manager_msgs</depend>
+    <depend>pluginlib</depend>
+    <depend>realtime_tools</depend>
+    <depend>joint_state_broadcaster</depend>
+    <depend>joint_trajectory_controller</depend>
+    <depend>xacro</depend>
+    <depend>robot_state_publisher</depend>
 
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
-
-  <export>
-    <build_type>ament_cmake</build_type>
-  </export>
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
 </package>

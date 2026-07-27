@@ -1,37 +1,69 @@
 cmake_minimum_required(VERSION 3.8)
 project(dm_arm_ros2_control)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(dm_arm_core CONFIG REQUIRED)
+find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(pinocchio CONFIG REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
-find_package(controller_interface REQUIRED)
 find_package(controller_manager REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(realtime_tools REQUIRED)
-find_package(joint_state_broadcaster REQUIRED)
-find_package(joint_trajectory_controller REQUIRED)
-find_package(diagnostic_msgs REQUIRED)
-find_package(diagnostic_updater REQUIRED)
-find_package(xacro REQUIRED)
-find_package(robot_state_publisher REQUIRED)
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
+add_library(dm_arm_system SHARED
+  src/dm_arm_system.cpp
+)
 
+target_include_directories(dm_arm_system
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(dm_arm_system
+  rclcpp
+  rclcpp_lifecycle
+  hardware_interface
+  pluginlib
+  realtime_tools
+)
+
+target_link_libraries(dm_arm_system
+  dm_arm::core
+  dm_arm::config
+  dm_arm::robot
+  dm_arm::damiao
+  dm_arm::dynamics
+)
+
+pluginlib_export_plugin_description_file(hardware_interface dm_arm_hardware_plugin.xml)
+
+install(TARGETS
+  dm_arm_system
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY include/
+  DESTINATION include
+)
+
+install(DIRECTORY config launch urdf
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(FILES dm_arm_hardware_plugin.xml
+  DESTINATION share/${PROJECT_NAME}
+)
+
+ament_export_include_directories(include)
+ament_export_dependencies(hardware_interface pluginlib)
 ament_package()
