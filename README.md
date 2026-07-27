@@ -128,9 +128,6 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 │   └── dm_arm.yaml
 ├── description/
 │   └── urdf/dm_arm.urdf
-├── docs/
-│   ├── API.md
-│   └── DM-Arm从头重写完整步骤.md
 ├── include/dm_arm/
 │   ├── config/config.hpp
 │   ├── core/

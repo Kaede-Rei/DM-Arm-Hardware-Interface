@@ -11,7 +11,6 @@
             <joint name="joint1">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint1']}</param>
                 </state_interface>
@@ -21,7 +20,6 @@
             <joint name="joint2">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint2']}</param>
                 </state_interface>
@@ -31,7 +29,6 @@
             <joint name="joint3">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint3']}</param>
                 </state_interface>
@@ -41,7 +38,6 @@
             <joint name="joint4">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint4']}</param>
                 </state_interface>
@@ -51,7 +47,6 @@
             <joint name="joint5">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint5']}</param>
                 </state_interface>
@@ -61,7 +56,6 @@
             <joint name="joint6">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['joint6']}</param>
                 </state_interface>
@@ -71,7 +65,6 @@
             <joint name="gripper_left">
                 <command_interface name="position"/>
                 <command_interface name="velocity"/>
-                <command_interface name="effort"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['gripper_left']}</param>
                 </state_interface>
