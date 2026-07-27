@@ -1,0 +1,31 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: dm_arm_core
+    relative_path: description/urdf/dm_arm_no_gripper.urdf
+  srdf:
+    relative_path: config/DM-Arm.srdf
+  package_settings:
+    author_name: Kaede Rei
+    author_email: kaerei@foxmail.com
+    generated_timestamp: 1785131952
+  control_xacro:
+    command:
+      - position
+      - velocity
+      - effort
+    state:
+      - position
+      - velocity
+      - effort
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+      - velocity
+      - effort
+    state:
+      - position
+      - velocity
+      - effort

@@ -61,7 +61,7 @@ import vtk
 import yaml
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "dm_arm_white.yaml"
-PACKAGE_NAME = "dm_arm_hardware_interface"
+PACKAGE_NAME = "dm_arm_core"
 WINDOW_TITLE = "Model Viewer"
 
 

@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <package format="3">
-    <name>dm_arm_hardware_interface</name>
+    <name>dm_arm_core</name>
     <version>0.1.0</version>
     <description>Standalone DM-Arm platform core with configuration, dynamics, hardware backends, and ROS 2/Python adapters.</description>
     <maintainer email="kaerei@foxmail.com">DM-Arm Maintainer</maintainer>
     <license>MIT</license>
-    <buildtool_depend>cmake</buildtool_depend>
+    <buildtool_depend>ament_cmake</buildtool_depend>
     <depend>yaml-cpp</depend>
     <export>
-        <build_type>cmake</build_type>
+        <build_type>ament_cmake</build_type>
     </export>
 </package>

@@ -123,7 +123,7 @@ DM-Arm Hardware Interface 是面向六轴 DM-Arm 机械臂的独立 C++17 控制
 ├── app/
 │   └── dm_arm_terminal.cpp
 ├── cmake/
-│   └── dm_arm_hardware_interfaceConfig.cmake.in
+│   └── dm_arm_coreConfig.cmake.in
 ├── config/
 │   └── dm_arm.yaml
 ├── description/
@@ -570,7 +570,7 @@ with session:
 安装后
 
 ```cmake
-find_package(dm_arm_hardware_interface REQUIRED)
+find_package(dm_arm_core REQUIRED)
 
 target_link_libraries(your_app PRIVATE
     dm_arm::core

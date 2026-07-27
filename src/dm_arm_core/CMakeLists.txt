@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(dm_arm_hardware_interface VERSION 0.1.0 LANGUAGES CXX)
+project(dm_arm_core VERSION 0.1.0 LANGUAGES CXX)
 
 # =============================================================================
 # 全局 C++ / CMake 配置
@@ -13,6 +13,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+# When built by ROS 2/colcon, also register this CMake package in the ament
+# index so package://dm_arm_core URIs resolve in tools such as MoveIt Setup
+# Assistant. The library targets remain usable as a plain CMake package.
+find_package(ament_cmake QUIET)
 
 # =============================================================================
 # 构建选项
@@ -359,18 +364,26 @@ install(DIRECTORY config/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/config
 )
 
+install(DIRECTORY description/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/description
+)
+
+install(FILES package.xml
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}
+)
+
 # =============================================================================
 # 安装：CMake package 导出
 # =============================================================================
 
 configure_package_config_file(
-    cmake/dm_arm_hardware_interfaceConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfig.cmake
+    cmake/dm_arm_coreConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_coreConfig.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
 
 write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfigVersion.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_coreConfigVersion.cmake
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
@@ -382,10 +395,16 @@ install(EXPORT dm_arm_targets
 )
 
 install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_hardware_interfaceConfigVersion.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_coreConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/dm_arm_coreConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
+
+if(ament_cmake_FOUND)
+    ament_export_targets(dm_arm_targets HAS_LIBRARY_TARGET)
+    ament_export_dependencies(yaml-cpp)
+    ament_package()
+endif()
 
 # =============================================================================
 # 配置摘要
