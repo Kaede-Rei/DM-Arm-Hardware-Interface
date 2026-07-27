@@ -23,13 +23,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/base_link.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/base_link.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/base_link.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/base_link.stl" />
             </geometry>
         </collision>
     </link>
@@ -42,13 +42,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link1-2.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link1-2.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link1-2.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link1-2.stl" />
             </geometry>
         </collision>
     </link>
@@ -68,13 +68,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link2-3.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link2-3.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link2-3.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link2-3.stl" />
             </geometry>
         </collision>
     </link>
@@ -94,13 +94,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link3-4.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link3-4.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link3-4.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link3-4.stl" />
             </geometry>
         </collision>
     </link>
@@ -120,13 +120,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link4-5.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link4-5.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link4-5.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link4-5.stl" />
             </geometry>
         </collision>
     </link>
@@ -146,13 +146,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link5-6.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link5-6.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link5-6.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link5-6.stl" />
             </geometry>
         </collision>
     </link>
@@ -172,13 +172,13 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/visual/link6-7.glb" />
+                <mesh filename="package://dm_arm_core/description/meshes/visual/link6-7.glb" />
             </geometry>
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://dm_arm_hardware_interface/description/meshes/collision/link6-7.stl" />
+                <mesh filename="package://dm_arm_core/description/meshes/collision/link6-7.stl" />
             </geometry>
         </collision>
     </link>
@@ -194,6 +194,59 @@
         <origin xyz="0.072 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
         <parent link="link6-7" />
         <child link="link_tcp" />
+    </joint>
+    <link name="finger_left">
+        <inertial>
+            <origin xyz="0.08 0.04 -0.06" rpy="0 0 0" />
+            <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
+            <mass value="0.05" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://dm_arm_core/description/meshes/visual/finger_left.glb" />
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://dm_arm_core/description/meshes/collision/finger_left.stl" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="gripper_left" type="prismatic">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="link6-7" />
+        <child link="finger_left" />
+        <axis xyz="0 1 0" />
+        <limit lower="-0.045" upper="0.001" effort="20" velocity="0.18" />
+    </joint>
+    <link name="finger_right">
+        <inertial>
+            <origin xyz="0.08 -0.04 -0.06" rpy="0 0 0" />
+            <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00003" />
+            <mass value="0.05" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://dm_arm_core/description/meshes/visual/finger_right.glb" />
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://dm_arm_core/description/meshes/collision/finger_right.stl" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="gripper_right" type="prismatic">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="link6-7" />
+        <child link="finger_right" />
+        <axis xyz="0 -1 0" />
+        <limit lower="-0.045" upper="0.001" effort="20" velocity="0.18" />
+        <mimic joint="gripper_left" multiplier="1.0" offset="0.0"/>
     </joint>
     <link name="tool0" />
     <joint name="gripper_tool0" type="fixed">
