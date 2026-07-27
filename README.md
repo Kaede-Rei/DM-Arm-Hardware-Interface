@@ -306,7 +306,6 @@ cmake -S . -B build \
   -DDM_ARM_BUILD_DAMIAO=ON \
   -DDM_ARM_ENABLE_DYNAMICS=ON \
   -DDM_ARM_BUILD_PYTHON=OFF \
-  -DDM_ARM_BUILD_ROS2=OFF
 
 cmake --build build -j"$(nproc)"
 ```
@@ -333,8 +332,7 @@ cmake --install build --prefix install
 | `DM_ARM_BUILD_TERMINAL` | `ON` | 已实现；要求 Damiao 和 Dynamics 同时开启 |
 | `DM_ARM_BUILD_DAMIAO` | `ON` | 已实现 |
 | `DM_ARM_ENABLE_DYNAMICS` | `ON` | 已实现 |
-| `DM_ARM_BUILD_PYTHON` | `OFF` | 已实现；要求 Dynamics，Damiao 开启时额外提供真机 RobotSession |
-| `DM_ARM_BUILD_ROS2` | `OFF` | 未实现；开启时 CMake 主动报错 |
+| `DM_ARM_BUILD_PYTHON` | `ON` | 已实现；要求 Dynamics，Damiao 开启时额外提供真机 RobotSession |
 
 ---
 

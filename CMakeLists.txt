@@ -30,9 +30,6 @@ option(DM_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" ON)
 # Python：编译 pybind11 离线 API 与 C++ RobotSession 真机接口
 option(DM_ARM_BUILD_PYTHON "Build Python binding" ON)
 
-# ROS 2：预留 ros2_control 适配开关；对应 target 尚未实现
-option(DM_ARM_BUILD_ROS2 "Build ROS 2 integration" OFF)
-
 # =============================================================================
 # 公共辅助函数
 # =============================================================================
@@ -294,17 +291,6 @@ if(DM_ARM_BUILD_PYTHON)
 endif()
 
 # =============================================================================
-# 可选模块：DM_ARM_BUILD_ROS2
-# =============================================================================
-
-if(DM_ARM_BUILD_ROS2)
-    # ROS 2 / ros2_control 适配建议位于独立 ament_cmake 包，避免根项目强依赖 ROS
-    message(FATAL_ERROR
-        "DM_ARM_BUILD_ROS2=ON, but the ROS 2 integration target has not been "
-        "implemented yet. Keep this option OFF until mainline D is added.")
-endif()
-
-# =============================================================================
 # 可选应用：DM_ARM_BUILD_TERMINAL
 # =============================================================================
 
@@ -410,4 +396,3 @@ message(STATUS "  DM_ARM_BUILD_TERMINAL = ${DM_ARM_BUILD_TERMINAL}")
 message(STATUS "  DM_ARM_BUILD_DAMIAO   = ${DM_ARM_BUILD_DAMIAO}")
 message(STATUS "  DM_ARM_ENABLE_DYNAMICS= ${DM_ARM_ENABLE_DYNAMICS}")
 message(STATUS "  DM_ARM_BUILD_PYTHON   = ${DM_ARM_BUILD_PYTHON}")
-message(STATUS "  DM_ARM_BUILD_ROS2     = ${DM_ARM_BUILD_ROS2}")

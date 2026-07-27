@@ -1236,11 +1236,3 @@ with dm_arm.RobotSession("config/dm_arm.yaml", allow_hardware=True) as session:
 ```
 
 退出上下文时自动调用 `stop()`
-
-## 16 未实现 API
-
-当前尚未实现
-
-- ROS 2 / ros2_control
-
-开启 `DM_ARM_BUILD_ROS2=ON` 时会主动报错

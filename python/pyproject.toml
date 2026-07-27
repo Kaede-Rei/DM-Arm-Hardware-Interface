@@ -34,9 +34,8 @@ cmake.source-dir = ".."
 wheel.packages = ["dm_arm"]
 install.components = ["python"]
 cmake.args = [
-  "-DDM_ARM_BUILD_TERMINAL=ON",
+  "-DDM_ARM_BUILD_TERMINAL=OFF",
   "-DDM_ARM_BUILD_DAMIAO=ON",
   "-DDM_ARM_ENABLE_DYNAMICS=ON",
   "-DDM_ARM_BUILD_PYTHON=ON",
-  "-DDM_ARM_BUILD_ROS2=OFF",
 ]
