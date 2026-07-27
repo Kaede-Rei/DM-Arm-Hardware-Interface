@@ -3,7 +3,7 @@
 URDF 机械臂模型、关节坐标系与旋转轴可视化工具
 
 特点：
-1. 从 dm_arm.yaml 的 dynamics.urdf_path 读取机械臂 URDF
+1. 从 arm.yaml 的 model.urdf_path 读取机械臂 URDF
 2. 解析 URDF 中的 STL visual / collision 网格并显示完整机械臂模型
 3. 显示各关节的 RGB 坐标系、黑色关节轴及关节名称标签
 4. 支持逐关节或全局开关坐标系、关节轴和标签
@@ -16,7 +16,7 @@ URDF 机械臂模型、关节坐标系与旋转轴可视化工具
 
 运行：
     python3 model_axis_viewer.py
-    python3 model_axis_viewer.py --config ../config/dm_arm.yaml
+    python3 model_axis_viewer.py --config ../config/arm.yaml
     python3 model_axis_viewer.py --fixed-joints
     python3 model_axis_viewer.py --no-show-model
     python3 model_axis_viewer.py --opacity 0.6
@@ -60,7 +60,7 @@ import numpy as np
 import vtk
 import yaml
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "dm_arm.yaml"
+DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "dm_arm_white.yaml"
 PACKAGE_NAME = "dm_arm_hardware_interface"
 WINDOW_TITLE = "Model Viewer"
 
@@ -128,7 +128,7 @@ def transform_from_origin(origin: ET.Element | None) -> np.ndarray:
 def load_urdf_path(config_path: Path) -> Path:
     with config_path.open("r", encoding="utf-8") as stream:
         cfg = yaml.safe_load(stream)
-    urdf_path = Path(cfg["dynamics"]["urdf_path"])
+    urdf_path = Path(cfg["model"]["urdf_path"])
     if not urdf_path.is_absolute():
         urdf_path = (config_path.parent / urdf_path).resolve()
     return urdf_path
@@ -580,7 +580,7 @@ def render(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--config", type=Path, default=DEFAULT_CONFIG, help="Path to dm_arm.yaml"
+        "--config", type=Path, default=DEFAULT_CONFIG, help="Path to arm.yaml"
     )
     parser.add_argument(
         "--show-model",
