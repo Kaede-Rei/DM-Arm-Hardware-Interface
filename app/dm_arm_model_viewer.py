@@ -1,5 +1,52 @@
 #!/usr/bin/env python3
-"""GPU/OpenGL model viewer for config/dm_arm.yaml."""
+"""
+URDF 机械臂模型、关节坐标系与旋转轴可视化工具
+
+特点：
+1. 从 dm_arm.yaml 的 dynamics.urdf_path 读取机械臂 URDF
+2. 解析 URDF 中的 STL visual / collision 网格并显示完整机械臂模型
+3. 显示各关节的 RGB 坐标系、黑色关节轴及关节名称标签
+4. 支持逐关节或全局开关坐标系、关节轴和标签
+5. 支持显示固定关节坐标系、模型透明度调节和线框模式
+6. 在窗口左侧显示坐标轴颜色说明和当前显示状态菜单
+7. 支持通过命令行参数设置窗口尺寸、视角、缩放和显示选项
+
+依赖：
+    python3 -m pip install numpy vtk pyyaml
+
+运行：
+    python3 model_axis_viewer.py
+    python3 model_axis_viewer.py --config ../config/dm_arm.yaml
+    python3 model_axis_viewer.py --fixed-joints
+    python3 model_axis_viewer.py --no-show-model
+    python3 model_axis_viewer.py --opacity 0.6
+    python3 model_axis_viewer.py --help
+
+操作：
+- 鼠标左键拖动：旋转视角
+- 鼠标中键拖动：平移视角
+- 鼠标滚轮：缩放视角
+- 上 / 下：选择上一个或下一个关节
+- 1：显示或隐藏当前关节坐标系
+- 2：显示或隐藏当前关节轴
+- 3：显示或隐藏当前关节轴标签
+- M：显示或隐藏完整机械臂模型
+- F：显示或隐藏全部关节坐标系
+- A：显示或隐藏全部关节轴
+- L：显示或隐藏全部关节轴标签
+- X：显示或隐藏固定关节坐标系
+- W：切换实体与线框显示
+- + / -：增加或降低模型透明度
+- R：复位视角
+- H：显示或隐藏左侧菜单
+- 关闭窗口：退出程序
+
+坐标轴颜色：
+- X：红色
+- Y：绿色
+- Z：蓝色
+- URDF 关节轴：黑色
+"""
 
 from __future__ import annotations
 
@@ -12,7 +59,6 @@ from pathlib import Path
 import numpy as np
 import vtk
 import yaml
-
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "dm_arm.yaml"
 PACKAGE_NAME = "dm_arm_hardware_interface"
@@ -91,14 +137,16 @@ def load_urdf_path(config_path: Path) -> Path:
 def resolve_mesh_path(filename: str, package_root: Path) -> Path:
     prefix = f"package://{PACKAGE_NAME}/"
     if filename.startswith(prefix):
-        return package_root / filename[len(prefix):]
+        return package_root / filename[len(prefix) :]
     if filename.startswith("package://"):
         raise ValueError(f"unsupported package URI: {filename}")
     path = Path(filename)
     return path if path.is_absolute() else package_root / path
 
 
-def parse_urdf(urdf_path: Path, package_root: Path) -> tuple[dict[str, Link], list[Joint]]:
+def parse_urdf(
+    urdf_path: Path, package_root: Path
+) -> tuple[dict[str, Link], list[Joint]]:
     root = ET.parse(urdf_path).getroot()
     links: dict[str, Link] = {}
     for link_node in root.findall("link"):
@@ -108,7 +156,9 @@ def parse_urdf(urdf_path: Path, package_root: Path) -> tuple[dict[str, Link], li
                 mesh_node = geom_parent.find("geometry/mesh")
                 if mesh_node is None or "filename" not in mesh_node.attrib:
                     continue
-                mesh_path = resolve_mesh_path(mesh_node.attrib["filename"], package_root)
+                mesh_path = resolve_mesh_path(
+                    mesh_node.attrib["filename"], package_root
+                )
                 if mesh_path.suffix.lower() != ".stl":
                     continue
                 link.meshes.append(
@@ -124,7 +174,9 @@ def parse_urdf(urdf_path: Path, package_root: Path) -> tuple[dict[str, Link], li
     joints: list[Joint] = []
     for joint_node in root.findall("joint"):
         axis_node = joint_node.find("axis")
-        axis = parse_vec(axis_node.get("xyz") if axis_node is not None else None, (0.0, 0.0, 1.0))
+        axis = parse_vec(
+            axis_node.get("xyz") if axis_node is not None else None, (0.0, 0.0, 1.0)
+        )
         norm = np.linalg.norm(axis)
         if norm > 0.0:
             axis = axis / norm
@@ -141,7 +193,9 @@ def parse_urdf(urdf_path: Path, package_root: Path) -> tuple[dict[str, Link], li
     return links, joints
 
 
-def compute_poses(links: dict[str, Link], joints: list[Joint]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+def compute_poses(
+    links: dict[str, Link], joints: list[Joint]
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     children = {joint.child for joint in joints}
     roots = [name for name in links if name not in children]
     if not roots:
@@ -226,7 +280,9 @@ def make_joint_axis(tf: np.ndarray, axis: np.ndarray, length: float) -> vtk.vtkA
     return actor
 
 
-def make_axis_label(tf: np.ndarray, axis: np.ndarray, name: str, length: float) -> vtk.vtkBillboardTextActor3D:
+def make_axis_label(
+    tf: np.ndarray, axis: np.ndarray, name: str, length: float
+) -> vtk.vtkBillboardTextActor3D:
     origin = tf[:3, 3]
     direction = tf[:3, :3] @ axis
     position = origin + direction * (length * 1.08)
@@ -306,7 +362,9 @@ class ModelAxisViewer:
                     continue
                 actor = make_stl_actor(mesh, link_tf, self.opacity)
                 self.mesh_actors.append(actor)
-                self.mesh_representations[actor] = actor.GetProperty().GetRepresentation()
+                self.mesh_representations[actor] = (
+                    actor.GetProperty().GetRepresentation()
+                )
                 self.renderer.AddActor(actor)
 
         for joint in self.joints:
@@ -319,10 +377,14 @@ class ModelAxisViewer:
             axis_actor = None
             label_actor = None
             if joint.joint_type != "fixed":
-                axis_actor = make_joint_axis(joint_tf, joint.axis, self.args.axis_length)
+                axis_actor = make_joint_axis(
+                    joint_tf, joint.axis, self.args.axis_length
+                )
                 self.renderer.AddActor(axis_actor)
 
-                label_actor = make_axis_label(joint_tf, joint.axis, joint.name, self.args.axis_length)
+                label_actor = make_axis_label(
+                    joint_tf, joint.axis, joint.name, self.args.axis_length
+                )
                 self.renderer.AddActor(label_actor)
 
             is_fixed = joint.joint_type == "fixed"
@@ -332,7 +394,8 @@ class ModelAxisViewer:
                     frame_actor=frame_actor,
                     axis_actor=axis_actor,
                     label_actor=label_actor,
-                    show_frame=self.show_joint_frames and (not is_fixed or self.show_fixed_joints),
+                    show_frame=self.show_joint_frames
+                    and (not is_fixed or self.show_fixed_joints),
                     show_axis=self.show_joint_axes and not is_fixed,
                     show_label=self.show_axis_labels and not is_fixed,
                 )
@@ -347,7 +410,9 @@ class ModelAxisViewer:
                 prop.SetRepresentationToWireframe()
                 prop.EdgeVisibilityOff()
             else:
-                prop.SetRepresentation(self.mesh_representations.get(actor, vtk.VTK_SURFACE))
+                prop.SetRepresentation(
+                    self.mesh_representations.get(actor, vtk.VTK_SURFACE)
+                )
                 prop.EdgeVisibilityOff()
             prop.Modified()
             actor.Modified()
@@ -357,7 +422,9 @@ class ModelAxisViewer:
             if display.axis_actor is not None:
                 display.axis_actor.SetVisibility(display.show_axis)
             if display.label_actor is not None:
-                display.label_actor.SetVisibility(display.show_axis and display.show_label)
+                display.label_actor.SetVisibility(
+                    display.show_axis and display.show_label
+                )
 
         self.legend_actor.SetInput("X red   Y green   Z blue   joint axis black")
         self.legend_actor.SetVisibility(self.show_menu)
@@ -370,17 +437,28 @@ class ModelAxisViewer:
     def menu_text(self) -> str:
         rows = [
             "[Up/Down] select joint   [1] frame   [2] axis   [3] label",
-            "[M] model " + self.on_off(self.show_model) +
-            "   [F/A/L] all frame/axis/label   [W] wire " + self.on_off(self.wireframe) +
-            "   [+/-] opacity " + f"{self.opacity:.2f}",
+            "[M] model "
+            + self.on_off(self.show_model)
+            + "   [F/A/L] all frame/axis/label   [W] wire "
+            + self.on_off(self.wireframe)
+            + "   [+/-] opacity "
+            + f"{self.opacity:.2f}",
             "[R] reset camera   [H] hide menu",
             "",
             "Joint                 Frame Axis Label",
         ]
         for index, display in enumerate(self.joint_displays):
             marker = ">" if index == self.selected_joint_index else " "
-            axis_text = self.check_text(display.show_axis) if display.axis_actor is not None else " -- "
-            label_text = self.check_text(display.show_label) if display.label_actor is not None else " -- "
+            axis_text = (
+                self.check_text(display.show_axis)
+                if display.axis_actor is not None
+                else " -- "
+            )
+            label_text = (
+                self.check_text(display.show_label)
+                if display.label_actor is not None
+                else " -- "
+            )
             rows.append(
                 f"{marker} {display.joint.name:<20} "
                 f"{self.check_text(display.show_frame):<5} "
@@ -436,13 +514,17 @@ class ModelAxisViewer:
             self.show_fixed_joints = not self.show_fixed_joints
             for display in self.joint_displays:
                 if display.joint.joint_type == "fixed":
-                    display.show_frame = self.show_fixed_joints and self.show_joint_frames
+                    display.show_frame = (
+                        self.show_fixed_joints and self.show_joint_frames
+                    )
         elif key == "w":
             self.wireframe = not self.wireframe
         elif key in ("up", "kp_up"):
             self.selected_joint_index = max(0, self.selected_joint_index - 1)
         elif key in ("down", "kp_down"):
-            self.selected_joint_index = min(len(self.joint_displays) - 1, self.selected_joint_index + 1)
+            self.selected_joint_index = min(
+                len(self.joint_displays) - 1, self.selected_joint_index + 1
+            )
         elif key in ("1", "kp_1"):
             display = self.selected_joint()
             if display is not None:
@@ -497,19 +579,59 @@ def render(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Path to dm_arm.yaml")
-    parser.add_argument("--show-model", action=argparse.BooleanOptionalAction, default=True, help="Show the complete STL model")
-    parser.add_argument("--show-joint-frames", action=argparse.BooleanOptionalAction, default=True, help="Show RGB frames for movable joints")
-    parser.add_argument("--show-joint-axes", action=argparse.BooleanOptionalAction, default=True, help="Show black URDF joint axes")
-    parser.add_argument("--show-axis-labels", action=argparse.BooleanOptionalAction, default=True, help="Show labels for movable joint axes")
-    parser.add_argument("--fixed-joints", action="store_true", help="Draw fixed joint frames too")
-    parser.add_argument("--opacity", type=float, default=0.82, help="Initial model opacity")
-    parser.add_argument("--frame-length", type=float, default=0.10, help="RGB frame axis length in meters")
-    parser.add_argument("--axis-length", type=float, default=0.16, help="Black joint axis length in meters")
+    parser.add_argument(
+        "--config", type=Path, default=DEFAULT_CONFIG, help="Path to dm_arm.yaml"
+    )
+    parser.add_argument(
+        "--show-model",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show the complete STL model",
+    )
+    parser.add_argument(
+        "--show-joint-frames",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show RGB frames for movable joints",
+    )
+    parser.add_argument(
+        "--show-joint-axes",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show black URDF joint axes",
+    )
+    parser.add_argument(
+        "--show-axis-labels",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show labels for movable joint axes",
+    )
+    parser.add_argument(
+        "--fixed-joints", action="store_true", help="Draw fixed joint frames too"
+    )
+    parser.add_argument(
+        "--opacity", type=float, default=0.82, help="Initial model opacity"
+    )
+    parser.add_argument(
+        "--frame-length",
+        type=float,
+        default=0.10,
+        help="RGB frame axis length in meters",
+    )
+    parser.add_argument(
+        "--axis-length",
+        type=float,
+        default=0.16,
+        help="Black joint axis length in meters",
+    )
     parser.add_argument("--width", type=int, default=1280, help="Window width")
     parser.add_argument("--height", type=int, default=900, help="Window height")
-    parser.add_argument("--elev", type=float, default=18.0, help="Initial camera elevation")
-    parser.add_argument("--azim", type=float, default=-68.0, help="Initial camera azimuth")
+    parser.add_argument(
+        "--elev", type=float, default=18.0, help="Initial camera elevation"
+    )
+    parser.add_argument(
+        "--azim", type=float, default=-68.0, help="Initial camera azimuth"
+    )
     parser.add_argument("--zoom", type=float, default=1.35, help="Initial camera zoom")
     return parser.parse_args()
 
