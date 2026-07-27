@@ -20,6 +20,9 @@ from ._dm_arm import DynamicsCfg
 from ._dm_arm import DynamicsErr
 from ._dm_arm import DynamicsInfo
 from ._dm_arm import DynamicsState
+from ._dm_arm import FaultCompliantRecoveryCfg
+from ._dm_arm import FaultHoldMode
+from ._dm_arm import FaultRecoveryCfg
 from ._dm_arm import JointActuatorMapCfg
 from ._dm_arm import JointActuatorMapper
 from ._dm_arm import JointActuatorMapErr
@@ -82,8 +85,20 @@ class RobotSession:
         self._session.stop()
 
     def reset_fault(self) -> None:
-        """在控制线程停止后清除 Robot FAULT"""
+        """兼容旧接口，内部执行 clear_fault()"""
         self._session.reset_fault()
+
+    def clear_fault(self) -> None:
+        """清除 Robot FAULT 并进入 ACTIVE + RIGID_HOLD"""
+        self._session.clear_fault()
+
+    def enter_fault_compliant_recovery(self) -> None:
+        """人工请求进入 FAULT 受限柔性恢复"""
+        self._session.enter_fault_compliant_recovery()
+
+    def return_to_fault_rigid_hold(self) -> None:
+        """返回 FAULT 刚性保持"""
+        self._session.return_to_fault_rigid_hold()
 
     def set_impedance_mode(self, mode: JointImpedanceMode) -> None:
         """提交阻抗模式切换请求；请求由 C++ 工作线程串行应用"""
@@ -118,6 +133,11 @@ class RobotSession:
     def state(self) -> RobotState:
         """返回当前 Robot 生命周期状态"""
         return self._session.state
+
+    @property
+    def fault_hold_mode(self) -> FaultHoldMode:
+        """返回当前 FAULT 保持模式"""
+        return self._session.fault_hold_mode
 
     @property
     def configured(self) -> bool:
@@ -173,6 +193,9 @@ __all__ = [
     "DynamicsErr",
     "DynamicsInfo",
     "DynamicsState",
+    "FaultCompliantRecoveryCfg",
+    "FaultHoldMode",
+    "FaultRecoveryCfg",
     "JointActuatorMapCfg",
     "JointActuatorMapper",
     "JointActuatorMapErr",

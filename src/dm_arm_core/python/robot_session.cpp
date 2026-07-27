@@ -202,6 +202,10 @@ void PyRobotSession::stop() {
 }
 
 void PyRobotSession::reset_fault() {
+    clear_fault();
+}
+
+void PyRobotSession::clear_fault() {
     running_.store(false);
     if(worker_.joinable()) {
         worker_.join();
@@ -210,9 +214,9 @@ void PyRobotSession::reset_fault() {
         throw DmArmPythonError("RobotSession is not configured");
     }
 
-    const auto result = robot_->reset_fault();
+    const auto result = robot_->clear_fault();
     if(!result) {
-        throw DmArmPythonError(make_robot_error("Robot reset_fault", result.error()));
+        throw DmArmPythonError(make_robot_error("Robot clear_fault", result.error()));
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -220,6 +224,26 @@ void PyRobotSession::reset_fault() {
     snapshot_.last_error.clear();
     snapshot_.valid = false;
     has_goal_ = false;
+}
+
+void PyRobotSession::enter_fault_compliant_recovery() {
+    if(!robot_) {
+        throw DmArmPythonError("RobotSession is not configured");
+    }
+    const auto result = robot_->enter_fault_compliant_recovery();
+    if(!result) {
+        throw DmArmPythonError(make_robot_error("Robot enter_fault_compliant_recovery", result.error()));
+    }
+}
+
+void PyRobotSession::return_to_fault_rigid_hold() {
+    if(!robot_) {
+        throw DmArmPythonError("RobotSession is not configured");
+    }
+    const auto result = robot_->return_to_fault_rigid_hold();
+    if(!result) {
+        throw DmArmPythonError(make_robot_error("Robot return_to_fault_rigid_hold", result.error()));
+    }
 }
 
 // ! ========================= 命 令 / 调 参 方 法 实 现 ========================= ! //
@@ -324,6 +348,13 @@ RobotSessionSnapshot PyRobotSession::get_snapshot() const {
 RobotState PyRobotSession::get_state() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return snapshot_.robot_state;
+}
+
+FaultHoldMode PyRobotSession::get_fault_hold_mode() const {
+    if(!robot_) {
+        throw DmArmPythonError("RobotSession is not configured");
+    }
+    return robot_->get_fault_hold_mode();
 }
 
 bool PyRobotSession::is_configured() const noexcept {

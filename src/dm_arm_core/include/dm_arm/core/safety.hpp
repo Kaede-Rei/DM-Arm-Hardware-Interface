@@ -64,6 +64,14 @@ enum class SafetyAction {
 };
 
 /**
+ * @brief FAULT 内部保持模式
+ */
+enum class FaultHoldMode {
+    RIGID_HOLD,          ///< 故障默认刚性保持
+    COMPLIANT_RECOVERY,  ///< 人工请求后的受限柔性恢复
+};
+
+/**
  * @brief Joint 侧软件安全限制
  */
 struct JointLimitCfg {
@@ -75,6 +83,28 @@ struct JointLimitCfg {
     JointVector max_kp;        ///< 最大 Joint 侧 kp
     JointVector max_kd;        ///< 最大 Joint 侧 kd
     JointVector pos_margin;    ///< 命令位置距离硬限位的安全边距，rad
+};
+
+/**
+ * @brief FAULT 受限柔性恢复参数
+ */
+struct FaultCompliantRecoveryCfg {
+    JointVector kp;                   ///< 柔性恢复 kp，N·m/rad，有效范围 [0, Safety max_kp]
+    JointVector kd;                   ///< 柔性恢复 kd，N·m·s/rad，有效范围 [0, Safety max_kd]
+    JointVector max_vel;              ///< 柔性恢复参考速度上限，rad/s，有效范围 (0, Safety max_vel]
+    double effort_scale{ 0.50 };      ///< 重力补偿力矩缩放，有效范围 [0, 1]
+};
+
+/**
+ * @brief FAULT 受控恢复配置
+ */
+struct FaultRecoveryCfg {
+    FaultHoldMode default_mode{ FaultHoldMode::RIGID_HOLD };   ///< FAULT 入口默认模式，仅允许 rigid_hold
+    bool allow_compliant_recovery{ true };                     ///< 是否允许人工请求柔性恢复
+    bool require_operator_request{ true };                     ///< 柔性恢复是否必须由操作员显式请求
+    bool gravity_model_validated{ true };                      ///< 重力模型已验证才允许保留低增益柔性恢复
+    double recovery_timeout_s{ 30.0 };                         ///< 柔性恢复最长持续时间，s，必须为正有限值
+    FaultCompliantRecoveryCfg compliant_recovery;              ///< 柔性恢复低增益和限制
 };
 
 /**
@@ -94,6 +124,7 @@ struct SafetyCfg {
     bool require_all_actuators_enabled{ true }; ///< ACTIVE 时要求所有执行器已使能
     bool reject_motor_error{ true };            ///< ACTIVE 时拒绝执行器错误码
     bool require_continuous_cmd{ true };         ///< ACTIVE 时要求相邻命令连续
+    FaultRecoveryCfg fault_recovery;             ///< FAULT 受控恢复配置
 };
 
 // ! ========================= 接 口 类 / 函 数 声 明 ========================= ! //

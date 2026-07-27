@@ -174,6 +174,16 @@ ModelFeedforwardMode load_model_feedforward_mode(const YAML::Node& runtime) {
 }
 
 /**
+ * @brief 解析 FAULT 默认恢复模式
+ */
+FaultHoldMode load_fault_hold_mode(const YAML::Node& node, const char* context) {
+    const std::string value = require_as<std::string>(node, "default_mode", context);
+    if(value == "rigid_hold") return FaultHoldMode::RIGID_HOLD;
+    if(value == "compliant_recovery") return FaultHoldMode::COMPLIANT_RECOVERY;
+    throw ConfigLoadException(ConfigErr::INVALID_VALUE, std::string(context) + ".default_mode must be rigid_hold");
+}
+
+/**
  * @brief 检查关节向量是否包含有限值
  * @param values 关节向量
  * @return 如果所有值都是有限的，则返回 true，否则返回 false
@@ -209,6 +219,27 @@ JointVector load_named_joint_vector(const YAML::Node& node, const std::vector<st
     values.reserve(joint_names.size());
     for(const auto& joint_name : joint_names) values.push_back(require_as<double>(node, joint_name.c_str(), context));
     return values;
+}
+
+/**
+ * @brief 从 YAML 读取 FAULT 恢复配置
+ */
+void load_fault_recovery_cfg(const YAML::Node& node, const std::vector<std::string>& joint_names, SafetyCfg& safety_cfg) {
+    if(!node) return;
+    if(!node.IsMap()) throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + "fault_recovery must be a map");
+    safety_cfg.fault_recovery.default_mode = load_fault_hold_mode(node, "fault_recovery");
+    safety_cfg.fault_recovery.allow_compliant_recovery = require_as<bool>(node, "allow_compliant_recovery", "fault_recovery");
+    safety_cfg.fault_recovery.require_operator_request = require_as<bool>(node, "require_operator_request", "fault_recovery");
+    safety_cfg.fault_recovery.gravity_model_validated = require_as<bool>(node, "gravity_model_validated", "fault_recovery");
+    safety_cfg.fault_recovery.recovery_timeout_s = require_as<double>(node, "recovery_timeout_s", "fault_recovery");
+    const YAML::Node recovery = require_map(node, "compliant_recovery", "fault_recovery");
+    if(recovery["kp"].IsMap()) safety_cfg.fault_recovery.compliant_recovery.kp = load_named_joint_vector(recovery["kp"], joint_names, "fault_recovery.compliant_recovery.kp");
+    else safety_cfg.fault_recovery.compliant_recovery.kp = require_as<JointVector>(recovery, "kp", "fault_recovery.compliant_recovery");
+    if(recovery["kd"].IsMap()) safety_cfg.fault_recovery.compliant_recovery.kd = load_named_joint_vector(recovery["kd"], joint_names, "fault_recovery.compliant_recovery.kd");
+    else safety_cfg.fault_recovery.compliant_recovery.kd = require_as<JointVector>(recovery, "kd", "fault_recovery.compliant_recovery");
+    if(recovery["max_vel"].IsMap()) safety_cfg.fault_recovery.compliant_recovery.max_vel = load_named_joint_vector(recovery["max_vel"], joint_names, "fault_recovery.compliant_recovery.max_vel");
+    else safety_cfg.fault_recovery.compliant_recovery.max_vel = require_as<JointVector>(recovery, "max_vel", "fault_recovery.compliant_recovery");
+    safety_cfg.fault_recovery.compliant_recovery.effort_scale = require_as<double>(recovery, "effort_scale", "fault_recovery.compliant_recovery");
 }
 
 } // namespace
@@ -264,6 +295,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& pat
         cfg.safety.require_all_actuators_enabled = require_as<bool>(safety, "require_all_actuators_enabled", "safety");
         cfg.safety.reject_motor_error = safety["reject_motor_error"] ? require_as<bool>(safety, "reject_motor_error", "safety") : true;
         cfg.safety.require_continuous_cmd = safety["require_continuous_cmd"] ? require_as<bool>(safety, "require_continuous_cmd", "safety") : true;
+        load_fault_recovery_cfg(safety["fault_recovery"] ? safety["fault_recovery"] : root["fault_recovery"], cfg.joint_names, cfg.safety);
 
         const YAML::Node limits = require_map(root, "limits", "root");
         cfg.safety.limits.min_pos = require_as<JointVector>(limits, "min_pos", "limits");
@@ -500,6 +532,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         const auto resolved = LimitResolver{}.resolve(*model_info, cfg.damiao, cfg.mapper, *capabilities, policy);
         if(!resolved) return tl::make_unexpected(make_err(ConfigErr::INVALID_VALUE, "LimitResolver failed"));
         cfg.safety = to_safety_cfg(*resolved);
+        load_fault_recovery_cfg(safety_node["fault_recovery"], cfg.joint_names, cfg.safety);
 
         auto validated = validate_robot_cfg(cfg);
         if(!validated) return tl::make_unexpected(validated.error());

@@ -82,6 +82,14 @@ std::string to_string(ModelFeedforwardMode value) {
     return "UNKNOWN";
 }
 
+std::string to_string(FaultHoldMode value) {
+    switch(value) {
+        case FaultHoldMode::RIGID_HOLD: return "RIGID_HOLD";
+        case FaultHoldMode::COMPLIANT_RECOVERY: return "COMPLIANT_RECOVERY";
+    }
+    return "UNKNOWN";
+}
+
 std::string to_string(RobotErr value) {
     switch(value) {
         case RobotErr::NOT_CONFIGURED: return "NOT_CONFIGURED";
@@ -107,6 +115,7 @@ std::string to_string(RobotErr value) {
         case RobotErr::SAFETY_FAILED: return "SAFETY_FAILED";
         case RobotErr::MODEL_FEEDFORWARD_FAILED: return "MODEL_FEEDFORWARD_FAILED";
         case RobotErr::INVALID_MODEL_FEEDFORWARD: return "INVALID_MODEL_FEEDFORWARD";
+        case RobotErr::FAULT_RECOVERY_NOT_ALLOWED: return "FAULT_RECOVERY_NOT_ALLOWED";
     }
     return "UNKNOWN";
 }
@@ -580,7 +589,7 @@ private:
         std::cout << " 1. 查看 Robot 状态与 getter 输出\n";
         std::cout << " 2. activate()\n";
         std::cout << " 3. 回到停放姿态并失能\n";
-        std::cout << " 4. reset_fault()\n";
+        std::cout << " 4. clear_fault()\n";
         std::cout << " 5. 切换阻抗模式\n";
         std::cout << " 6. 切换模型前馈模式（仅 INACTIVE）\n";
         std::cout << " 7. 梯形参考移动到 6 轴绝对位置\n";
@@ -598,6 +607,9 @@ private:
         std::cout << "19. 查看完整配置摘要\n";
         std::cout << "20. 读取指定 Frame 的缓存位姿与 Jacobian\n";
         std::cout << "21. 立即停止并失能（危险）\n";
+        std::cout << "22. FAULT 进入受限柔性恢复\n";
+        std::cout << "23. FAULT 返回刚性保持\n";
+        std::cout << "24. 查看当前故障恢复模式\n";
         std::cout << " 0. 回到停放姿态并安全退出\n";
     }
 
@@ -607,7 +619,7 @@ private:
             case 1: show_robot_summary(); break;
             case 2: activate(); break;
             case 3: park_and_deactivate(); break;
-            case 4: reset_fault(); break;
+            case 4: clear_fault(); break;
             case 5: set_impedance_mode(); break;
             case 6: set_model_feedforward_mode(); break;
             case 7: start_absolute_stream(); break;
@@ -625,6 +637,9 @@ private:
             case 19: show_config_summary(); break;
             case 20: show_frame_state(); break;
             case 21: immediate_deactivate(); break;
+            case 22: enter_fault_compliant_recovery(); break;
+            case 23: return_to_fault_rigid_hold(); break;
+            case 24: show_fault_hold_mode(); break;
             default: std::cout << "未知菜单编号\n"; break;
         }
         return true;
@@ -791,19 +806,49 @@ private:
         std::cout << "已立即失能，重力负载机械臂可能下落\n";
     }
 
-    void reset_fault() {
+    void clear_fault() {
         std::lock_guard<std::mutex> lock(mutex_);
         clear_command_sources();
-        const auto result = robot_.reset_fault();
+        const auto result = robot_.clear_fault();
         if(!result) {
-            std::cout << "reset_fault() 失败：\n";
+            std::cout << "clear_fault() 失败：\n";
             print_fault(result.error());
             return;
         }
         last_output_.reset();
         background_fault_reported_ = false;
-        if(robot_.get_state() == RobotState::ACTIVE) std::cout << "reset_fault() 成功，故障刚性保持已恢复为 ACTIVE\n";
-        else std::cout << "reset_fault() 成功，Robot 回到 INACTIVE\n";
+        std::cout << "clear_fault() 成功，已清除外部命令并进入 ACTIVE + RIGID_HOLD\n";
+    }
+
+    void enter_fault_compliant_recovery() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        clear_command_sources();
+        const auto result = robot_.enter_fault_compliant_recovery();
+        if(!result) {
+            std::cout << "enter_fault_compliant_recovery() 失败：\n";
+            print_fault(result.error());
+            return;
+        }
+        background_fault_reported_ = false;
+        std::cout << "已进入 FAULT 受限柔性恢复\n";
+    }
+
+    void return_to_fault_rigid_hold() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        clear_command_sources();
+        const auto result = robot_.return_to_fault_rigid_hold();
+        if(!result) {
+            std::cout << "return_to_fault_rigid_hold() 失败：\n";
+            print_fault(result.error());
+            return;
+        }
+        background_fault_reported_ = false;
+        std::cout << "已返回 FAULT 刚性保持\n";
+    }
+
+    void show_fault_hold_mode() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::cout << "FaultHoldMode           : " << to_string(robot_.get_fault_hold_mode()) << '\n';
     }
 
     void set_impedance_mode() {
@@ -1018,6 +1063,7 @@ private:
         std::cout << "RobotState             : " << to_string(robot_.get_state()) << '\n';
         std::cout << "JointImpedanceMode      : " << to_string(robot_.get_impedance_mode()) << '\n';
         std::cout << "ModelFeedforwardMode    : " << to_string(robot_.get_model_feedforward_mode()) << '\n';
+        std::cout << "FaultHoldMode           : " << to_string(robot_.get_fault_hold_mode()) << '\n';
         std::cout << "Dynamics configured     : " << std::boolalpha << dynamics_.is_configured() << '\n';
         std::cout << "Dynamics updated        : " << std::boolalpha << dynamics_.is_updated() << '\n';
         std::cout << "Fault rigid hold        : " << std::boolalpha << robot_.is_fault_holding() << '\n';

@@ -66,6 +66,7 @@ enum class RobotErr {
     SAFETY_FAILED,              ///< 安全检查失败
     MODEL_FEEDFORWARD_FAILED,   ///< 模型前馈计算失败
     INVALID_MODEL_FEEDFORWARD,  ///< 模型前馈结果非法
+    FAULT_RECOVERY_NOT_ALLOWED, ///< 当前故障不允许柔性恢复或清故障
 };
 
 /**
@@ -179,10 +180,25 @@ public:
      */
     tl::expected<void, RobotFault> force_deactivate();
     /**
-     * @brief 清除 FAULT 锁存并回到 INACTIVE
+     * @brief 兼容旧接口，内部执行 clear_fault()
      * @return 成功返回空 expected，失败返回 RobotFault
      */
     tl::expected<void, RobotFault> reset_fault();
+    /**
+     * @brief 人工请求进入 FAULT 受限柔性恢复
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> enter_fault_compliant_recovery();
+    /**
+     * @brief 操作员取消柔性恢复并返回 FAULT 刚性保持
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> return_to_fault_rigid_hold();
+    /**
+     * @brief 清除 FAULT 并以当前实测位置进入 ACTIVE + RIGID_HOLD
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> clear_fault();
     /**
      * @brief 在 FAULT 状态持续刷新刚性保持命令
      * @return 成功返回空 expected，失败返回 RobotFault
@@ -239,6 +255,11 @@ public:
      * @return 故障刚性保持是否有效
      */
     bool is_fault_holding() const noexcept;
+    /**
+     * @brief 获取 FAULT 内部保持模式
+     * @return 当前 FAULT 保持模式
+     */
+    FaultHoldMode get_fault_hold_mode() const noexcept;
 
 private:
     /**
@@ -325,6 +346,30 @@ private:
      * @return 命令发送成功返回 true，否则返回 false
      */
     bool start_fault_hold_noexcept() noexcept;
+    /**
+     * @brief 根据 FAULT 内部模式刷新保持命令
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> update_fault_reaction(TimePoint now);
+    /**
+     * @brief 构造故障保持 Joint 命令
+     * @param state 当前实测 Joint 状态
+     * @param mode FAULT 内部模式
+     * @param dt 当前周期
+     * @return 成功返回 Joint 命令，失败返回 RobotFault
+     */
+    tl::expected<JointCtrlCmd, RobotFault> build_fault_joint_cmd(const JointState& state, FaultHoldMode mode, double dt);
+    /**
+     * @brief 判断当前锁存故障是否允许柔性恢复
+     * @return 允许柔性恢复返回 true
+     */
+    bool is_compliant_recovery_fault_allowed() const noexcept;
+    /**
+     * @brief 清除外部命令并把参考重置为实测位置
+     * @param state 当前实测 Joint 状态
+     * @return 成功返回空 expected，失败返回 RobotFault
+     */
+    tl::expected<void, RobotFault> reset_reference_to_measured(const JointState& state);
 
     /**
      * @brief 直接失能硬件，忽略错误
@@ -367,16 +412,20 @@ private:
     ActuatorState actuator_state_;                  ///< 最近一次合法 ActuatorState
     ActuatorMitCmd fault_hold_cmd_;                 ///< 故障状态持续刷新的执行器保持命令
     tl::optional<RobotFault> last_fault_;           ///< 锁存的最近故障
+    tl::optional<RobotFault> current_fault_;        ///< 当前 FAULT 锁存
 
     TimePoint last_cycle_time_{};                   ///< 上一成功周期时间
     TimePoint last_state_time_{};                   ///< 上一合法状态时间
     TimePoint last_cmd_time_{};                     ///< 上一外部命令时间
+    TimePoint fault_recovery_started_at_{};         ///< 柔性恢复开始时间
 
     bool has_state_{ false };                       ///< 是否已有合法状态
     bool has_completed_cycle_{ false };             ///< 是否已经完成至少一个周期
     bool has_external_cmd_{ false };                ///< 跟踪模式是否收到过外部命令
     bool has_last_joint_cmd_{ false };              ///< 是否已有合法关节控制命令
     bool fault_hold_active_{ false };               ///< 是否已建立故障刚性保持命令
+    FaultHoldMode fault_hold_mode_{ FaultHoldMode::RIGID_HOLD };   ///< FAULT 内部保持模式
+    std::size_t clear_fault_valid_cycles_{ 0 };      ///< 清故障前连续有效周期数
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

@@ -191,7 +191,7 @@ class Terminal:
         print(" 1. 查看 RobotSession 状态")
         print(" 2. start() / activate()")
         print(" 3. 回到停放姿态并 stop()")
-        print(" 4. reset_fault()")
+        print(" 4. clear_fault()")
         print(" 5. 切换阻抗模式")
         print(" 6. 切换模型前馈模式（仅 INACTIVE）")
         print(" 7. 梯形参考移动到绝对位置")
@@ -207,6 +207,9 @@ class Terminal:
         print("17. 执行 pybinding 只读自检")
         print("18. 连续监视状态")
         print("21. 立即 stop() 并失能（危险）")
+        print("22. FAULT 进入受限柔性恢复")
+        print("23. FAULT 返回刚性保持")
+        print("24. 查看当前故障恢复模式")
         print(" 0. 回到停放姿态并安全退出")
 
     def run(self) -> int:
@@ -216,7 +219,7 @@ class Terminal:
             1: self.summary,
             2: self.start,
             3: self.park_and_stop,
-            4: self.reset_fault,
+            4: self.clear_fault,
             5: self.set_impedance,
             6: self.set_model_mode,
             7: self.move_absolute,
@@ -232,6 +235,9 @@ class Terminal:
             17: self.self_check,
             18: self.monitor,
             21: self.force_stop,
+            22: self.enter_fault_compliant_recovery,
+            23: self.return_to_fault_rigid_hold,
+            24: self.show_fault_hold_mode,
         }
 
         while not self.quit:
@@ -371,9 +377,20 @@ class Terminal:
         self.session.stop()
         print("已立即 stop() 并失能")
 
-    def reset_fault(self) -> None:
-        self.session.reset_fault()
-        print(f"reset_fault() 完成，state={enum_name(self.session.state)}")
+    def clear_fault(self) -> None:
+        self.session.clear_fault()
+        print(f"clear_fault() 完成，state={enum_name(self.session.state)}")
+
+    def enter_fault_compliant_recovery(self) -> None:
+        self.session.enter_fault_compliant_recovery()
+        print("已进入 FAULT 受限柔性恢复")
+
+    def return_to_fault_rigid_hold(self) -> None:
+        self.session.return_to_fault_rigid_hold()
+        print("已返回 FAULT 刚性保持")
+
+    def show_fault_hold_mode(self) -> None:
+        print(f"FaultHoldMode           : {enum_name(self.session.fault_hold_mode)}")
 
     def set_impedance(self) -> None:
         print(
@@ -447,6 +464,7 @@ class Terminal:
     def summary(self) -> None:
         snapshot = self.session.snapshot
         print(f"RobotState             : {enum_name(self.session.state)}")
+        print(f"FaultHoldMode          : {enum_name(self.session.fault_hold_mode)}")
         print(f"configured             : {self.session.configured}")
         print(f"running                : {self.session.running}")
         print(f"snapshot.valid         : {snapshot.valid}")

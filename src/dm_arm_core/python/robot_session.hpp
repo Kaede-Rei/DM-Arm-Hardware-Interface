@@ -85,6 +85,18 @@ public:
      * @brief 在控制线程停止后清除 Robot FAULT
      */
     void reset_fault();
+    /**
+     * @brief 在控制线程停止后清除 Robot FAULT
+     */
+    void clear_fault();
+    /**
+     * @brief 请求进入 FAULT 受限柔性恢复
+     */
+    void enter_fault_compliant_recovery();
+    /**
+     * @brief 请求返回 FAULT 刚性保持
+     */
+    void return_to_fault_rigid_hold();
 
     /**
      * @brief 请求切换阻抗模式
@@ -120,6 +132,10 @@ public:
      * @brief 获取当前 Robot 生命周期状态
      */
     RobotState get_state() const;
+    /**
+     * @brief 获取当前 FAULT 保持模式
+     */
+    FaultHoldMode get_fault_hold_mode() const;
     /**
      * @brief 获取当前会话是否已经完成配置
      */
