@@ -66,7 +66,7 @@ flowchart TB
 
 ### 2.1. dm_arm_core
 
-`src/dm_arm_core` 是独立 C++17 核心包；包括 Config、ModelLoader、Hardware Capability、LimitResolver、JointCtrller、JointActuatorMapper、Safety、Robot、DamiaoMotorBus 和 Dynamics
+`src/core/dm_arm_core` 是独立 C++17 核心包；包括 Config、ModelLoader、Hardware Capability、LimitResolver、JointCtrller、JointActuatorMapper、Safety、Robot、DamiaoMotorBus 和 Dynamics
 
 Core 对外导出
 
@@ -80,7 +80,7 @@ dm_arm::dynamics
 
 ### 2.2. Python Binding
 
-`src/dm_arm_core/python` 使用 pybind11 和 scikit-build-core 构建 wheel；提供 Config、JointCtrller、JointActuatorMapper、Safety、Dynamics 和 `RobotSession`
+`src/core/dm_arm_core/python` 使用 pybind11 和 scikit-build-core 构建 wheel；提供 Config、JointCtrller、JointActuatorMapper、Safety、Dynamics 和 `RobotSession`
 
 `RobotSession` 使用 C++ Worker 按 `runtime.ctrl_frequency_hz` 调用 `Robot::cycle()`；Python 线程只提交模式、目标和调参请求，并读取状态快照
 
@@ -129,16 +129,85 @@ src/moveit_config/dm_arm_with_gripper
 - `force_deactivate()` 和 Python `stop()` 不等价于回到停放姿态
 - 通信中断时软件不能保证持续保持，应先使用机械支撑和急停
 
-## 4. 总体架构
+## 4. 快速开始
 
-### 4.1. 仓库包关系
+最小离线启动流程：
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install \
+  --packages-select dm_arm_core dm_arm_description dm_arm_ros2_control dm_arm_bringup dm_arm_no_gripper dm_arm_with_gripper
+source install/setup.bash
+ros2 launch dm_arm_bringup hardware.launch.py robot_profile:=gray
+```
+
+默认使用 `robot_profile:=gray`；真机写入只由 `src/dm_arm_bringup/config/dm_arm_gray.yaml` 中的 `runtime.write_enabled` 决定
+
+### 4.1. 构建
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install \
+  --packages-select dm_arm_core dm_arm_description dm_arm_ros2_control dm_arm_bringup dm_arm_no_gripper dm_arm_with_gripper
+source install/setup.bash
+```
+
+### 4.2. 离线显示模型
+
+```bash
+ros2 launch dm_arm_bringup display.launch.py robot_profile:=gray
+```
+
+可选 profile：
+
+```text
+gray   无夹爪
+white  有夹爪
+```
+
+### 4.3. 启动 ros2_control
+
+先确认对应配置中的真机写入开关：
+
+```yaml
+runtime:
+  write_enabled: false
+```
+
+`false` 使用离线 mock 后端，不连接串口、不使能电机、不写真实硬件；确认机械臂、急停、零位、方向、限位和电机型号后，再改为 `true` 使用 Damiao 真机后端
+
+```bash
+ros2 launch dm_arm_bringup hardware.launch.py robot_profile:=gray
+```
+
+检查状态：
+
+```bash
+ros2 control list_hardware_components
+ros2 control list_controllers
+ros2 topic echo /joint_states
+```
+
+### 4.4. 启动 MoveIt
+
+```bash
+ros2 launch dm_arm_bringup moveit.launch.py robot_profile:=gray
+```
+
+## 5. 总体架构
+
+### 5.1. 仓库包关系
 
 ```text
 DM-Arm workspace
-├── src/dm_arm_core
+├── src/core/dm_arm_core
 │   ├── 独立 C++ Core
 │   ├── Python Binding
 │   └── C++/Python Terminal
+├── src/core/dm_arm_description
+│   └── URDF、Xacro 和 Mesh
+├── src/dm_arm_bringup
+│   └── 统一配置和 Launch
 ├── src/adapters/dm_arm_ros2_control
 │   └── ros2_control SystemInterface
 └── src/moveit_config
@@ -158,7 +227,7 @@ dm_arm_ros2_control
 
 Core 根 CMake 不包含 ROS 2 构建选项；ROS 2 适配由独立包和 colcon 的包选择决定
 
-### 4.2. Core 模块关系
+### 5.2. Core 模块关系
 
 ```mermaid
 flowchart TB
@@ -247,17 +316,11 @@ MotorBus::write()
 ### 5.1. dm_arm_core
 
 ```text
-src/dm_arm_core
+src/core/dm_arm_core
 ├── app
 │   ├── dm_arm_terminal.cpp
 │   ├── dm_arm_terminal.py
 │   └── dm_arm_model_viewer.py
-├── config
-│   ├── dm_arm_white.yaml
-│   └── dm_arm_gray.yaml
-├── description
-│   ├── meshes
-│   └── urdf
 ├── include/dm_arm
 ├── python
 ├── src
@@ -267,21 +330,50 @@ src/dm_arm_core
 └── package.xml
 ```
 
-### 5.2. dm_arm_ros2_control
+### 5.2. dm_arm_description
+
+```text
+src/core/dm_arm_description
+├── meshes
+├── urdf
+│   ├── dm_arm.urdf
+│   ├── dm_arm_no_gripper.urdf
+│   └── dm_arm.urdf.xacro
+├── CMakeLists.txt
+└── package.xml
+```
+
+### 5.3. dm_arm_bringup
+
+```text
+src/dm_arm_bringup
+├── config
+│   ├── dm_arm_gray.yaml
+│   ├── dm_arm_white.yaml
+│   └── ros2_controllers.yaml
+├── launch
+│   ├── display.launch.py
+│   ├── hardware.launch.py
+│   └── moveit.launch.py
+├── CMakeLists.txt
+└── package.xml
+```
+
+### 5.4. dm_arm_ros2_control
 
 ```text
 src/adapters/dm_arm_ros2_control
-├── config/ros2_controllers.yaml
 ├── include/dm_arm_ros2_control
 ├── launch/dm_arm_control.launch.py
 ├── src/dm_arm_system.cpp
 ├── urdf/dm_arm.ros2_control.xacro
+├── urdf/dm_arm_system.ros2_control.xacro
 ├── dm_arm_hardware_plugin.xml
 ├── CMakeLists.txt
 └── package.xml
 ```
 
-### 5.3. MoveIt 2 配置包
+### 5.5. MoveIt 2 配置包
 
 ```text
 src/moveit_config
@@ -289,12 +381,12 @@ src/moveit_config
 └── dm_arm_with_gripper
 ```
 
-### 5.4. 配置与 URDF
+### 5.6. 配置与 URDF
 
 | 机械臂 | 配置 | URDF |
 |---|---|---|
-| 白色带打印夹爪 | `src/dm_arm_core/config/dm_arm_white.yaml` | `dm_arm.urdf` |
-| 灰色无打印夹爪 | `src/dm_arm_core/config/dm_arm_gray.yaml` | `dm_arm_no_gripper.urdf` |
+| 白色带打印夹爪 | `src/dm_arm_bringup/config/dm_arm_white.yaml` | `dm_arm.urdf` |
+| 灰色无打印夹爪 | `src/dm_arm_bringup/config/dm_arm_gray.yaml` | `dm_arm_no_gripper.urdf` |
 
 ## 6. 环境与依赖
 
@@ -398,7 +490,7 @@ groups
 从工作区根目录执行
 
 ```bash
-cmake -S src/dm_arm_core -B build/dm_arm_core \
+cmake -S src/core/dm_arm_core -B build/dm_arm_core \
   -DCMAKE_BUILD_TYPE=Debug \
   -DDM_ARM_BUILD_TERMINAL=ON \
   -DDM_ARM_BUILD_DAMIAO=ON \
@@ -468,7 +560,7 @@ python -m build
 执行
 
 ```bash
-cd src/dm_arm_core/python
+cd src/core/dm_arm_core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/dm_arm-*.whl
 cd ../../..
@@ -518,7 +610,7 @@ ros2 control list_hardware_components
 使用时始终显式传入配置路径
 
 ```bash
---config src/dm_arm_core/config/dm_arm_white.yaml
+--config src/dm_arm_bringup/config/dm_arm_white.yaml
 ```
 
 ### 8.2. 单一事实来源
@@ -612,8 +704,8 @@ RIGID_TRACKING
 ```bash
 ./build/dm_arm_core/dm_arm_terminal \
   --compare-config \
-  src/dm_arm_core/config/dm_arm_white.yaml \
-  src/dm_arm_core/config/dm_arm_gray.yaml
+  src/dm_arm_bringup/config/dm_arm_white.yaml \
+  src/dm_arm_bringup/config/dm_arm_gray.yaml
 ```
 
 比较模式不连接真机
@@ -736,7 +828,7 @@ JointCtrlCmd
 
 ```bash
 ./build/dm_arm_core/dm_arm_terminal \
-  --config src/dm_arm_core/config/dm_arm_white.yaml
+  --config src/dm_arm_bringup/config/dm_arm_white.yaml
 ```
 
 真机运行必须满足
@@ -809,7 +901,7 @@ python -m pip install numpy pybind11 scikit-build-core build
 ### 11.3. 构建与安装
 
 ```bash
-cd src/dm_arm_core/python
+cd src/core/dm_arm_core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/dm_arm-*.whl
 cd ../../..
@@ -820,8 +912,8 @@ cd ../../..
 ### 11.4. 无真机检查
 
 ```bash
-python src/dm_arm_core/app/dm_arm_terminal.py \
-  --config src/dm_arm_core/config/dm_arm_white.yaml \
+python src/core/dm_arm_core/app/dm_arm_terminal.py \
+  --config src/dm_arm_bringup/config/dm_arm_white.yaml \
   --check-only
 ```
 
@@ -831,7 +923,7 @@ python src/dm_arm_core/app/dm_arm_terminal.py \
 import dm_arm
 import numpy as np
 
-cfg = dm_arm.load_robot_cfg("src/dm_arm_core/config/dm_arm_gray.yaml")
+cfg = dm_arm.load_robot_cfg("src/dm_arm_bringup/config/dm_arm_gray.yaml")
 dynamics = dm_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
 
@@ -847,7 +939,7 @@ print(dynamics.mass_matrix)
 import dm_arm
 
 session = dm_arm.RobotSession(
-    "src/dm_arm_core/config/dm_arm_white.yaml"
+    "src/dm_arm_bringup/config/dm_arm_white.yaml"
 )
 session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
@@ -858,8 +950,8 @@ session.start()
 ### 11.7. Python 交互终端
 
 ```bash
-python src/dm_arm_core/app/dm_arm_terminal.py \
-  --config src/dm_arm_core/config/dm_arm_white.yaml
+python src/core/dm_arm_core/app/dm_arm_terminal.py \
+  --config src/dm_arm_bringup/config/dm_arm_white.yaml
 ```
 
 脚本菜单 0 和菜单 3 在 `stop()` 前补充停放轨迹和实测判据
@@ -954,7 +1046,7 @@ StateInterface
 配置文件
 
 ```text
-src/adapters/dm_arm_ros2_control/config/ros2_controllers.yaml
+src/dm_arm_bringup/config/ros2_controllers.yaml
 ```
 
 加载
@@ -982,7 +1074,9 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 
 ros2 launch dm_arm_ros2_control dm_arm_control.launch.py \
-  config_file:="$PWD/src/dm_arm_core/config/dm_arm_white.yaml"
+  robot_profile:=white \
+  config_file:="$PWD/src/dm_arm_bringup/config/dm_arm_white.yaml" \
+  controllers_file:="$PWD/src/dm_arm_bringup/config/ros2_controllers.yaml"
 ```
 
 检查
@@ -1265,7 +1359,7 @@ target_link_libraries(my_ros_adapter PRIVATE dm_arm::robot dm_arm::config)
 完整 C++ 与 Python 公共接口见
 
 ```text
-src/dm_arm_core/API.md
+src/core/dm_arm_core/API.md
 ```
 
 ### 18.2. 第三方依赖
