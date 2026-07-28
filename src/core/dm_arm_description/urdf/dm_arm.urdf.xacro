@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="DM-Arm">
+  <xacro:arg name="robot_profile" default="gray"/>
+  <xacro:property name="selected_profile" value="$(arg robot_profile)"/>
+
+  <xacro:if value="${selected_profile == 'gray'}">
+    <xacro:include filename="$(find dm_arm_description)/urdf/dm_arm_no_gripper.urdf"/>
+  </xacro:if>
+  <xacro:if value="${selected_profile == 'white'}">
+    <xacro:include filename="$(find dm_arm_description)/urdf/dm_arm.urdf"/>
+  </xacro:if>
+</robot>

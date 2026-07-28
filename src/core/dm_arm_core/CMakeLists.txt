@@ -331,7 +331,7 @@ if(DM_ARM_BUILD_TERMINAL)
 endif()
 
 # =============================================================================
-# 安装：库、公共头文件与配置文件
+# 安装：库、公共头文件与 CMake package
 # =============================================================================
 
 install(TARGETS ${DM_ARM_INSTALL_TARGETS}
@@ -359,14 +359,6 @@ if(TARGET dm_arm_damiao)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 endif()
-
-install(DIRECTORY config/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/config
-)
-
-install(DIRECTORY description/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/description
-)
 
 install(FILES package.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}

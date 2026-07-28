@@ -10,6 +10,7 @@
     <buildtool_depend>ament_cmake</buildtool_depend>
 
     <depend>dm_arm_core</depend>
+    <depend>dm_arm_description</depend>
     <depend>rclcpp</depend>
     <depend>rclcpp_lifecycle</depend>
     <depend>hardware_interface</depend>
