@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <initializer_list>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -98,6 +99,50 @@ YAML::Node require_map(const YAML::Node& parent, const char* key, const char* co
         throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + std::string(context) + "." + key + " must be a map");
     }
     return node;
+}
+
+/**
+ * @brief 拒绝 map 中未声明的配置字段
+ */
+void reject_unknown_keys(const YAML::Node& node, const char* context, std::initializer_list<const char*> allowed_keys) {
+    if(!node || !node.IsMap()) return;
+
+    std::set<std::string> allowed;
+    for(const char* key : allowed_keys) allowed.insert(key);
+
+    for(const auto& item : node) {
+        std::string key;
+        try {
+            key = item.first.as<std::string>();
+        }
+        catch(const YAML::BadConversion&) {
+            throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(item.first.Mark()) + std::string(context) + " contains a non-string key");
+        }
+        if(allowed.find(key) == allowed.end()) {
+            throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(item.first.Mark()) + std::string(context) + " contains unknown field '" + key + "'");
+        }
+    }
+}
+
+/**
+ * @brief 拒绝 Joint 名称 map 中未声明的关节字段
+ */
+void reject_unknown_joint_keys(const YAML::Node& node, const std::vector<std::string>& joint_names, const char* context) {
+    if(!node || !node.IsMap()) return;
+
+    std::set<std::string> allowed(joint_names.begin(), joint_names.end());
+    for(const auto& item : node) {
+        std::string key;
+        try {
+            key = item.first.as<std::string>();
+        }
+        catch(const YAML::BadConversion&) {
+            throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(item.first.Mark()) + std::string(context) + " contains a non-string key");
+        }
+        if(allowed.find(key) == allowed.end()) {
+            throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(item.first.Mark()) + std::string(context) + " contains unknown joint '" + key + "'");
+        }
+    }
 }
 
 /**
@@ -215,6 +260,7 @@ std::array<const JointImpedanceGains*, 5> all_gains(const JointCtrllerCfg& cfg) 
  */
 JointVector load_named_joint_vector(const YAML::Node& node, const std::vector<std::string>& joint_names, const char* context) {
     if(!node || !node.IsMap()) throw ConfigLoadException(ConfigErr::MISSING_FIELD, std::string(context) + " must be a map");
+    reject_unknown_joint_keys(node, joint_names, context);
     JointVector values;
     values.reserve(joint_names.size());
     for(const auto& joint_name : joint_names) values.push_back(require_as<double>(node, joint_name.c_str(), context));
@@ -227,12 +273,14 @@ JointVector load_named_joint_vector(const YAML::Node& node, const std::vector<st
 void load_fault_recovery_cfg(const YAML::Node& node, const std::vector<std::string>& joint_names, SafetyCfg& safety_cfg) {
     if(!node) return;
     if(!node.IsMap()) throw ConfigLoadException(ConfigErr::INVALID_VALUE, yaml_location(node.Mark()) + "fault_recovery must be a map");
+    reject_unknown_keys(node, "fault_recovery", { "default_mode", "allow_compliant_recovery", "require_operator_request", "gravity_model_validated", "recovery_timeout_s", "compliant_recovery" });
     safety_cfg.fault_recovery.default_mode = load_fault_hold_mode(node, "fault_recovery");
     safety_cfg.fault_recovery.allow_compliant_recovery = require_as<bool>(node, "allow_compliant_recovery", "fault_recovery");
     safety_cfg.fault_recovery.require_operator_request = require_as<bool>(node, "require_operator_request", "fault_recovery");
     safety_cfg.fault_recovery.gravity_model_validated = require_as<bool>(node, "gravity_model_validated", "fault_recovery");
     safety_cfg.fault_recovery.recovery_timeout_s = require_as<double>(node, "recovery_timeout_s", "fault_recovery");
     const YAML::Node recovery = require_map(node, "compliant_recovery", "fault_recovery");
+    reject_unknown_keys(recovery, "fault_recovery.compliant_recovery", { "kp", "kd", "max_vel", "effort_scale" });
     if(recovery["kp"].IsMap()) safety_cfg.fault_recovery.compliant_recovery.kp = load_named_joint_vector(recovery["kp"], joint_names, "fault_recovery.compliant_recovery.kp");
     else safety_cfg.fault_recovery.compliant_recovery.kp = require_as<JointVector>(recovery, "kp", "fault_recovery.compliant_recovery");
     if(recovery["kd"].IsMap()) safety_cfg.fault_recovery.compliant_recovery.kd = load_named_joint_vector(recovery["kd"], joint_names, "fault_recovery.compliant_recovery.kd");
@@ -427,6 +475,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
     try {
         const std::filesystem::path config_path = std::filesystem::absolute(path).lexically_normal();
         const YAML::Node root = YAML::LoadFile(path);
+        reject_unknown_keys(root, "root", { "model", "hardware", "calibration", "control", "safety_policy", "shutdown" });
 
         const YAML::Node model_node = require_map(root, "model", "root");
         const YAML::Node hardware_node = require_map(root, "hardware", "root");
@@ -434,6 +483,12 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         const YAML::Node control_node = require_map(root, "control", "root");
         const YAML::Node safety_node = require_map(root, "safety_policy", "root");
         const YAML::Node shutdown_node = require_map(root, "shutdown", "root");
+        reject_unknown_keys(model_node, "model", { "urdf_path", "joint_names", "base_frame", "tool_frame", "gravity", "gravity_scale" });
+        reject_unknown_keys(hardware_node, "hardware", { "damiao" });
+        reject_unknown_keys(calibration_node, "calibration", { "joints" });
+        reject_unknown_keys(control_node, "control", { "runtime", "controller" });
+        reject_unknown_keys(safety_node, "safety_policy", { "position_margin", "cmd_vel_scale", "state_vel_scale", "max_acc", "max_effort_override", "max_kp_override", "max_kd_override", "max_dt_s", "state_timeout_s", "cmd_timeout_s", "require_all_actuators_online", "require_all_actuators_enabled", "reject_motor_error", "require_continuous_cmd", "fault_recovery" });
+        reject_unknown_keys(shutdown_node, "shutdown", { "park_before_disable", "park_pos", "speed_scale", "position_tolerance", "velocity_tolerance", "settle_time_s", "relaxed_tolerance_ratio", "timeout_s" });
 
         RobotCfg cfg;
         cfg.joint_names = require_as<std::vector<std::string>>(model_node, "joint_names", "model");
@@ -449,11 +504,18 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         cfg.dynamics.gravity_scale = require_as<JointVector>(model_node, "gravity_scale", "model");
 
         const YAML::Node runtime = require_map(control_node, "runtime", "control");
+        reject_unknown_keys(runtime, "control.runtime", { "ctrl_frequency_hz", "joint_acc_filter_alpha", "write_enabled", "model_feedforward_mode" });
         cfg.runtime.ctrl_frequency_hz = require_as<double>(runtime, "ctrl_frequency_hz", "runtime");
         cfg.runtime.joint_acc_filter_alpha = runtime["joint_acc_filter_alpha"] ? require_as<double>(runtime, "joint_acc_filter_alpha", "runtime") : 0.2;
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
         cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
         const YAML::Node controller = require_map(control_node, "controller", "control");
+        reject_unknown_keys(controller, "control.controller", { "allow_full_cmd", "rigid_hold", "rigid_tracking", "compliant_hold", "compliant_drag", "compliant_tracking" });
+        reject_unknown_keys(require_map(controller, "rigid_hold", "controller"), "controller.rigid_hold", { "kp", "kd" });
+        reject_unknown_keys(require_map(controller, "rigid_tracking", "controller"), "controller.rigid_tracking", { "kp", "kd" });
+        reject_unknown_keys(require_map(controller, "compliant_hold", "controller"), "controller.compliant_hold", { "kp", "kd" });
+        reject_unknown_keys(require_map(controller, "compliant_drag", "controller"), "controller.compliant_drag", { "kp", "kd" });
+        reject_unknown_keys(require_map(controller, "compliant_tracking", "controller"), "controller.compliant_tracking", { "kp", "kd" });
         cfg.ctrller.allow_full_cmd = require_as<bool>(controller, "allow_full_cmd", "controller");
         cfg.ctrller.rigid_hold_gains.kp = load_named_joint_vector(require_map(controller, "rigid_hold", "controller")["kp"], cfg.joint_names, "controller.rigid_hold.kp");
         cfg.ctrller.rigid_hold_gains.kd = load_named_joint_vector(require_map(controller, "rigid_hold", "controller")["kd"], cfg.joint_names, "controller.rigid_hold.kd");
@@ -467,6 +529,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         cfg.ctrller.compliant_tracking_gains.kd = load_named_joint_vector(require_map(controller, "compliant_tracking", "controller")["kd"], cfg.joint_names, "controller.compliant_tracking.kd");
 
         const YAML::Node damiao = require_map(hardware_node, "damiao", "hardware");
+        reject_unknown_keys(damiao, "hardware.damiao", { "serial_port", "baudrate", "refresh_state_in_read", "feedback_timeout_s", "activation_retries", "startup_read_cycles", "stop_kp", "stop_kd", "stop_cycles", "actuators" });
         cfg.damiao.serial_port = require_as<std::string>(damiao, "serial_port", "damiao");
         cfg.damiao.baudrate = require_as<int>(damiao, "baudrate", "damiao");
         cfg.damiao.refresh_state_in_read = require_as<bool>(damiao, "refresh_state_in_read", "damiao");
@@ -477,8 +540,10 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         cfg.damiao.stop_kd = require_as<double>(damiao, "stop_kd", "damiao");
         cfg.damiao.stop_cycles = require_as<std::size_t>(damiao, "stop_cycles", "damiao");
         const YAML::Node actuators = require_map(damiao, "actuators", "damiao");
+        reject_unknown_joint_keys(actuators, cfg.joint_names, "hardware.damiao.actuators");
         for(const auto& joint_name : cfg.joint_names) {
             const YAML::Node item = require_map(actuators, joint_name.c_str(), "damiao.actuators");
+            reject_unknown_keys(item, joint_name.c_str(), { "name", "motor_id", "master_id", "motor_type" });
             DamiaoActuatorCfg actuator;
             actuator.name = require_as<std::string>(item, "name", joint_name.c_str());
             actuator.joint_name = joint_name;
@@ -489,8 +554,10 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         }
 
         const YAML::Node joints = require_map(calibration_node, "joints", "calibration");
+        reject_unknown_joint_keys(joints, cfg.joint_names, "calibration.joints");
         for(const auto& joint_name : cfg.joint_names) {
             const YAML::Node item = require_map(joints, joint_name.c_str(), "calibration.joints");
+            reject_unknown_keys(item, joint_name.c_str(), { "direction", "pos_ratio", "tor_ratio", "joint_zero_offset", "actuator_zero_offset" });
             cfg.mapper.pos_ratio.push_back(require_as<double>(item, "pos_ratio", joint_name.c_str()));
             cfg.mapper.tor_ratio.push_back(require_as<double>(item, "tor_ratio", joint_name.c_str()));
             cfg.mapper.direction.push_back(static_cast<int>(require_as<double>(item, "direction", joint_name.c_str())));

@@ -1,20 +1,14 @@
 # DM-Arm White Config
 #
 # 目录
-# 01 robot            机器人身份
-# 02 model            URDF 与模型基础信息
-# 03 hardware         达妙硬件与电机型号
-# 04 calibration      单机方向、比例与零位
-# 05 control          运行时与控制增益
-# 06 safety_policy    运行安全策略与收窄值
-# 07 shutdown         停放姿态
+# 01 model            URDF 与模型基础信息
+# 02 hardware         达妙硬件与电机型号
+# 03 calibration      单机方向、比例与零位
+# 04 control          运行时与控制增益
+# 05 safety_policy    运行安全策略与收窄值
+# 06 shutdown         停放姿态
 
-# 01 robot
-robot:
-  id: dm_arm_white        # 机器人 ID
-  serial: dm_arm_white    # 机器人序列号
-
-# 02 model
+# 01 model
 model:
   urdf_path: ../description/urdf/dm_arm.urdf                      # 有夹爪 URDF，路径相对当前 YAML
   joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]   # 受控关节名称
@@ -23,7 +17,7 @@ model:
   gravity: [0.0, 0.0, -9.81]                                      # 世界坐标系重力加速度
   gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]                   # 重力补偿比例
 
-# 03 hardware
+# 02 hardware
 hardware:
   damiao:
     serial_port: /dev/ttyACM0     # 串口设备
@@ -43,18 +37,17 @@ hardware:
       joint5: {name: actuator5, motor_id: 5, master_id: 0, motor_type: DM4310}
       joint6: {name: actuator6, motor_id: 6, master_id: 0, motor_type: DM4310}
 
-# 04 calibration
+# 03 calibration
 calibration:
-  calibrated: false  # 当前未完成真实单机标定
   joints:
-    joint1: {actuator: actuator1, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}  # 方向、比例与零位
-    joint2: {actuator: actuator2, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
-    joint3: {actuator: actuator3, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
-    joint4: {actuator: actuator4, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
-    joint5: {actuator: actuator5, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
-    joint6: {actuator: actuator6, direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint1: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}  # 方向、比例与零位
+    joint2: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint3: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint4: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint5: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
+    joint6: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}
 
-# 05 control
+# 04 control
 control:
   runtime:
     ctrl_frequency_hz: 200.0        # Robot cycle 目标频率
@@ -84,7 +77,7 @@ control:
       kp: {joint1: 8.0, joint2: 20.0, joint3: 12.0, joint4: 5.0, joint5: 3.0, joint6: 1.0}
       kd: {joint1: 0.08, joint2: 0.20, joint3: 0.12, joint4: 0.05, joint5: 0.03, joint6: 0.01}
 
-# 06 safety_policy
+# 05 safety_policy
 safety_policy:
   position_margin: 0.0      # 命令位置距离 URDF 硬限位的边距
   cmd_vel_scale: 1.0        # 命令速度相对 URDF velocity 的比例
@@ -129,7 +122,7 @@ safety_policy:
       max_vel: {joint1: 1.0, joint2: 1.0, joint3: 1.0, joint4: 1.0, joint5: 1.0, joint6: 1.0}
       effort_scale: 1.0                 # 重力补偿力矩缩放 [0, 1]
 
-# 07 shutdown
+# 06 shutdown
 shutdown:
   park_before_disable: true       # 正常停机前先回到停放姿态
   park_pos:
