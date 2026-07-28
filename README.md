@@ -736,18 +736,18 @@ JointCtrlCmd
 
 ```bash
 ./build/dm_arm_core/dm_arm_terminal \
-  --config src/dm_arm_core/config/dm_arm_white.yaml \
-  --allow-hardware
+  --config src/dm_arm_core/config/dm_arm_white.yaml
 ```
 
-必须同时满足
+真机运行必须满足
 
 ```text
---allow-hardware
 runtime.write_enabled=true
 DM_ARM_BUILD_DAMIAO=ON
 DM_ARM_ENABLE_DYNAMICS=ON
 ```
+
+`runtime.write_enabled=false` 时终端使用离线 mock 后端，不连接或写入真实硬件
 
 ### 10.2. 菜单功能
 
@@ -847,8 +847,7 @@ print(dynamics.mass_matrix)
 import dm_arm
 
 session = dm_arm.RobotSession(
-    "src/dm_arm_core/config/dm_arm_white.yaml",
-    allow_hardware=True,
+    "src/dm_arm_core/config/dm_arm_white.yaml"
 )
 session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
@@ -860,8 +859,7 @@ session.start()
 
 ```bash
 python src/dm_arm_core/app/dm_arm_terminal.py \
-  --config src/dm_arm_core/config/dm_arm_white.yaml \
-  --allow-hardware
+  --config src/dm_arm_core/config/dm_arm_white.yaml
 ```
 
 脚本菜单 0 和菜单 3 在 `stop()` 前补充停放轨迹和实测判据
@@ -908,11 +906,11 @@ on_init
 → 加载 Core YAML 并校验 Joint 与接口
 
 on_configure
-→ 配置 Dynamics、DamiaoMotorBus 和 Robot
+→ 配置 Dynamics、Robot 和后端
+→ runtime.write_enabled=true 使用 Damiao，false 使用离线 mock
 → 不连接真机
 
 on_activate
-→ 检查 allow_hardware 和 write_enabled
 → Robot::activate()
 → 用实测位置初始化命令
 → 启动 Worker
@@ -984,8 +982,7 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 
 ros2 launch dm_arm_ros2_control dm_arm_control.launch.py \
-  config_file:="$PWD/src/dm_arm_core/config/dm_arm_white.yaml" \
-  allow_hardware:=true
+  config_file:="$PWD/src/dm_arm_core/config/dm_arm_white.yaml"
 ```
 
 检查

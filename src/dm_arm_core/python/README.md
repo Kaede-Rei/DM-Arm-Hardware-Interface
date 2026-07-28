@@ -19,13 +19,14 @@ DM-Arm Python binding 由 `_dm_arm` pybind11 扩展和 `dm_arm` 纯 Python 包�
 > [!WARNING]
 > `RobotSession` 能够连接真实机械臂并发送 MIT 命令；使用前必须确认电机型号、ID、零位、方向、限位、力矩映射、控制增益和动力学参数
 
-真机启动必须同时满足
+真机运行必须满足
 
 ```text
-RobotSession(..., allow_hardware=True)
 runtime.write_enabled=true
 DM_ARM_BUILD_DAMIAO=ON
 ```
+
+`runtime.write_enabled=false` 时 `RobotSession` 使用离线 mock 后端，不连接或写入真实硬件
 
 Python 线程不直接执行 `Robot::cycle()`；C++ 工作线程是 Robot、Dynamics 和串口的唯一周期访问者
 
@@ -88,7 +89,7 @@ import numpy as np
 
 import dm_arm
 
-session = dm_arm.RobotSession(Path("config/dm_arm.yaml"), allow_hardware=True)
+session = dm_arm.RobotSession(Path("config/dm_arm.yaml"))
 session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
 session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
 

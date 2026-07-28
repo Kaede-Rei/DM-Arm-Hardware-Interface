@@ -36,7 +36,6 @@ struct CliOptions {
     std::string config_path{ DM_ARM_DEFAULT_CONFIG_PATH };
     std::string compare_lhs_path;
     std::string compare_rhs_path;
-    bool allow_hardware{ false };
     bool show_help{ false };
     bool compare_config{ false };
 };
@@ -303,9 +302,6 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
             if(i + 1 >= argc) return false;
             options.config_path = argv[++i];
         }
-        else if(arg == "--allow-hardware") {
-            options.allow_hardware = true;
-        }
         else if(arg == "--compare-config") {
             if(i + 2 >= argc) return false;
             options.compare_config = true;
@@ -324,9 +320,9 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
 }
 
 void print_usage(const char* program) {
-    std::cout << "用法: " << program << " [--config <path>] --allow-hardware\n";
+    std::cout << "用法: " << program << " [--config <path>]\n";
     std::cout << "比较: " << program << " --compare-config <config-a.yaml> <config-b.yaml>\n";
-    std::cout << "说明: 终端仅支持 Damiao 真机后端\n";
+    std::cout << "说明: runtime.write_enabled=true 使用 Damiao 真机；false 使用离线 mock 后端\n";
 }
 
 bool read_line(const std::string& prompt, std::string& line) {
@@ -376,6 +372,59 @@ bool is_zero_vector(const JointVector& values) {
     return std::all_of(values.begin(), values.end(), [](double value) { return value == 0.0; });
 }
 
+class MockMotorBus final : public MotorBus {
+public:
+    explicit MockMotorBus(std::size_t size) {
+        state_.pos.assign(size, 0.0);
+        state_.vel.assign(size, 0.0);
+        state_.tor.assign(size, 0.0);
+        state_.online.assign(size, 1);
+        state_.enabled.assign(size, 1);
+        state_.err_code.assign(size, 0);
+    }
+
+    tl::expected<void, MotorBusErr> connect() override {
+        connected_ = true;
+        return {};
+    }
+
+    tl::expected<ActuatorState, MotorBusErr> read() override {
+        if(!connected_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+        return state_;
+    }
+
+    tl::expected<void, MotorBusErr> activate() override {
+        if(!connected_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+        active_ = true;
+        return {};
+    }
+
+    tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) override {
+        if(!active_) return tl::make_unexpected(MotorBusErr::NOT_ACTIVE);
+        state_.pos = cmd.pos;
+        state_.vel = cmd.vel;
+        state_.tor = cmd.tor;
+        return {};
+    }
+
+    tl::expected<void, MotorBusErr> stop() override { return {}; }
+    tl::expected<void, MotorBusErr> deactivate() override {
+        active_ = false;
+        return {};
+    }
+    tl::expected<void, MotorBusErr> recover() override { return {}; }
+    void cleanup() noexcept override {
+        active_ = false;
+        connected_ = false;
+    }
+    std::size_t size() const noexcept override { return state_.pos.size(); }
+
+private:
+    ActuatorState state_;
+    bool connected_{ false };
+    bool active_{ false };
+};
+
 class TerminalApp {
 public:
     TerminalApp(RobotCfg cfg, std::string config_path) : cfg_(std::move(cfg)), config_path_(std::move(config_path)) {
@@ -392,11 +441,19 @@ public:
         const auto dynamics_result = dynamics_.configure(cfg_.dynamics);
         if(!dynamics_result) return tl::make_unexpected("Dynamics configure() 失败: " + to_string(dynamics_result.error()));
 
-        auto damiao_bus = std::make_unique<DamiaoMotorBus>();
-        const auto damiao_result = damiao_bus->configure(cfg_.damiao);
-        if(!damiao_result) return tl::make_unexpected("DamiaoMotorBus configure() 失败: " + to_string(damiao_result.error()));
-
-        actuator_info_ = damiao_bus->get_actuator_info();
+        std::unique_ptr<MotorBus> motor_bus;
+        RobotCfg robot_cfg = cfg_;
+        if(cfg_.runtime.write_enabled) {
+            auto damiao_bus = std::make_unique<DamiaoMotorBus>();
+            const auto damiao_result = damiao_bus->configure(cfg_.damiao);
+            if(!damiao_result) return tl::make_unexpected("DamiaoMotorBus configure() 失败: " + to_string(damiao_result.error()));
+            actuator_info_ = damiao_bus->get_actuator_info();
+            motor_bus = std::move(damiao_bus);
+        }
+        else {
+            robot_cfg.runtime.write_enabled = true;
+            motor_bus = std::make_unique<MockMotorBus>(cfg_.joint_names.size());
+        }
         ModelFeedforwardFn model_feedforward = [this](ModelFeedforwardMode mode, const JointState& state, const JointVector& acc, const JointVector& ref_acc, double) {
             const auto update_result = dynamics_.update(state, acc, ref_acc);
             if(!update_result) {
@@ -416,7 +473,7 @@ public:
             return tl::expected<JointVector, ModelFeedforwardErr>(tl::make_unexpected(ModelFeedforwardErr::INVALID_MODE));
             };
 
-        const auto robot_result = robot_.configure(cfg_, std::move(damiao_bus), std::move(model_feedforward));
+        const auto robot_result = robot_.configure(robot_cfg, std::move(motor_bus), std::move(model_feedforward));
         if(!robot_result) {
             std::ostringstream message;
             message << "Robot configure() 失败: " << to_string(robot_result.error().code);
@@ -578,10 +635,15 @@ private:
     void print_banner() const {
         std::cout << "\n==============================================\n";
         std::cout << " DM-Arm Terminal Main\n";
-        std::cout << " backend: damiao\n";
+        std::cout << " backend: " << (cfg_.runtime.write_enabled ? "damiao" : "offline") << '\n';
         std::cout << " config : " << config_path_ << '\n';
         std::cout << "==============================================\n";
-        std::cout << "[危险] 当前终端仅支持真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确\n";
+        if(cfg_.runtime.write_enabled) {
+            std::cout << "[危险] 当前终端使用真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确\n";
+        }
+        else {
+            std::cout << "[离线] runtime.write_enabled=false，不连接串口、不使能电机、不写入真实硬件\n";
+        }
     }
 
     void print_menu() const {
@@ -1368,18 +1430,9 @@ int main(int argc, char** argv) {
         }
         return EXIT_SUCCESS;
     }
-    if(!options.allow_hardware) {
-        std::cerr << "拒绝启动：当前终端只支持真机，必须显式传入 --allow-hardware\n";
-        return EXIT_FAILURE;
-    }
-
     const auto cfg_result = load_robot_cfg(options.config_path);
     if(!cfg_result) {
         std::cerr << "配置加载失败: " << cfg_result.error().message << '\n';
-        return EXIT_FAILURE;
-    }
-    if(!cfg_result->runtime.write_enabled) {
-        std::cerr << "拒绝启动：runtime.write_enabled=false\n";
         return EXIT_FAILURE;
     }
 

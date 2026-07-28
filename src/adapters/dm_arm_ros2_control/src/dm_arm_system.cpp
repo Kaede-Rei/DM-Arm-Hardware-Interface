@@ -25,15 +25,6 @@ constexpr const char* kLoggerName = "dm_arm_ros2_control";  ///< ROS 日志器�
 // *! ========================= 私 有 量 / 工 具 函 数 实 现 ========================= ! //*
 
 /**
- * @brief 解析 ros2_control 硬件参数中的布尔值
- * @param value 参数文本
- * @return 表示 true 时返回 true，否则返回 false
- */
-bool parse_bool(const std::string& value) {
-    return value == "true" || value == "True" || value == "1";
-}
-
-/**
  * @brief 检查接口列表是否包含指定名称
  * @param interfaces ros2_control 接口描述列表
  * @param name 目标接口名称
@@ -42,6 +33,58 @@ bool parse_bool(const std::string& value) {
 bool has_interface(const std::vector<hardware_interface::InterfaceInfo>& interfaces, const std::string& name) {
     return std::any_of(interfaces.begin(), interfaces.end(), [&name](const auto& item) { return item.name == name; });
 }
+
+/**
+ * @brief 离线模拟 MotorBus，用于 runtime.write_enabled=false 的 ros2_control 后端
+ */
+class MockMotorBus final : public dm_arm::MotorBus {
+public:
+    explicit MockMotorBus(std::size_t size) {
+        state_.pos.assign(size, 0.0);
+        state_.vel.assign(size, 0.0);
+        state_.tor.assign(size, 0.0);
+        state_.online.assign(size, 1);
+        state_.enabled.assign(size, 1);
+        state_.err_code.assign(size, 0);
+    }
+
+    tl::expected<void, dm_arm::MotorBusErr> connect() override {
+        connected_ = true;
+        return {};
+    }
+    tl::expected<dm_arm::ActuatorState, dm_arm::MotorBusErr> read() override {
+        if(!connected_) return tl::make_unexpected(dm_arm::MotorBusErr::NOT_CONNECTED);
+        return state_;
+    }
+    tl::expected<void, dm_arm::MotorBusErr> activate() override {
+        if(!connected_) return tl::make_unexpected(dm_arm::MotorBusErr::NOT_CONNECTED);
+        active_ = true;
+        return {};
+    }
+    tl::expected<void, dm_arm::MotorBusErr> write(const dm_arm::ActuatorMitCmd& cmd) override {
+        if(!active_) return tl::make_unexpected(dm_arm::MotorBusErr::NOT_ACTIVE);
+        state_.pos = cmd.pos;
+        state_.vel = cmd.vel;
+        state_.tor = cmd.tor;
+        return {};
+    }
+    tl::expected<void, dm_arm::MotorBusErr> stop() override { return {}; }
+    tl::expected<void, dm_arm::MotorBusErr> deactivate() override {
+        active_ = false;
+        return {};
+    }
+    tl::expected<void, dm_arm::MotorBusErr> recover() override { return {}; }
+    void cleanup() noexcept override {
+        active_ = false;
+        connected_ = false;
+    }
+    std::size_t size() const noexcept override { return state_.pos.size(); }
+
+private:
+    dm_arm::ActuatorState state_;
+    bool connected_{ false };
+    bool active_{ false };
+};
 
 } // namespace
 
@@ -73,9 +116,6 @@ hardware_interface::CallbackReturn DmArmSystem::on_init(const hardware_interface
         return hardware_interface::CallbackReturn::ERROR;
     }
     config_file_ = config_iter->second;
-
-    auto allow_iter = info_.hardware_parameters.find("allow_hardware");
-    allow_hardware_ = allow_iter != info_.hardware_parameters.end() && parse_bool(allow_iter->second);
 
     const auto cfg_result = dm_arm::load_robot_cfg(config_file_);
     if(!cfg_result) {
@@ -111,15 +151,6 @@ hardware_interface::CallbackReturn DmArmSystem::on_activate(const rclcpp_lifecyc
         RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "DmArmSystem is not configured");
         return hardware_interface::CallbackReturn::ERROR;
     }
-    if(!allow_hardware_) {
-        RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "hardware activation requires allow_hardware=true");
-        return hardware_interface::CallbackReturn::ERROR;
-    }
-    if(!cfg_.runtime.write_enabled) {
-        RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "hardware activation requires runtime.write_enabled=true");
-        return hardware_interface::CallbackReturn::ERROR;
-    }
-
     const auto activate_result = robot_->activate();
     if(!activate_result) {
         RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot activate", activate_result.error()).c_str());
@@ -295,16 +326,27 @@ hardware_interface::CallbackReturn DmArmSystem::configure_robot() {
         return hardware_interface::CallbackReturn::ERROR;
     }
 
-    auto bus = std::make_unique<dm_arm::DamiaoMotorBus>();
-    const auto bus_result = bus->configure(cfg_.damiao);
-    if(!bus_result) {
-        RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "DamiaoMotorBus configure failed; MotorBusErr=%d", static_cast<int>(bus_result.error()));
-        dynamics_.reset();
-        return hardware_interface::CallbackReturn::ERROR;
+    dm_arm::RobotCfg robot_cfg = cfg_;
+    std::unique_ptr<dm_arm::MotorBus> bus;
+    if(cfg_.runtime.write_enabled) {
+        auto damiao_bus = std::make_unique<dm_arm::DamiaoMotorBus>();
+        const auto bus_result = damiao_bus->configure(cfg_.damiao);
+        if(!bus_result) {
+            RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "DamiaoMotorBus configure failed; MotorBusErr=%d", static_cast<int>(bus_result.error()));
+            dynamics_.reset();
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+        bus = std::move(damiao_bus);
+        RCLCPP_WARN(rclcpp::get_logger(kLoggerName), "DM-Arm ros2_control backend: damiao; runtime.write_enabled=true");
+    }
+    else {
+        robot_cfg.runtime.write_enabled = true;
+        bus = std::make_unique<MockMotorBus>(cfg_.joint_names.size());
+        RCLCPP_INFO(rclcpp::get_logger(kLoggerName), "DM-Arm ros2_control backend: offline; runtime.write_enabled=false");
     }
 
     robot_ = std::make_unique<dm_arm::Robot>();
-    const auto robot_result = robot_->configure(cfg_, std::move(bus), make_model_feedforward());
+    const auto robot_result = robot_->configure(robot_cfg, std::move(bus), make_model_feedforward());
     if(!robot_result) {
         RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot configure", robot_result.error()).c_str());
         robot_.reset();

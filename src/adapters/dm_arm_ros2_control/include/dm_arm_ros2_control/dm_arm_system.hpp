@@ -133,7 +133,6 @@ private:
     std::unique_ptr<dm_arm::Dynamics> dynamics_;   ///< 后台线程独占的动力学实例
 
     std::string config_file_;              ///< Core YAML 配置文件路径
-    bool allow_hardware_{ false };         ///< 是否允许连接和使能真实硬件
     bool configured_{ false };             ///< 是否已完成 configure 阶段
 
     std::vector<double> hw_position_;      ///< ros2_control 位置状态接口缓存

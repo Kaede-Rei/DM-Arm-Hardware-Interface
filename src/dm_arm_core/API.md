@@ -1303,7 +1303,7 @@ NumPy 输入要求可转换为连续 `float64` 一维数组
 ### 17.4. RobotSession
 
 ```python
-session = dm_arm.RobotSession(config_file, allow_hardware=False)
+session = dm_arm.RobotSession(config_file)
 ```
 
 构造阶段加载配置和构建 C++ 对象，不激活真机
@@ -1449,7 +1449,7 @@ if(!robot.configure(cfg, std::move(bus), std::move(feedforward))) return 1;
 import dm_arm
 import numpy as np
 
-session = dm_arm.RobotSession("dm_arm_white.yaml", allow_hardware=True)
+session = dm_arm.RobotSession("dm_arm_white.yaml")
 session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
 session.move_to(np.zeros(6), speed_scale=0.1)

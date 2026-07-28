@@ -62,23 +62,21 @@ from ._dm_arm import validate_robot_core_cfg
 
 
 class RobotSession:
-    """使用 C++ 工作线程维护真机周期的安全会话
+    """使用 C++ 工作线程维护控制周期的会话
 
     Python 线程只提交阻抗模式、重力比例和位置目标并读取快照；200 Hz 控制周期始终在 C++ 工作线程中执行
-    真机启动要求构造时显式传入 ``allow_hardware=True``，同时要求 YAML 中 ``runtime.write_enabled`` 为 true
+    ``runtime.write_enabled=true`` 时使用真机 Damiao 后端；false 时使用离线 mock 后端
     """
 
-    def __init__(
-        self, config_file: str | Path, *, allow_hardware: bool = False
-    ) -> None:
+    def __init__(self, config_file: str | Path) -> None:
         """加载配置并构建底层会话；该阶段不会激活机械臂"""
-        self._allow_hardware = bool(allow_hardware)
+        self._cfg = load_robot_cfg(str(config_file))
         self._session = _RobotSession()
         self._session.configure(str(config_file))
 
     def start(self) -> None:
-        """激活机械臂并启动 C++ 控制线程"""
-        self._session.start(self._allow_hardware)
+        """激活后端并启动 C++ 控制线程"""
+        self._session.start()
 
     def stop(self) -> None:
         """停止 C++ 控制线程并在 ACTIVE 状态下安全失能"""

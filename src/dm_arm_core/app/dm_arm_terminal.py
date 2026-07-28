@@ -41,11 +41,10 @@ DM-Arm pybind11 Python 交互终端
         --config config/dm_arm_white.yaml \
         --check-only
 
-6 确认机械臂已支撑、急停可用、零位、方向、限位和电机型号正确后启动真机
+6 启动交互终端
 
     python dm_arm_python_terminal.py \
-        --config config/dm_arm_white.yaml \
-        --allow-hardware
+        --config config/dm_arm_white.yaml
 
 依赖
 ----
@@ -71,11 +70,7 @@ Pinocchio
 
 安全说明
 --------
-真机启动必须同时满足
-
-    命令行传入 --allow-hardware
-    RobotSession 构造参数 allow_hardware=True
-    runtime.write_enabled=true
+runtime.write_enabled=true 时使用 Damiao 真机；false 时使用离线 mock 后端
     wheel 构建时启用 DM_ARM_BUILD_DAMIAO
 
 模型前馈模式应在 INACTIVE 状态设置
@@ -171,7 +166,7 @@ class Terminal:
         self.dm_arm = dm_arm
         self.config_path = config
         self.cfg = dm_arm.load_robot_cfg(str(config))
-        self.session = dm_arm.RobotSession(config, allow_hardware=True)
+        self.session = dm_arm.RobotSession(config)
         self.joint_names = list(self.cfg.joint_names)
         self.dynamics = dm_arm.Dynamics()
         self.dynamics.configure(self.cfg.dynamics)
@@ -180,10 +175,13 @@ class Terminal:
     def banner(self) -> None:
         print("\n==============================================")
         print(" DM-Arm Python Binding Terminal")
-        print(f" dm_arm : {getattr(self.dm_arm, '__version__', 'unknown')}")
+        print(f" backend: {'damiao' if self.cfg.runtime.write_enabled else 'offline'}")
         print(f" config : {self.config_path}")
         print("==============================================")
-        print("[危险] 必须确认机械臂已支撑、急停可用、零位、方向、限位和电机型号正确")
+        if self.cfg.runtime.write_enabled:
+            print("[危险] 当前终端使用真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确")
+        else:
+            print("[离线] runtime.write_enabled=false，不连接串口、不使能电机、不写入真实硬件")
         print("[说明] 实时循环由 C++ RobotSession worker 维护")
 
     def menu(self) -> None:
@@ -755,7 +753,6 @@ def check_only(dm_arm: Any, config: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="DM-Arm pybind11 Python terminal")
     parser.add_argument("--config", default=DEFAULT_CONFIG)
-    parser.add_argument("--allow-hardware", action="store_true")
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
 
@@ -768,12 +765,6 @@ def main() -> int:
         dm_arm = import_dm_arm()
         if args.check_only:
             return check_only(dm_arm, config)
-        if not args.allow_hardware:
-            print(
-                "拒绝启动真机；请显式传入 --allow-hardware，或先使用 --check-only",
-                file=sys.stderr,
-            )
-            return 2
         return Terminal(dm_arm, config).run()
     except Exception as error:
         print(f"启动失败: {type(error).__name__}: {error}", file=sys.stderr)

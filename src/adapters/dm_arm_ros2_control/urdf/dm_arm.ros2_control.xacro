@@ -1,11 +1,10 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="dm_arm_ros2_control" params="name config_file allow_hardware:=false">
+  <xacro:macro name="dm_arm_ros2_control" params="name config_file">
     <ros2_control name="${name}" type="system">
       <hardware>
         <plugin>dm_arm_ros2_control/DmArmSystem</plugin>
         <param name="config_file">${config_file}</param>
-        <param name="allow_hardware">${allow_hardware}</param>
       </hardware>
       <joint name="joint1">
         <command_interface name="position"/>

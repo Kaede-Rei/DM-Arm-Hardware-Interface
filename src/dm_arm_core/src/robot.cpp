@@ -455,7 +455,7 @@ tl::expected<void, RobotFault> Robot::enter_fault_compliant_recovery() {
     if(!fault_hold_active_) return tl::make_unexpected(make_fault(RobotErr::FAULTED));
 
     const auto& recovery = cfg_.safety.fault_recovery;
-    // 柔性恢复降低刚度，必须由操作员显式请求；重力模型未验证时低刚度无法作为防坠承诺。
+    // 柔性恢复降低刚度，必须由操作员显式请求；重力模型未验证时低刚度无法作为防坠保障
     if(!recovery.allow_compliant_recovery || recovery.default_mode != FaultHoldMode::RIGID_HOLD ||
         !recovery.require_operator_request || !recovery.gravity_model_validated || !is_compliant_recovery_fault_allowed()) {
         return tl::make_unexpected(make_fault(RobotErr::FAULT_RECOVERY_NOT_ALLOWED));
@@ -740,7 +740,7 @@ void Robot::enter_fault(const RobotFault& fault, SafetyAction action) noexcept {
     fault_hold_mode_ = FaultHoldMode::RIGID_HOLD;
     clear_fault_valid_cycles_ = 0;
     if(action == SafetyAction::STOP_HOLD) {
-        // FAULT 默认刚性保持：先清外部命令，再以最新合法实测位置建参考，避免旧轨迹在清故障后继续执行。
+        // FAULT 默认刚性保持：先清外部命令，再以最新合法实测位置建参考，避免旧轨迹在清故障后继续执行
         fault_hold_active_ = start_fault_hold_noexcept();
         if(!fault_hold_active_) stop_or_disable_noexcept();
     }
@@ -810,7 +810,7 @@ tl::expected<void, RobotFault> Robot::update_fault_reaction(TimePoint now) {
     if(!checked_state) {
         clear_fault_valid_cycles_ = 0;
         if(fault_hold_mode_ == FaultHoldMode::COMPLIANT_RECOVERY && checked_state.error().code == SafetyErr::JOINT_POS_LIMIT) {
-            // Joint 限位恢复只允许向限位内侧运动；若实测继续深入限位，立即退回刚性保持。
+            // Joint 限位恢复只允许向限位内侧运动；若实测继续深入限位，立即退回刚性保持
             fault_hold_mode_ = FaultHoldMode::RIGID_HOLD;
         }
         if(checked_state.error().code != SafetyErr::JOINT_POS_LIMIT) return tl::make_unexpected(make_safety_fault(checked_state.error()));
@@ -896,7 +896,7 @@ bool Robot::is_compliant_recovery_fault_allowed() const noexcept {
     if(!current_fault_) return false;
     if(current_fault_->code == RobotErr::MOTOR_BUS_READ_FAILED || current_fault_->code == RobotErr::MOTOR_BUS_WRITE_FAILED) return false;
     if(current_fault_->code != RobotErr::SAFETY_FAILED) return false;
-    // 通信、供电、执行器内部错误、非有限状态与持续状态超时禁止柔性恢复；软件只能继续尽力刷新最后合法保持命令。
+    // 通信、供电、执行器内部错误、非有限状态与持续状态超时禁止柔性恢复；软件只能继续尽力刷新最后合法保持命令
     switch(current_fault_->safety_fault.code) {
         case SafetyErr::CMD_TIMEOUT:
         case SafetyErr::CMD_POS_LIMIT:

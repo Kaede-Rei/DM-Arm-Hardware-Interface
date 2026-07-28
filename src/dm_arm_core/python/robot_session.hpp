@@ -74,9 +74,8 @@ public:
     void configure(const std::string& config_file);
     /**
      * @brief 激活真机并启动 C++ 控制线程
-     * @param allow_hardware 是否显式允许真机写入
      */
-    void start(bool allow_hardware);
+    void start();
     /**
      * @brief 停止控制线程并安全失能
      */

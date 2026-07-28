@@ -807,7 +807,7 @@ void bind_robot_session(py::module_& module) {
     py::class_<PyRobotSession>(module, "_RobotSession")
         .def(py::init<>())
         .def("configure", &PyRobotSession::configure, py::call_guard<py::gil_scoped_release>())
-        .def("start", &PyRobotSession::start, py::arg("allow_hardware"), py::call_guard<py::gil_scoped_release>())
+        .def("start", &PyRobotSession::start, py::call_guard<py::gil_scoped_release>())
         .def("stop", &PyRobotSession::stop, py::call_guard<py::gil_scoped_release>())
         .def("reset_fault", &PyRobotSession::reset_fault, py::call_guard<py::gil_scoped_release>())
         .def("clear_fault", &PyRobotSession::clear_fault, py::call_guard<py::gil_scoped_release>())

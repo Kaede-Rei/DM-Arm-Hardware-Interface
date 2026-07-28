@@ -7,7 +7,6 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     config_file = LaunchConfiguration("config_file")
-    allow_hardware = LaunchConfiguration("allow_hardware")
     use_sim_time = LaunchConfiguration("use_sim_time")
     controller_manager_name = LaunchConfiguration("controller_manager_name")
 
@@ -28,8 +27,6 @@ def generate_launch_description():
         " name:=dm_arm",
         " config_file:=",
         config_file,
-        " allow_hardware:=",
-        allow_hardware,
     ])
 
     robot_state_publisher = Node(
@@ -75,7 +72,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("config_file"),
-        DeclareLaunchArgument("allow_hardware", default_value="false"),
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("controller_manager_name", default_value="/controller_manager"),
         robot_state_publisher,

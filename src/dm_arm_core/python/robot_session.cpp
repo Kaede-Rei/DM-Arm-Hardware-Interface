@@ -57,6 +57,58 @@ bool is_tracking_mode(JointImpedanceMode mode) {
     return mode == JointImpedanceMode::RIGID_TRACKING || mode == JointImpedanceMode::COMPLIANT_TRACKING;
 }
 
+/**
+ * @brief 离线时的模拟电机 Bus
+ */
+class MockMotorBus final : public MotorBus {
+public:
+    explicit MockMotorBus(std::size_t size) {
+        state_.pos.assign(size, 0.0);
+        state_.vel.assign(size, 0.0);
+        state_.tor.assign(size, 0.0);
+        state_.online.assign(size, 1);
+        state_.enabled.assign(size, 1);
+        state_.err_code.assign(size, 0);
+    }
+
+    tl::expected<void, MotorBusErr> connect() override {
+        connected_ = true;
+        return {};
+    }
+    tl::expected<ActuatorState, MotorBusErr> read() override {
+        if(!connected_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+        return state_;
+    }
+    tl::expected<void, MotorBusErr> activate() override {
+        if(!connected_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+        active_ = true;
+        return {};
+    }
+    tl::expected<void, MotorBusErr> write(const ActuatorMitCmd& cmd) override {
+        if(!active_) return tl::make_unexpected(MotorBusErr::NOT_ACTIVE);
+        state_.pos = cmd.pos;
+        state_.vel = cmd.vel;
+        state_.tor = cmd.tor;
+        return {};
+    }
+    tl::expected<void, MotorBusErr> stop() override { return {}; }
+    tl::expected<void, MotorBusErr> deactivate() override {
+        active_ = false;
+        return {};
+    }
+    tl::expected<void, MotorBusErr> recover() override { return {}; }
+    void cleanup() noexcept override {
+        active_ = false;
+        connected_ = false;
+    }
+    std::size_t size() const noexcept override { return state_.pos.size(); }
+
+private:
+    ActuatorState state_;
+    bool connected_{ false };
+    bool active_{ false };
+};
+
 } // namespace
 
 // ! ========================= 构 造 / 析 构 方 法 实 现 ========================= ! //
@@ -92,16 +144,24 @@ void PyRobotSession::configure(const std::string& config_file) {
         throw DmArmPythonError("Dynamics configure failed; DynamicsErr=" + std::to_string(static_cast<int>(dynamics_result.error())));
     }
 
-    auto bus = std::make_unique<DamiaoMotorBus>();
-    const auto bus_result = bus->configure(cfg.damiao);
-    if(!bus_result) {
-        throw DmArmPythonError("DamiaoMotorBus configure failed; MotorBusErr=" + std::to_string(static_cast<int>(bus_result.error())));
-    }
-
+    RobotCfg robot_cfg = cfg;
+    std::unique_ptr<MotorBus> bus;
     std::vector<RobotSessionActuatorInfo> actuator_info;
-    actuator_info.reserve(bus->get_actuator_info().size());
-    for(const auto& item : bus->get_actuator_info()) {
-        actuator_info.push_back(RobotSessionActuatorInfo{ item.name, item.joint_name, item.motor_id, item.master_id, item.motor_type, item.q_max, item.dq_max, item.tau_max });
+    if(cfg.runtime.write_enabled) {
+        auto damiao_bus = std::make_unique<DamiaoMotorBus>();
+        const auto bus_result = damiao_bus->configure(cfg.damiao);
+        if(!bus_result) {
+            throw DmArmPythonError("DamiaoMotorBus configure failed; MotorBusErr=" + std::to_string(static_cast<int>(bus_result.error())));
+        }
+        actuator_info.reserve(damiao_bus->get_actuator_info().size());
+        for(const auto& item : damiao_bus->get_actuator_info()) {
+            actuator_info.push_back(RobotSessionActuatorInfo{ item.name, item.joint_name, item.motor_id, item.master_id, item.motor_type, item.q_max, item.dq_max, item.tau_max });
+        }
+        bus = std::move(damiao_bus);
+    }
+    else {
+        robot_cfg.runtime.write_enabled = true;
+        bus = std::make_unique<MockMotorBus>(cfg.joint_names.size());
     }
 
     cfg_ = std::move(cfg);
@@ -109,7 +169,7 @@ void PyRobotSession::configure(const std::string& config_file) {
     actuator_info_ = std::move(actuator_info);
 
     auto robot = std::make_unique<Robot>();
-    const auto robot_result = robot->configure(cfg_, std::move(bus), make_model_feedforward());
+    const auto robot_result = robot->configure(robot_cfg, std::move(bus), make_model_feedforward());
     if(!robot_result) {
         dynamics_.reset();
         actuator_info_.clear();
@@ -129,15 +189,9 @@ void PyRobotSession::configure(const std::string& config_file) {
 #endif
 }
 
-void PyRobotSession::start(bool allow_hardware) {
+void PyRobotSession::start() {
     if(!configured_ || !robot_) {
         throw DmArmPythonError("RobotSession is not configured");
-    }
-    if(!allow_hardware) {
-        throw DmArmPythonError("start() requires allow_hardware=True");
-    }
-    if(!cfg_.runtime.write_enabled) {
-        throw DmArmPythonError("runtime.write_enabled must be true before hardware start");
     }
     if(running_.load()) {
         throw DmArmPythonError("RobotSession is already running");
