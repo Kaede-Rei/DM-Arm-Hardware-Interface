@@ -111,6 +111,11 @@ private:
      */
     void stop_worker();
     /**
+     * @brief 按 shutdown 配置回到停放姿态
+     * @return 停放姿态满足判据返回 true，否则返回 false
+     */
+    bool park_before_deactivate();
+    /**
      * @brief 清除外部命令并切换为最近状态位置保持
      */
     void clear_command();

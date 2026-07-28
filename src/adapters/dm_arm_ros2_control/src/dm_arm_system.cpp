@@ -207,22 +207,26 @@ hardware_interface::CallbackReturn DmArmSystem::on_activate(const rclcpp_lifecyc
 }
 
 /**
- * @brief 停止控制线程并请求刚性保持后失能真机
+ * @brief 请求停放姿态、停止控制线程并失能真机
  * @param previous_state 生命周期切换前状态
  * @return 失能成功返回 SUCCESS，否则返回 ERROR
  */
 hardware_interface::CallbackReturn DmArmSystem::on_deactivate(const rclcpp_lifecycle::State& previous_state) {
     static_cast<void>(previous_state);
-    stop_worker();
     if(!robot_) {
         return hardware_interface::CallbackReturn::SUCCESS;
     }
 
     if(robot_->get_state() == dm_arm::RobotState::ACTIVE) {
+        if(cfg_.shutdown.park_before_disable && !park_before_deactivate()) {
+            return hardware_interface::CallbackReturn::ERROR;
+        }
         const auto hold_result = robot_->set_impedance_mode(dm_arm::JointImpedanceMode::RIGID_HOLD);
         if(!hold_result) {
             RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot set_impedance_mode", hold_result.error()).c_str());
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        stop_worker();
         const auto result = robot_->deactivate();
         if(!result) {
             RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot deactivate", result.error()).c_str());
@@ -232,6 +236,9 @@ hardware_interface::CallbackReturn DmArmSystem::on_deactivate(const rclcpp_lifec
                 return hardware_interface::CallbackReturn::ERROR;
             }
         }
+    }
+    else {
+        stop_worker();
     }
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -488,6 +495,128 @@ void DmArmSystem::stop_worker() {
     if(worker_.joinable()) {
         worker_.join();
     }
+}
+
+/**
+ * @brief 按 shutdown 配置回到停放姿态
+ * @return 停放姿态满足判据返回 true，否则返回 false
+ */
+bool DmArmSystem::park_before_deactivate() {
+    const auto mode_result = robot_->set_impedance_mode(dm_arm::JointImpedanceMode::RIGID_TRACKING);
+    if(!mode_result) {
+        RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot set_impedance_mode", mode_result.error()).c_str());
+        return false;
+    }
+
+    dm_arm::JointVector ref_pos = robot_->get_joint_state().pos;
+    dm_arm::JointVector ref_vel(cfg_.joint_names.size(), 0.0);
+    dm_arm::Robot::TimePoint last_update = dm_arm::Robot::Clock::now();
+    const dm_arm::Robot::TimePoint started_at = last_update;
+    dm_arm::Robot::TimePoint last_progress_at = started_at;
+    dm_arm::Robot::TimePoint settled_at = started_at;
+    bool settled = false;
+
+    RCLCPP_INFO(rclcpp::get_logger(kLoggerName), "Parking before deactivate");
+    while(robot_->get_state() == dm_arm::RobotState::ACTIVE && worker_running_.load()) {
+        const dm_arm::Robot::TimePoint now = dm_arm::Robot::Clock::now();
+        double dt = std::chrono::duration<double>(now - last_update).count();
+        dt = std::clamp(dt, 1.0e-6, cfg_.safety.max_dt_s);
+
+        dm_arm::JointVector next_pos = ref_pos;
+        dm_arm::JointVector next_vel = ref_vel;
+        for(std::size_t i = 0; i < cfg_.joint_names.size(); ++i) {
+            const double error = cfg_.shutdown.park_pos[i] - ref_pos[i];
+            const double max_vel = cfg_.safety.limits.max_vel[i] * cfg_.shutdown.speed_scale;
+            const double max_acc = cfg_.safety.limits.max_acc[i];
+            const double direction = error > 0.0 ? 1.0 : (error < 0.0 ? -1.0 : 0.0);
+            const double braking_speed = std::sqrt(std::max(0.0, 2.0 * max_acc * std::abs(error)));
+            const double target_vel = direction * std::min(max_vel, braking_speed);
+            const double max_delta_vel = max_acc * dt;
+            next_vel[i] = ref_vel[i] + std::clamp(target_vel - ref_vel[i], -max_delta_vel, max_delta_vel);
+
+            const double candidate_pos = ref_pos[i] + next_vel[i] * dt;
+            const bool crossed_target = error != 0.0 && (cfg_.shutdown.park_pos[i] - candidate_pos) * error <= 0.0;
+            const double pos_tolerance = std::max(1.0e-5, max_vel * dt * 0.25);
+            if(crossed_target || std::abs(error) <= pos_tolerance) {
+                next_pos[i] = cfg_.shutdown.park_pos[i];
+                next_vel[i] = ref_vel[i] + std::clamp(-ref_vel[i], -max_delta_vel, max_delta_vel);
+            }
+            else {
+                next_pos[i] = candidate_pos;
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(command_mutex_);
+            command_frame_.pos = next_pos;
+            command_frame_.vel = next_vel;
+            cmd_position_ = command_frame_.pos;
+            cmd_velocity_ = command_frame_.vel;
+            ++command_frame_.sequence;
+        }
+        ref_pos = std::move(next_pos);
+        ref_vel = std::move(next_vel);
+        last_update = now;
+
+        double max_position_error = 0.0;
+        double max_velocity = 0.0;
+        std::size_t position_index = 0;
+        std::size_t velocity_index = 0;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            for(std::size_t i = 0; i < cfg_.joint_names.size(); ++i) {
+                const double position_error = std::abs(state_frame_.pos[i] - cfg_.shutdown.park_pos[i]);
+                const double velocity = std::abs(state_frame_.vel[i]);
+                if(position_error > max_position_error) {
+                    max_position_error = position_error;
+                    position_index = i;
+                }
+                if(velocity > max_velocity) {
+                    max_velocity = velocity;
+                    velocity_index = i;
+                }
+            }
+        }
+
+        if(max_position_error <= cfg_.shutdown.position_tolerance && max_velocity <= cfg_.shutdown.velocity_tolerance) {
+            if(!settled) {
+                settled_at = now;
+                settled = true;
+            }
+            if(std::chrono::duration<double>(now - settled_at).count() >= cfg_.shutdown.settle_time_s) {
+                clear_command();
+                return true;
+            }
+        }
+        else {
+            settled = false;
+        }
+
+        if(std::chrono::duration<double>(now - last_progress_at).count() >= 1.0) {
+            RCLCPP_INFO(rclcpp::get_logger(kLoggerName), "Parking error %.6f rad (%s), velocity %.6f rad/s (%s)", max_position_error, cfg_.joint_names[position_index].c_str(), max_velocity, cfg_.joint_names[velocity_index].c_str());
+            last_progress_at = now;
+        }
+
+        if(std::chrono::duration<double>(now - started_at).count() > cfg_.shutdown.timeout_s) {
+            const double relaxed_position_tolerance = cfg_.shutdown.position_tolerance * cfg_.shutdown.relaxed_tolerance_ratio;
+            const double relaxed_velocity_tolerance = cfg_.shutdown.velocity_tolerance * cfg_.shutdown.relaxed_tolerance_ratio;
+            if(max_position_error <= relaxed_position_tolerance && max_velocity <= relaxed_velocity_tolerance) {
+                RCLCPP_WARN(rclcpp::get_logger(kLoggerName), "Parking strict check timed out, relaxed check passed");
+                clear_command();
+                return true;
+            }
+
+            clear_command();
+            static_cast<void>(robot_->set_impedance_mode(dm_arm::JointImpedanceMode::RIGID_HOLD));
+            RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "Parking timeout; keep ACTIVE in RIGID_HOLD. error %.6f rad (%s), velocity %.6f rad/s (%s)", max_position_error, cfg_.joint_names[position_index].c_str(), max_velocity, cfg_.joint_names[velocity_index].c_str());
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "Parking aborted; Robot state is not ACTIVE or worker stopped");
+    return false;
 }
 
 /**
