@@ -10,12 +10,12 @@
 
 # 01 model
 model:
-  urdf_path: ../../core/dm_arm_description/urdf/dm_arm_no_gripper.urdf           # 无夹爪 URDF，路径相对当前 YAML
-  joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]   # 受控关节名称
-  base_frame: base_link                                           # 动力学基坐标系
-  tool_frame: tool0                                               # 动力学末端坐标系
-  gravity: [0.0, 0.0, -9.81]                                      # 世界坐标系重力加速度
-  gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]                   # 重力补偿比例
+  urdf_path: ../../core/dm_arm_description/urdf/dm_arm_no_gripper.urdf  # 无夹爪 URDF，路径相对当前 YAML
+  joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]         # 受控关节名称
+  base_frame: base_link                                                 # 动力学基坐标系
+  tool_frame: tool0                                                     # 动力学末端坐标系
+  gravity: [0.0, 0.0, -9.81]                                            # 世界坐标系重力加速度
+  gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]                         # 重力补偿比例
 
 # 02 hardware
 hardware:
@@ -50,10 +50,11 @@ calibration:
 # 04 control
 control:
   runtime:
-    ctrl_frequency_hz: 200.0        # Robot cycle 目标频率
-    joint_acc_filter_alpha: 0.2     # 关节加速度低通滤波系数
-    write_enabled: true             # 真机确认前保持 false
-    model_feedforward_mode: GRAVITY # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+    ctrl_frequency_hz: 200.0                          # Robot cycle 目标频率
+    joint_acc_filter_alpha: 0.2                       # 关节加速度低通滤波系数
+    write_enabled: true                               # 真机确认前保持 false
+    model_feedforward_mode: GRAVITY                   # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
+    ros2_control_impedance_mode: COMPLIANT_TRACKING   # RIGID_TRACKING / COMPLIANT_TRACKING
   controller:
     allow_full_cmd: false           # 是否允许完整 MIT 风格 Joint 命令
     # 刚性保持参数

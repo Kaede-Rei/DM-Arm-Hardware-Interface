@@ -66,7 +66,7 @@ import numpy as np
 
 import dm_arm
 
-cfg = dm_arm.load_robot_cfg(Path("config/dm_arm.yaml"))
+cfg = dm_arm.load_robot_cfg(Path("config/arm.yaml"))
 dynamics = dm_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
 
@@ -89,7 +89,7 @@ import numpy as np
 
 import dm_arm
 
-session = dm_arm.RobotSession(Path("config/dm_arm.yaml"))
+session = dm_arm.RobotSession(Path("config/arm.yaml"))
 session.set_model_feedforward_mode(dm_arm.ModelFeedforwardMode.GRAVITY)
 session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
 

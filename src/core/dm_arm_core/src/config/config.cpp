@@ -219,6 +219,19 @@ ModelFeedforwardMode load_model_feedforward_mode(const YAML::Node& runtime) {
 }
 
 /**
+ * @brief 解析 ros2_control 跟踪阻抗模式
+ */
+JointImpedanceMode load_ros2_control_impedance_mode(const YAML::Node& runtime) {
+    if(!runtime["ros2_control_impedance_mode"]) return JointImpedanceMode::RIGID_TRACKING;
+    const std::string value = require_as<std::string>(runtime, "ros2_control_impedance_mode", "runtime");
+
+    if(value == "RIGID_TRACKING") return JointImpedanceMode::RIGID_TRACKING;
+    if(value == "COMPLIANT_TRACKING") return JointImpedanceMode::COMPLIANT_TRACKING;
+
+    throw ConfigLoadException(ConfigErr::INVALID_VALUE, "runtime.ros2_control_impedance_mode must be RIGID_TRACKING or COMPLIANT_TRACKING");
+}
+
+/**
  * @brief 解析 FAULT 默认恢复模式
  */
 FaultHoldMode load_fault_hold_mode(const YAML::Node& node, const char* context) {
@@ -238,6 +251,30 @@ bool finite_vector(const JointVector& values) {
         if(!std::isfinite(value)) return false;
     }
     return true;
+}
+
+/**
+ * @brief 解析 YAML 中的 URDF 路径，兼容源码树与 colcon install 空间
+ */
+std::filesystem::path resolve_urdf_path(const std::filesystem::path& config_path, const std::filesystem::path& raw_path) {
+    if(raw_path.is_absolute()) return raw_path.lexically_normal();
+
+    const std::filesystem::path source_tree_path = (config_path.parent_path() / raw_path).lexically_normal();
+    if(std::filesystem::exists(source_tree_path)) return source_tree_path;
+
+    const std::string raw_text = raw_path.generic_string();
+    const std::string marker = "core/dm_arm_description/urdf/";
+    const std::size_t marker_pos = raw_text.find(marker);
+    if(marker_pos != std::string::npos) {
+        const std::filesystem::path urdf_relative = raw_text.substr(marker_pos + marker.size());
+        for(std::filesystem::path base = config_path.parent_path(); !base.empty(); base = base.parent_path()) {
+            const std::filesystem::path install_share_path = (base / "dm_arm_description" / "share" / "dm_arm_description" / "urdf" / urdf_relative).lexically_normal();
+            if(std::filesystem::exists(install_share_path)) return install_share_path;
+            if(base == base.parent_path()) break;
+        }
+    }
+
+    return source_tree_path;
 }
 
 /**
@@ -316,6 +353,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& pat
         cfg.runtime.joint_acc_filter_alpha = runtime["joint_acc_filter_alpha"] ? require_as<double>(runtime, "joint_acc_filter_alpha", "runtime") : 0.2;
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
         cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
+        cfg.runtime.ros2_control_impedance_mode = load_ros2_control_impedance_mode(runtime);
 
         cfg.shutdown.park_pos.assign(cfg.joint_names.size(), 0.0);
         const YAML::Node shutdown = root["shutdown"];
@@ -373,10 +411,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& pat
 
         const YAML::Node dynamics = require_map(root, "dynamics", "root");
         const std::filesystem::path config_path = std::filesystem::absolute(path).lexically_normal();
-        std::filesystem::path urdf_path = require_as<std::string>(dynamics, "urdf_path", "dynamics");
-        if(urdf_path.is_relative()) {
-            urdf_path = (config_path.parent_path() / urdf_path).lexically_normal();
-        }
+        std::filesystem::path urdf_path = resolve_urdf_path(config_path, require_as<std::string>(dynamics, "urdf_path", "dynamics"));
 
         cfg.dynamics.urdf_path = urdf_path.string();
         cfg.dynamics.joint_names = cfg.joint_names;
@@ -492,9 +527,8 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
 
         RobotCfg cfg;
         cfg.joint_names = require_as<std::vector<std::string>>(model_node, "joint_names", "model");
-        std::filesystem::path urdf_path = require_as<std::string>(model_node, "urdf_path", "model");
-        if(urdf_path.is_relative()) urdf_path = config_path.parent_path() / urdf_path;
-        cfg.dynamics.urdf_path = urdf_path.lexically_normal().string();
+        const std::filesystem::path urdf_path = resolve_urdf_path(config_path, require_as<std::string>(model_node, "urdf_path", "model"));
+        cfg.dynamics.urdf_path = urdf_path.string();
         cfg.dynamics.joint_names = cfg.joint_names;
         cfg.dynamics.base_frame = require_as<std::string>(model_node, "base_frame", "model");
         cfg.dynamics.tool_frame = require_as<std::string>(model_node, "tool_frame", "model");
@@ -504,11 +538,12 @@ tl::expected<RobotCfg, ConfigErrInfo> load_sectioned_robot_cfg(const std::string
         cfg.dynamics.gravity_scale = require_as<JointVector>(model_node, "gravity_scale", "model");
 
         const YAML::Node runtime = require_map(control_node, "runtime", "control");
-        reject_unknown_keys(runtime, "control.runtime", { "ctrl_frequency_hz", "joint_acc_filter_alpha", "write_enabled", "model_feedforward_mode" });
+        reject_unknown_keys(runtime, "control.runtime", { "ctrl_frequency_hz", "joint_acc_filter_alpha", "write_enabled", "model_feedforward_mode", "ros2_control_impedance_mode" });
         cfg.runtime.ctrl_frequency_hz = require_as<double>(runtime, "ctrl_frequency_hz", "runtime");
         cfg.runtime.joint_acc_filter_alpha = runtime["joint_acc_filter_alpha"] ? require_as<double>(runtime, "joint_acc_filter_alpha", "runtime") : 0.2;
         cfg.runtime.write_enabled = require_as<bool>(runtime, "write_enabled", "runtime");
         cfg.runtime.model_feedforward_mode = load_model_feedforward_mode(runtime);
+        cfg.runtime.ros2_control_impedance_mode = load_ros2_control_impedance_mode(runtime);
         const YAML::Node controller = require_map(control_node, "controller", "control");
         reject_unknown_keys(controller, "control.controller", { "allow_full_cmd", "rigid_hold", "rigid_tracking", "compliant_hold", "compliant_drag", "compliant_tracking" });
         reject_unknown_keys(require_map(controller, "rigid_hold", "controller"), "controller.rigid_hold", { "kp", "kd" });
@@ -661,6 +696,10 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
     if(!std::isfinite(cfg.runtime.joint_acc_filter_alpha) || cfg.runtime.joint_acc_filter_alpha < 0.0 || cfg.runtime.joint_acc_filter_alpha > 1.0) {
         return fail(ConfigErr::INVALID_VALUE, "runtime.joint_acc_filter_alpha must be in [0, 1]");
     }
+    if(cfg.runtime.ros2_control_impedance_mode != JointImpedanceMode::RIGID_TRACKING &&
+        cfg.runtime.ros2_control_impedance_mode != JointImpedanceMode::COMPLIANT_TRACKING) {
+        return fail(ConfigErr::INVALID_VALUE, "runtime.ros2_control_impedance_mode must be a tracking mode");
+    }
     const double nominal_dt = 1.0 / cfg.runtime.ctrl_frequency_hz;
     if(cfg.safety.max_dt_s < nominal_dt) {
         return fail(ConfigErr::INVALID_VALUE, "safety.max_dt_s must not be smaller than the nominal control period");
@@ -804,12 +843,13 @@ tl::expected<std::vector<std::string>, ConfigErrInfo> compare_robot_cfg(const st
     std::vector<std::string> diffs;
     const auto add = [&diffs](const std::string& name) {
         diffs.push_back(name);
-    };
+        };
     if(lhs->joint_names != rhs->joint_names) add("joint_names");
     if(lhs->mapper.pos_ratio != rhs->mapper.pos_ratio || lhs->mapper.tor_ratio != rhs->mapper.tor_ratio ||
         lhs->mapper.direction != rhs->mapper.direction || lhs->mapper.joint_zero_offset != rhs->mapper.joint_zero_offset ||
         lhs->mapper.actuator_zero_offset != rhs->mapper.actuator_zero_offset) add("mapping");
     if(lhs->runtime.ctrl_frequency_hz != rhs->runtime.ctrl_frequency_hz) add("runtime.ctrl_frequency_hz");
+    if(lhs->runtime.ros2_control_impedance_mode != rhs->runtime.ros2_control_impedance_mode) add("runtime.ros2_control_impedance_mode");
     if(lhs->ctrller.rigid_hold_gains.kp != rhs->ctrller.rigid_hold_gains.kp || lhs->ctrller.rigid_hold_gains.kd != rhs->ctrller.rigid_hold_gains.kd ||
         lhs->ctrller.rigid_tracking_gains.kp != rhs->ctrller.rigid_tracking_gains.kp || lhs->ctrller.rigid_tracking_gains.kd != rhs->ctrller.rigid_tracking_gains.kd ||
         lhs->ctrller.compliant_hold_gains.kp != rhs->ctrller.compliant_hold_gains.kp || lhs->ctrller.compliant_hold_gains.kd != rhs->ctrller.compliant_hold_gains.kd ||

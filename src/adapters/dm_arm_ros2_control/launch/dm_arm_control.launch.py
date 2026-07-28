@@ -7,6 +7,7 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -14,6 +15,9 @@ def resolve_profile(context):
     robot_profile = context.launch_configurations.get("robot_profile", "gray")
     if robot_profile not in ("gray", "white"):
         raise RuntimeError("robot_profile must be 'gray' or 'white'")
+    use_sim_time = context.launch_configurations.get(
+        "use_sim_time", "false"
+    ).lower() in ("true", "1", "yes")
 
     config_file = LaunchConfiguration("config_file")
     ros2_control_xacro = PathJoinSubstitution(
@@ -35,6 +39,7 @@ def resolve_profile(context):
             config_file,
         ]
     )
+    robot_description_param = ParameterValue(robot_description, value_type=str)
     controller_manager_name = context.launch_configurations.get(
         "controller_manager_name", "/controller_manager"
     )
@@ -44,10 +49,8 @@ def resolve_profile(context):
         executable="robot_state_publisher",
         parameters=[
             {
-                "robot_description": robot_description,
-                "use_sim_time": context.launch_configurations.get(
-                    "use_sim_time", "false"
-                ),
+                "robot_description": robot_description_param,
+                "use_sim_time": use_sim_time,
             }
         ],
     )
@@ -56,7 +59,7 @@ def resolve_profile(context):
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[
-            {"robot_description": robot_description},
+            {"robot_description": robot_description_param},
             controllers_file,
         ],
         remappings=[

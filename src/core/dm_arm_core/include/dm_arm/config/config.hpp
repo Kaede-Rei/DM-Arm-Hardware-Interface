@@ -26,6 +26,9 @@ struct RuntimeCfg {
     ModelFeedforwardMode model_feedforward_mode{       ///< 模型前馈策略
         ModelFeedforwardMode::NONE
     };
+    JointImpedanceMode ros2_control_impedance_mode{    ///< ros2_control 跟踪阻抗模式
+        JointImpedanceMode::RIGID_TRACKING
+    };
 };
 
 /**

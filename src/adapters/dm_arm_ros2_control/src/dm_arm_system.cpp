@@ -126,6 +126,20 @@ hardware_interface::CallbackReturn DmArmSystem::on_init(const hardware_interface
     }
     cfg_ = cfg_result.value();
 
+    const std::size_t joint_count = cfg_.joint_names.size();
+    hw_position_.assign(joint_count, 0.0);
+    hw_velocity_.assign(joint_count, 0.0);
+    hw_effort_.assign(joint_count, 0.0);
+    cmd_position_.assign(joint_count, 0.0);
+    cmd_velocity_.assign(joint_count, 0.0);
+    command_frame_.pos.assign(joint_count, 0.0);
+    command_frame_.vel.assign(joint_count, 0.0);
+    state_frame_.pos.assign(joint_count, 0.0);
+    state_frame_.vel.assign(joint_count, 0.0);
+    state_frame_.effort.assign(joint_count, 0.0);
+    state_frame_.model_feedforward.assign(joint_count, 0.0);
+    state_frame_.valid = false;
+
     return validate_hardware_info();
 }
 
@@ -179,7 +193,7 @@ hardware_interface::CallbackReturn DmArmSystem::on_activate(const rclcpp_lifecyc
         hw_effort_ = state_frame_.effort;
     }
 
-    const auto mode_result = robot_->set_impedance_mode(dm_arm::JointImpedanceMode::RIGID_TRACKING);
+    const auto mode_result = robot_->set_impedance_mode(cfg_.runtime.ros2_control_impedance_mode);
     if(!mode_result) {
         RCLCPP_ERROR(rclcpp::get_logger(kLoggerName), "%s", make_robot_error("Robot set_impedance_mode", mode_result.error()).c_str());
         static_cast<void>(robot_->force_deactivate());
@@ -356,18 +370,17 @@ hardware_interface::CallbackReturn DmArmSystem::configure_robot() {
         return hardware_interface::CallbackReturn::ERROR;
     }
 
-    const std::size_t joint_count = cfg_.joint_names.size();
-    hw_position_.assign(joint_count, 0.0);
-    hw_velocity_.assign(joint_count, 0.0);
-    hw_effort_.assign(joint_count, 0.0);
-    cmd_position_.assign(joint_count, 0.0);
-    cmd_velocity_.assign(joint_count, 0.0);
-    command_frame_.pos.assign(joint_count, 0.0);
-    command_frame_.vel.assign(joint_count, 0.0);
-    state_frame_.pos.assign(joint_count, 0.0);
-    state_frame_.vel.assign(joint_count, 0.0);
-    state_frame_.effort.assign(joint_count, 0.0);
-    state_frame_.model_feedforward.assign(joint_count, 0.0);
+    std::fill(hw_position_.begin(), hw_position_.end(), 0.0);
+    std::fill(hw_velocity_.begin(), hw_velocity_.end(), 0.0);
+    std::fill(hw_effort_.begin(), hw_effort_.end(), 0.0);
+    std::fill(cmd_position_.begin(), cmd_position_.end(), 0.0);
+    std::fill(cmd_velocity_.begin(), cmd_velocity_.end(), 0.0);
+    std::fill(command_frame_.pos.begin(), command_frame_.pos.end(), 0.0);
+    std::fill(command_frame_.vel.begin(), command_frame_.vel.end(), 0.0);
+    std::fill(state_frame_.pos.begin(), state_frame_.pos.end(), 0.0);
+    std::fill(state_frame_.vel.begin(), state_frame_.vel.end(), 0.0);
+    std::fill(state_frame_.effort.begin(), state_frame_.effort.end(), 0.0);
+    std::fill(state_frame_.model_feedforward.begin(), state_frame_.model_feedforward.end(), 0.0);
     state_frame_.valid = false;
     configured_ = true;
     return hardware_interface::CallbackReturn::SUCCESS;

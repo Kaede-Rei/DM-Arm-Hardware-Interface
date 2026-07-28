@@ -138,10 +138,10 @@ source /opt/ros/humble/setup.bash
 colcon build --symlink-install \
   --packages-select dm_arm_core dm_arm_description dm_arm_ros2_control dm_arm_bringup dm_arm_no_gripper dm_arm_with_gripper
 source install/setup.bash
-ros2 launch dm_arm_bringup hardware.launch.py robot_profile:=gray
+ros2 launch dm_arm_bringup display.launch.py robot_profile:=gray
 ```
 
-默认使用 `robot_profile:=gray`；真机写入只由 `src/dm_arm_bringup/config/dm_arm_gray.yaml` 中的 `runtime.write_enabled` 决定
+默认使用 `robot_profile:=gray`；`gray` / `white` 到 Core YAML、URDF 变体和 MoveIt 包的映射统一写在 `src/dm_arm_bringup/config/robot_profiles.yaml`
 
 ### 4.1. 构建
 
@@ -158,6 +158,8 @@ source install/setup.bash
 ros2 launch dm_arm_bringup display.launch.py robot_profile:=gray
 ```
 
+`display.launch.py` 只用于查看模型和拖动关节
+
 可选 profile：
 
 ```text
@@ -165,16 +167,43 @@ gray   无夹爪
 white  有夹爪
 ```
 
-### 4.3. 启动 ros2_control
+### 4.3. 启动 Terminal
+
+Terminal 使用同一份 Core YAML；是否连接真机只由 `runtime.write_enabled` 决定
+
+```bash
+./install/dm_arm_core/bin/dm_arm_terminal \
+  --config src/dm_arm_bringup/config/dm_arm_gray.yaml
+```
+
+Python Terminal：
+
+```bash
+python src/core/dm_arm_core/app/dm_arm_terminal.py \
+  --config src/dm_arm_bringup/config/dm_arm_gray.yaml
+```
+
+Python 配置检查不连接真机：
+
+```bash
+python src/core/dm_arm_core/app/dm_arm_terminal.py \
+  --config src/dm_arm_bringup/config/dm_arm_gray.yaml \
+  --check-only
+```
+
+### 4.4. 启动 ros2_control
 
 先确认对应配置中的真机写入开关：
 
 ```yaml
 runtime:
   write_enabled: false
+  ros2_control_impedance_mode: RIGID_TRACKING
 ```
 
 `false` 使用离线 mock 后端，不连接串口、不使能电机、不写真实硬件；确认机械臂、急停、零位、方向、限位和电机型号后，再改为 `true` 使用 Damiao 真机后端
+
+`ros2_control_impedance_mode` 可选 `RIGID_TRACKING` 或 `COMPLIANT_TRACKING`；MoveIt/JTC 轨迹仍走同一个 `joint_trajectory_controller`
 
 ```bash
 ros2 launch dm_arm_bringup hardware.launch.py robot_profile:=gray
@@ -188,7 +217,9 @@ ros2 control list_controllers
 ros2 topic echo /joint_states
 ```
 
-### 4.4. 启动 MoveIt
+`src/dm_arm_bringup/config/ros2_controllers.yaml` 是 controller_manager 和 JTC 的统一配置，通常不需要改；只有在关节名称/顺序、控制器名称、接口类型、update_rate、FollowJointTrajectory action 映射或 JTC 行为参数确实变化时才修改
+
+### 4.5. 启动 MoveIt
 
 ```bash
 ros2 launch dm_arm_bringup moveit.launch.py robot_profile:=gray

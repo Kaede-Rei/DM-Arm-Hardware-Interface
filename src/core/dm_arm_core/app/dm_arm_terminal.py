@@ -100,7 +100,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-DEFAULT_CONFIG = "config/dm_arm.yaml"
+DEFAULT_CONFIG = "config/arm.yaml"
 
 
 def enum_name(value: Any) -> str:
@@ -179,9 +179,13 @@ class Terminal:
         print(f" config : {self.config_path}")
         print("==============================================")
         if self.cfg.runtime.write_enabled:
-            print("[危险] 当前终端使用真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确")
+            print(
+                "[危险] 当前终端使用真机运行前必须确认机械臂已支撑、零位、方向、限位和电机型号正确"
+            )
         else:
-            print("[离线] runtime.write_enabled=false，不连接串口、不使能电机、不写入真实硬件")
+            print(
+                "[离线] runtime.write_enabled=false，不连接串口、不使能电机、不写入真实硬件"
+            )
         print("[说明] 实时循环由 C++ RobotSession worker 维护")
 
     def menu(self) -> None:
@@ -610,6 +614,9 @@ class Terminal:
         print(f"write_enabled           : {cfg.runtime.write_enabled}")
         print(
             f"model_feedforward_mode  : {enum_name(cfg.runtime.model_feedforward_mode)}"
+        )
+        print(
+            f"ros2_control_mode       : {enum_name(cfg.runtime.ros2_control_impedance_mode)}"
         )
         print(f"park_before_disable     : {cfg.shutdown.park_before_disable}")
         print_vector("park_pos", cfg.shutdown.park_pos)

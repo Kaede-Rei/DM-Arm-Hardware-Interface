@@ -1,0 +1,9 @@
+profiles:
+  gray:
+    core_config: dm_arm_gray.yaml
+    description_profile: gray
+    moveit_package: dm_arm_no_gripper
+  white:
+    core_config: dm_arm_white.yaml
+    description_profile: white
+    moveit_package: dm_arm_with_gripper

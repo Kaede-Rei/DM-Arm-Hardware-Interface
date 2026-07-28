@@ -23,7 +23,7 @@
 #include <vector>
 
 #ifndef DM_ARM_DEFAULT_CONFIG_PATH
-#define DM_ARM_DEFAULT_CONFIG_PATH "config/dm_arm.yaml"
+#define DM_ARM_DEFAULT_CONFIG_PATH "config/arm.yaml"
 #endif
 
 namespace {
@@ -1125,6 +1125,7 @@ private:
         std::cout << "RobotState             : " << to_string(robot_.get_state()) << '\n';
         std::cout << "JointImpedanceMode      : " << to_string(robot_.get_impedance_mode()) << '\n';
         std::cout << "ModelFeedforwardMode    : " << to_string(robot_.get_model_feedforward_mode()) << '\n';
+        std::cout << "ros2_control_mode       : " << to_string(cfg_.runtime.ros2_control_impedance_mode) << '\n';
         std::cout << "FaultHoldMode           : " << to_string(robot_.get_fault_hold_mode()) << '\n';
         std::cout << "Dynamics configured     : " << std::boolalpha << dynamics_.is_configured() << '\n';
         std::cout << "Dynamics updated        : " << std::boolalpha << dynamics_.is_updated() << '\n';
@@ -1312,6 +1313,7 @@ private:
         std::cout << "joint_acc_filter_alpha  : " << cfg_.runtime.joint_acc_filter_alpha << '\n';
         std::cout << "write_enabled           : " << std::boolalpha << cfg_.runtime.write_enabled << '\n';
         std::cout << "model_feedforward_mode  : " << to_string(robot_.get_model_feedforward_mode()) << '\n';
+        std::cout << "ros2_control_mode       : " << to_string(cfg_.runtime.ros2_control_impedance_mode) << '\n';
         std::cout << "park_before_disable     : " << std::boolalpha << cfg_.shutdown.park_before_disable << '\n';
         print_vector("park_pos", cfg_.shutdown.park_pos);
         std::cout << "park_speed_scale        : " << cfg_.shutdown.speed_scale << '\n';

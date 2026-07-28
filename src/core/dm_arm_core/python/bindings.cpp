@@ -568,7 +568,8 @@ void bind_config(py::module_& module) {
         .def_readwrite("ctrl_frequency_hz", &RuntimeCfg::ctrl_frequency_hz)
         .def_readwrite("joint_acc_filter_alpha", &RuntimeCfg::joint_acc_filter_alpha)
         .def_readwrite("write_enabled", &RuntimeCfg::write_enabled)
-        .def_readwrite("model_feedforward_mode", &RuntimeCfg::model_feedforward_mode);
+        .def_readwrite("model_feedforward_mode", &RuntimeCfg::model_feedforward_mode)
+        .def_readwrite("ros2_control_impedance_mode", &RuntimeCfg::ros2_control_impedance_mode);
 
     py::class_<ShutdownCfg>(module, "ShutdownCfg")
         .def(py::init<>())
