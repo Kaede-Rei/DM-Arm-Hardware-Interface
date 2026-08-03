@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<library path="serial_arm_system">
+    <class name="serial_arm_ros2_control/SerialArmSystem" type="serial_arm_ros2_control::SerialArmSystem" base_class_type="hardware_interface::SystemInterface">
+        <description>DM-Arm ros2_control SystemInterface</description>
+    </class>
+</library>

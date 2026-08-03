@@ -1,4 +1,0 @@
-<?xml version="1.0"?>
-<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="DM-Arm">
-    <xacro:include filename="$(find dm_arm_description)/urdf/dm_arm_no_gripper.urdf" />
-</robot>

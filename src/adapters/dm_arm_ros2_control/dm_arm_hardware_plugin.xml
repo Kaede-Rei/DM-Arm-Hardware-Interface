@@ -1,6 +1,0 @@
-<?xml version="1.0"?>
-<library path="dm_arm_system">
-    <class name="dm_arm_ros2_control/DmArmSystem" type="dm_arm_ros2_control::DmArmSystem" base_class_type="hardware_interface::SystemInterface">
-        <description>DM-Arm ros2_control SystemInterface</description>
-    </class>
-</library>

@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(yaml-cpp REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/serial_arm_targets.cmake")
+check_required_components(serial_arm_core)
