@@ -37,15 +37,15 @@ enum class MotorBusErr {
 class MotorBus {
 public:
     /**
-     * @brief 释放 Backend 对象
+     * @brief 执行器硬件后端抽象
      *
-     * 动态加载的 Backend 必须通过导出的 destroy_motor_bus() 销毁；用户代码
-     * 不应直接 delete 插件返回的对象
+     * MotorBus 只暴露 SerialArm Hardware Contract；具体厂商协议、单位、
+     * 电流到力矩转换和底层控制由 Backend 自行适配
      */
     virtual ~MotorBus() = default;
 
     /**
-     * @brief 加载并校验硬件后端配置
+     * @brief 读取并校验具体 Hardware Backend 的配置文件
      * @param config_path Backend 专属 YAML 配置路径
      *
      * configure() 不应向真实执行器发送使能或运动命令；需要建立低层资源时，
@@ -63,7 +63,8 @@ public:
     /**
      * @brief 读取执行器侧状态
      *
-     * 返回的 pos/vel/tor 必须使用 Core 合同单位：rad、rad/s、N*m
+     * 返回的 pos / vel / tor 必须符合 SerialArm Hardware Contract：
+     * rad、rad/s、N·m
      */
     virtual tl::expected<ActuatorState, MotorBusErr> read() = 0;
 
@@ -76,7 +77,7 @@ public:
 
     /**
      * @brief 写入执行器侧控制命令
-     * @param cmd Core 输出的执行器侧命令，单位和语义见 ActuatorCtrlCmd
+     * @param cmd Core 输出的完整 pos / vel / tor / kp / kd 执行器侧命令
      */
     virtual tl::expected<void, MotorBusErr> write(const ActuatorCtrlCmd& cmd) = 0;
 
@@ -96,7 +97,7 @@ public:
     virtual tl::expected<void, MotorBusErr> recover() = 0;
 
     /**
-     * @brief 返回每个执行器的物理能力和 Backend 约束
+     * @brief 返回 Core Safety 所需的执行器物理范围
      */
     virtual const HardwareCapabilities& capabilities() const noexcept = 0;
 

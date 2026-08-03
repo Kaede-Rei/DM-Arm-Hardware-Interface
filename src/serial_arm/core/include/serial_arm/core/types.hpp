@@ -49,15 +49,15 @@ struct JointState {
  * @brief 执行器状态
  *
  * Core 统一定义执行器侧状态单位；Hardware Backend 必须将厂商协议
- * 反馈转换为以下语义后再返回给 Core：
+ * 反馈、厂商单位、电流或其他底层量转换为以下 SerialArm 语义：
  * - pos: rad
  * - vel: rad/s
- * - tor: N*m
+ * - tor: N·m
  */
 struct ActuatorState {
     ActuatorVector pos;             ///< 执行器侧位置，单位 rad
     ActuatorVector vel;             ///< 执行器侧速度，单位 rad/s
-    ActuatorVector tor;             ///< 执行器侧力矩，单位 N*m
+    ActuatorVector tor;             ///< 执行器侧力矩，单位 N·m
 
     std::vector<std::uint8_t> online;   ///< 执行器在线状态
     std::vector<std::uint8_t> enabled;  ///< 执行器使能状态
@@ -127,19 +127,20 @@ struct JointCtrlCmd {
  * @brief 执行器控制命令
  *
  * 该命令已经完成关节侧到执行器侧的映射；Hardware Backend 必须按
- * Core 定义的 pos / vel / tor / kp / kd 合同解释并转换为厂商协议
+ * Core 定义的 pos / vel / tor / kp / kd 合同解释，并转换为厂商协议、
+ * 厂商单位、电流或其他底层量
  * - pos: rad
  * - vel: rad/s
- * - tor: N*m
- * - kp: 等效执行器侧位置刚度
- * - kd: 等效执行器侧速度阻尼
+ * - tor: N·m
+ * - kp: N·m/rad
+ * - kd: N·m·s/rad
  */
 struct ActuatorCtrlCmd {
     ActuatorVector pos;    ///< 执行器侧目标位置，单位 rad
     ActuatorVector vel;    ///< 执行器侧目标速度，单位 rad/s
-    ActuatorVector tor;    ///< 执行器侧前馈力矩，单位 N*m
-    ActuatorVector kp;     ///< 等效执行器侧位置刚度
-    ActuatorVector kd;     ///< 等效执行器侧速度阻尼
+    ActuatorVector tor;    ///< 执行器侧前馈/目标力矩，单位 N·m
+    ActuatorVector kp;     ///< 执行器侧等效位置刚度，单位 N·m/rad
+    ActuatorVector kd;     ///< 执行器侧等效速度阻尼，单位 N·m·s/rad
 };
 
 } // namespace serial_arm

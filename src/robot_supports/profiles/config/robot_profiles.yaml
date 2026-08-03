@@ -1,36 +1,38 @@
+# Robot Profile 将 Core、Hardware、Description、Controllers 和 MoveIt 组装为可启动实例
+# package + 相对路径解析为 <package share>/<relative path>
 profiles:
-  dm_arm_gray:
+  dm_arm_gray:  # 全局唯一 Profile 名，建议采用 <robot_name>_<variant>
     core:
-      package: dm_arm_description
-      config: config/core/gray.yaml
+      package: dm_arm_description       # Core YAML 所在 ROS package
+      config: config/core/gray.yaml     # Core 配置相对路径
     hardware:
-      plugin: serial_arm_hardware_damiao
-      config_package: dm_arm_description
-      config: config/hardware.yaml
+      plugin: serial_arm_hardware_damiao  # HardwareLoader 加载的 Backend
+      config_package: dm_arm_description  # Hardware 实例配置所在 package
+      config: config/hardware.yaml        # Hardware 配置相对路径
     description:
-      package: dm_arm_description
-      urdf: model/gray/urdf/dm_arm_no_gripper.urdf
-      ros2_control_xacro: model/gray/urdf/dm_arm.ros2_control.xacro
+      package: dm_arm_description                                     # Robot Description 所在 package
+      urdf: model/gray/urdf/dm_arm_no_gripper.urdf                    # display 使用的 URDF
+      ros2_control_xacro: model/gray/urdf/dm_arm.ros2_control.xacro   # ros2_control Xacro
     controllers:
-      package: dm_arm_description
-      config: config/ros2_controllers.yaml
+      package: dm_arm_description          # Controllers 配置所在 package
+      config: config/ros2_controllers.yaml # controller_manager 配置
     moveit:
-      package: dm_arm_no_gripper
+      package: dm_arm_no_gripper  # 当前 Profile 使用的 MoveIt 配置包
 
-  dm_arm_white:
+  dm_arm_white:  # 全局唯一 Profile 名，建议采用 <robot_name>_<variant>
     core:
-      package: dm_arm_description
-      config: config/core/white.yaml
+      package: dm_arm_description       # Core YAML 所在 ROS package
+      config: config/core/white.yaml    # Core 配置相对路径
     hardware:
-      plugin: serial_arm_hardware_damiao
-      config_package: dm_arm_description
-      config: config/hardware.yaml
+      plugin: serial_arm_hardware_damiao  # HardwareLoader 加载的 Backend
+      config_package: dm_arm_description  # Hardware 实例配置所在 package
+      config: config/hardware.yaml        # Hardware 配置相对路径
     description:
-      package: dm_arm_description
-      urdf: model/white/urdf/dm_arm.urdf
-      ros2_control_xacro: model/white/urdf/dm_arm.ros2_control.xacro
+      package: dm_arm_description                                     # Robot Description 所在 package
+      urdf: model/white/urdf/dm_arm.urdf                              # display 使用的 URDF
+      ros2_control_xacro: model/white/urdf/dm_arm.ros2_control.xacro  # ros2_control Xacro
     controllers:
-      package: dm_arm_description
-      config: config/ros2_controllers.yaml
+      package: dm_arm_description          # Controllers 配置所在 package
+      config: config/ros2_controllers.yaml # controller_manager 配置
     moveit:
-      package: dm_arm_with_gripper
+      package: dm_arm_with_gripper  # 当前 Profile 使用的 MoveIt 配置包

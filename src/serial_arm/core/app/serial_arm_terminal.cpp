@@ -331,7 +331,7 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
 
 void print_usage(const char* program) {
     std::cout << "用法: " << program << " [--config <path>] [--hardware-plugin <name>] [--hardware-config <path>]\n";
-    std::cout << "比较: " << program << " --compare-config <config-a.yaml> <config-b.yaml>\n";
+    std::cout << "比较: " << program << " --hardware-plugin <name> --hardware-config <path> --compare-config <config-a.yaml> <config-b.yaml>\n";
     std::cout << "说明: runtime.write_enabled=true 使用 Hardware Backend；false 使用离线 mock 后端\n";
 }
 

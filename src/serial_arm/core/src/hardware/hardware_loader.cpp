@@ -14,6 +14,12 @@ namespace {
 using CreateMotorBusFn = MotorBus* (*)();
 using DestroyMotorBusFn = void (*)(MotorBus*);
 
+/**
+ * @brief 绑定 Backend 对象和共享库句柄生命周期的 MotorBus wrapper
+ *
+ * 外部仍只持有 std::unique_ptr<MotorBus>；wrapper 析构时先通过
+ * destroy_motor_bus() 销毁真实 Backend，再 dlclose() 对应 shared library
+ */
 class LoadedMotorBus final : public MotorBus {
 public:
     LoadedMotorBus(void* handle, MotorBus* bus, DestroyMotorBusFn destroy) noexcept
@@ -120,7 +126,7 @@ tl::expected<std::unique_ptr<MotorBus>, HardwareLoaderErr> HardwareLoader::load(
         return tl::make_unexpected(HardwareLoaderErr::SYMBOL_FAILED);
     }
 
-    std::unique_ptr<MotorBus, DestroyFn> raw(create(), destroy);
+    std::unique_ptr<MotorBus, DestroyMotorBusFn> raw(create(), destroy);
     if(!raw) {
         close_handle(handle);
         return tl::make_unexpected(HardwareLoaderErr::CREATE_FAILED);

@@ -22,6 +22,13 @@ enum class HardwareLoaderErr {
 
 class HardwareLoader {
 public:
+    /**
+     * @brief Hardware Backend 共享库加载器
+     *
+     * Loader 负责 dlopen() Backend shared library，通过 create_motor_bus()
+     * 创建 MotorBus，并将 destroy_motor_bus() 与 dlclose() 生命周期绑定到
+     * 返回的 std::unique_ptr<MotorBus> 中
+     */
     HardwareLoader() = default;
     ~HardwareLoader();
 
@@ -37,13 +44,10 @@ public:
      * @return 持有 Backend 对象和共享库句柄生命周期的 MotorBus
      *
      * 当 plugin 不含路径分隔符时，Loader 会额外尝试 lib<plugin>.so
-     * 返回的 MotorBus 析构时会先调用插件 destroy_motor_bus()，再 dlclose()
+     * 返回对象析构时先调用插件 destroy_motor_bus()，再 dlclose()；Robot、
+     * ROS 2、Python 和 Terminal 不需要感知 DSO 生命周期
      */
     tl::expected<std::unique_ptr<MotorBus>, HardwareLoaderErr> load(const std::string& plugin, const std::string& config_path);
-
-private:
-    using CreateFn = MotorBus * (*)();
-    using DestroyFn = void (*)(MotorBus*);
 };
 
 // ! ========================= 模 版 方 法 实 现 ========================= ! //

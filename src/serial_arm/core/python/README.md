@@ -46,13 +46,14 @@ python -m pip install scikit-build-core pybind11 numpy build
 
 ## 构建 wheel
 
-从仓库的 `python/` 目录执行
+从仓库根目录进入 Python binding 目录执行
 
 ```bash
-cd python
+cd src/serial_arm/core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/serial_arm-*.whl
 python -c "import serial_arm; print(serial_arm.__version__)"
+cd ../../../..
 ```
 
 wheel 默认启用 Dynamics；真机运行还要求目标系统能够加载对应 Hardware Backend 共享库，以及 Pinocchio、coal、yaml-cpp 和对应 C++ 运行库
@@ -67,7 +68,7 @@ import numpy as np
 import serial_arm
 
 cfg = serial_arm.load_robot_cfg(
-    "src/robot_supports/robots/dm_arm/description/config/gray.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/core/gray.yaml",
     "serial_arm_hardware_damiao",
     "src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
@@ -94,16 +95,17 @@ import numpy as np
 import serial_arm
 
 session = serial_arm.RobotSession(
-    "src/robot_supports/robots/dm_arm/description/config/gray.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/core/gray.yaml",
     hardware_plugin="serial_arm_hardware_damiao",
     hardware_config="src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 session.set_model_feedforward_mode(serial_arm.ModelFeedforwardMode.GRAVITY)
-session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))
+session.set_gravity_scale(np.zeros(len(session.config.joint_names), dtype=np.float64))
 
 with session:
     session.set_impedance_mode(serial_arm.JointImpedanceMode.RIGID_TRACKING)
-    session.move_to(np.array([0.0, 0.2, 0.2, 0.0, 0.0, 0.0]), speed_scale=0.2)
+    target = np.zeros(len(session.config.joint_names), dtype=np.float64)
+    session.move_to(target, speed_scale=0.2)
     snapshot = session.snapshot
     print(snapshot.cycle.joint_state.pos)
     print(snapshot.dynamics.gravity)
@@ -125,11 +127,11 @@ with session:
 
 ## 当前限制
 
-- 当前固定六个受控关节
+- 受控关节数量由 Core YAML 和 URDF 决定
 - Python API 仍处于 0.x 阶段
 - 当前仓库没有 Python 自动化测试
 - wheel 尚需在目标 Ubuntu、Python 和 Pinocchio 环境完成安装验证
 - Python 真机会话尚需完成 30 min、1 h 和长期稳定性验证
-- ROS 2 适配尚未实现
+- ROS 2 ros2_control 适配已实现；LeRobot 和 Isaac Sim 目录当前为 planned / reserved
 
-完整 C++ 和 Python API 见 [`../docs/API.md`](../docs/API.md)
+完整 C++ 和 Python API 见 [`../API.md`](../API.md)

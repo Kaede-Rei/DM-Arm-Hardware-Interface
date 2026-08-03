@@ -16,7 +16,7 @@ model:
   gravity: [0.0, 0.0, -9.81]                                            # 世界坐标系重力加速度
   gravity_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]                         # 重力补偿比例
 
-# 03 calibration
+# 02 calibration
 calibration:
   joints:
     joint1: {direction: 1.0, pos_ratio: 1.0, tor_ratio: 1.0, joint_zero_offset: 0.0, actuator_zero_offset: 0.0}  # 方向、比例与零位

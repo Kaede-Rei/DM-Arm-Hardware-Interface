@@ -186,6 +186,8 @@ struct ActuatorState {
 };
 ```
 
+`ActuatorState` 位于执行器侧，SerialArm 统一定义语义和单位：`pos` 为 rad，`vel` 为 rad/s，`tor` 为 N·m；Hardware Backend 必须将厂商协议、厂商单位、电流或其他底层量转换为上述语义后返回
+
 ### 4.2. JointCmd
 
 ```cpp
@@ -232,6 +234,8 @@ struct ActuatorCtrlCmd {
     ActuatorVector kd;
 };
 ```
+
+`ActuatorCtrlCmd` 是映射后的执行器侧完整控制命令：`pos` 为 rad，`vel` 为 rad/s，`tor` 为 N·m，`kp` 为 N·m/rad，`kd` 为 N·m·s/rad；Backend 必须接受完整 `pos / vel / tor / kp / kd`，并自行适配厂商协议和底层控制量
 
 ### 4.5. 阻抗与前馈枚举
 
@@ -390,7 +394,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_robot_cfg(
 6. 生成最终 `SafetyCfg`
 7. 验证 Core 配置
 
-### 5.10. compare_robot_cfg()
+### 5.9. compare_robot_cfg()
 
 ```cpp
 tl::expected<std::vector<std::string>, ConfigErrInfo> compare_robot_cfg(const std::string& lhs_path, const std::string& rhs_path);
@@ -850,7 +854,7 @@ CMD_VEL_STEP_LIMIT
 
 ### 12.1. 接口职责
 
-`MotorBus` 是执行器后端抽象；Robot 通过它读取 `ActuatorState` 并写入 `ActuatorCtrlCmd`
+`MotorBus` 是执行器后端抽象；Robot 通过它读取符合 SerialArm Hardware Contract 的 `ActuatorState`，并写入完整 `ActuatorCtrlCmd`
 
 ### 12.2. 生命周期
 
@@ -869,7 +873,8 @@ virtual std::size_t size() const noexcept = 0;
 ### 12.3. read() 与 write()
 
 - `read()` 返回执行器侧状态
-- `write()` 接收已经映射完成的 `ActuatorCtrlCmd`
+- `read()` 的 `pos / vel / tor` 单位必须为 rad、rad/s、N·m
+- `write()` 接收已经映射完成的 `pos / vel / tor / kp / kd`
 - 后端不应重复实现 Joint Safety
 
 ### 12.4. deactivate() 与 recover()
@@ -915,7 +920,7 @@ serial_arm::HardwareLoader loader;
 auto bus = loader.load("serial_arm_hardware_damiao", "hardware.yaml");
 ```
 
-`load()` 会 `dlopen()` 后端共享库，解析 `create_motor_bus` / `destroy_motor_bus`，创建 `MotorBus` 并调用 `configure(hardware_config)`；调用方必须保证 `HardwareLoader` 的生命周期长于该后端对象
+`load()` 会 `dlopen()` 后端共享库，解析 `create_motor_bus` / `destroy_motor_bus`，创建 `MotorBus` 并调用 `configure(hardware_config)`；返回的 `std::unique_ptr<MotorBus>` 内部持有 Backend 对象和 shared library 句柄，析构时先调用 `destroy_motor_bus()`，再 `dlclose()`；Robot、ROS 2、Python 和 Terminal 不感知 DSO 生命周期
 
 ### 13.2. Backend ABI
 
@@ -1341,11 +1346,13 @@ Adapter 不得绕过
 
 ```cpp
 serial_arm::HardwareLoader config_loader;
-auto config_bus = config_loader.load("serial_arm_hardware_damiao", "dm_arm_damiao.yaml");
+auto config_bus = config_loader.load(
+    "serial_arm_hardware_damiao",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml");
 if(!config_bus) return 1;
 
 const auto result = serial_arm::load_robot_cfg(
-    "dm_arm_white.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/core/white.yaml",
     config_bus.value()->capabilities());
 if(!result) return 1;
 const auto cfg = result.value();
@@ -1371,7 +1378,9 @@ if(!dynamics.update(state, acc, ref_acc)) return 1;
 
 ```cpp
 serial_arm::HardwareLoader hardware_loader;
-auto bus = hardware_loader.load("serial_arm_hardware_damiao", "dm_arm_damiao.yaml");
+auto bus = hardware_loader.load(
+    "serial_arm_hardware_damiao",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml");
 if(!bus) return 1;
 
 serial_arm::Dynamics dynamics;
@@ -1396,13 +1405,13 @@ import serial_arm
 import numpy as np
 
 session = serial_arm.RobotSession(
-    "dm_arm_white.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/core/white.yaml",
     "serial_arm_hardware_damiao",
-    "dm_arm_damiao.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 session.set_model_feedforward_mode(serial_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
-session.move_to(np.zeros(6), speed_scale=0.1)
+session.move_to(np.zeros(len(session.config.joint_names)), speed_scale=0.1)
 ```
 
 ### 19.5. 下游 CMake
@@ -1455,26 +1464,26 @@ MISSING_ACTUATOR
 POLICY_WIDENS_LIMIT
 ```
 
-### 20.5. JointCtrllerErr
+### 20.4. JointCtrllerErr
 
 见 `9.7. JointCtrllerErr`
 
-### 20.6. JointActuatorMapErr
+### 20.5. JointActuatorMapErr
 
 见 `10.5. JointActuatorMapErr`
 
-### 20.7. SafetyErr
+### 20.6. SafetyErr
 
 见 `11.6. SafetyErr`
 
-### 20.8. MotorBusErr
+### 20.7. MotorBusErr
 
 见 `12.5. MotorBusErr`
 
-### 20.9. DynamicsErr
+### 20.8. DynamicsErr
 
 见 `14.8. DynamicsErr`
 
-### 20.10. RobotErr
+### 20.9. RobotErr
 
 见 `15.11. RobotFault 与 RobotErr`
