@@ -9,7 +9,7 @@
 
 # 01 model
 model:
-  urdf_path: ../model/dm_arm_white/urdf/dm_arm.urdf       # 有夹爪 URDF，路径相对当前 YAML
+  urdf_path: ../../model/white/urdf/dm_arm.urdf                   # 有夹爪 URDF，路径相对当前 YAML
   joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]   # 受控关节名称
   base_frame: base_link                                           # 动力学基坐标系
   tool_frame: tool0                                               # 动力学末端坐标系
@@ -33,7 +33,7 @@ control:
     joint_acc_filter_alpha: 0.2                       # 关节加速度低通滤波系数
     write_enabled: true                               # 真机确认前保持 false
     model_feedforward_mode: GRAVITY                   # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
-    tracking_impedance_mode: COMPLIANT_TRACKING   # RIGID_TRACKING / COMPLIANT_TRACKING
+    tracking_impedance_mode: COMPLIANT_TRACKING       # RIGID_TRACKING / COMPLIANT_TRACKING
   controller:
     allow_full_cmd: false           # 是否允许完整 MIT 风格 Joint 命令
     # 刚性保持参数

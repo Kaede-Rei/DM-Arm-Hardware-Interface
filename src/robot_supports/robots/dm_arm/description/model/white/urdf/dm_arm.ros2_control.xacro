@@ -4,7 +4,7 @@
     <xacro:arg name="hardware_plugin" default=""/>
     <xacro:arg name="hardware_config" default=""/>
 
-    <xacro:include filename="$(find dm_arm_description)/model/dm_arm_white/urdf/dm_arm.urdf.xacro"/>
+    <xacro:include filename="$(find dm_arm_description)/model/white/urdf/dm_arm.urdf"/>
     <xacro:include filename="$(find serial_arm_ros2_control)/urdf/serial_arm_system.ros2_control.xacro"/>
 
     <ros2_control name="dm_arm" type="system">
