@@ -17,7 +17,7 @@ def load_profile(robot_profile):
     profile["core_config_path"] = resolve_package_path(profile["core"]["package"], profile["core"]["config"])
     profile["hardware_plugin"] = profile["hardware"]["plugin"]
     profile["hardware_config_path"] = resolve_package_path(profile["hardware"]["config_package"], profile["hardware"]["config"])
-    profile["description_xacro_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["xacro"])
+    profile["description_urdf_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["urdf"])
     profile["ros2_control_xacro_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["ros2_control_xacro"])
     profile["controllers_path"] = resolve_package_path(profile["controllers"]["package"], profile["controllers"]["config"])
     profile["moveit_package"] = profile["moveit"]["package"]

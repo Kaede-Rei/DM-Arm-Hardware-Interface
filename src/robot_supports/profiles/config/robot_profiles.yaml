@@ -2,16 +2,15 @@ profiles:
   dm_arm_gray:
     core:
       package: dm_arm_description
-      config: config/dm_arm_gray.yaml
+      config: config/core/gray.yaml
     hardware:
       plugin: serial_arm_hardware_damiao
       config_package: dm_arm_description
-      config: config/dm_arm_damiao.yaml
+      config: config/hardware.yaml
     description:
       package: dm_arm_description
-      model: dm_arm_gray
-      xacro: model/dm_arm_gray/urdf/dm_arm.urdf.xacro
-      ros2_control_xacro: model/dm_arm_gray/urdf/dm_arm.ros2_control.xacro
+      urdf: model/gray/urdf/dm_arm_no_gripper.urdf
+      ros2_control_xacro: model/gray/urdf/dm_arm.ros2_control.xacro
     controllers:
       package: dm_arm_description
       config: config/ros2_controllers.yaml
@@ -21,16 +20,15 @@ profiles:
   dm_arm_white:
     core:
       package: dm_arm_description
-      config: config/dm_arm_white.yaml
+      config: config/core/white.yaml
     hardware:
       plugin: serial_arm_hardware_damiao
       config_package: dm_arm_description
-      config: config/dm_arm_damiao.yaml
+      config: config/hardware.yaml
     description:
       package: dm_arm_description
-      model: dm_arm_white
-      xacro: model/dm_arm_white/urdf/dm_arm.urdf.xacro
-      ros2_control_xacro: model/dm_arm_white/urdf/dm_arm.ros2_control.xacro
+      urdf: model/white/urdf/dm_arm.urdf
+      ros2_control_xacro: model/white/urdf/dm_arm.ros2_control.xacro
     controllers:
       package: dm_arm_description
       config: config/ros2_controllers.yaml

@@ -3,7 +3,7 @@ import sys
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.substitutions import PathJoinSubstitution
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -19,14 +19,8 @@ def resolve_profile(context):
         "use_sim_time", "false"
     ).lower() in ("true", "1", "yes")
 
-    description_xacro = profile["description_xacro_path"]
-    robot_description = Command(
-        [
-            FindExecutable(name="xacro"),
-            " ",
-            description_xacro,
-        ]
-    )
+    description_urdf = Path(profile["description_urdf_path"])
+    robot_description = description_urdf.read_text(encoding="utf-8")
     robot_description_param = ParameterValue(robot_description, value_type=str)
 
     return [

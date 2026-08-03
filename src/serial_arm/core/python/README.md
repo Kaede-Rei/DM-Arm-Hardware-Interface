@@ -67,9 +67,9 @@ import numpy as np
 import serial_arm
 
 cfg = serial_arm.load_robot_cfg(
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/gray.yaml",
     "serial_arm_hardware_damiao",
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 dynamics = serial_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
@@ -94,9 +94,9 @@ import numpy as np
 import serial_arm
 
 session = serial_arm.RobotSession(
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/gray.yaml",
     hardware_plugin="serial_arm_hardware_damiao",
-    hardware_config="src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
+    hardware_config="src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 session.set_model_feedforward_mode(serial_arm.ModelFeedforwardMode.GRAVITY)
 session.set_gravity_scale(np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.0]))

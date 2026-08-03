@@ -204,8 +204,8 @@ Terminal 使用同一份 Core YAML；是否连接真机只由 `runtime.write_ena
 ```bash
 ./install/serial_arm_core/bin/serial_arm_terminal \
   --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/hardware.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/gray.yaml
 ```
 
 Python Terminal：
@@ -213,8 +213,8 @@ Python Terminal：
 ```bash
 python src/serial_arm/core/app/serial_arm_terminal.py \
   --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/hardware.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/gray.yaml
 ```
 
 Python 配置检查不连接真机：
@@ -222,8 +222,8 @@ Python 配置检查不连接真机：
 ```bash
 python src/serial_arm/core/app/serial_arm_terminal.py \
   --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/hardware.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/gray.yaml \
   --check-only
 ```
 
@@ -412,7 +412,7 @@ src/robot_supports/robots/dm_arm/description
 │       └── urdf
 │           ├── dm_arm.urdf
 │           ├── dm_arm_no_gripper.urdf
-│           └── dm_arm.urdf.xacro
+│           └── dm_arm.ros2_control.xacro
 ├── CMakeLists.txt
 └── package.xml
 ```
@@ -460,8 +460,8 @@ src/robot_supports/robots/dm_arm/moveit_config
 
 | 机械臂 | 配置 | URDF |
 |---|---|---|
-| 白色带打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml` | `model/dm_arm_white/urdf/dm_arm.urdf` |
-| 灰色无打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml` | `model/dm_arm_gray/urdf/dm_arm_no_gripper.urdf` |
+| 白色带打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/white.yaml` | `model/dm_arm_white/urdf/dm_arm.urdf` |
+| 灰色无打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/gray.yaml` | `model/dm_arm_gray/urdf/dm_arm_no_gripper.urdf` |
 
 ### 5.7. Adding a Robot Support
 
@@ -635,8 +635,8 @@ cmake --build build/serial_arm_hardware_damiao -j"$(nproc)"
 ```bash
 ./build/serial_arm_core/serial_arm_terminal \
   --hardware-plugin ./build/serial_arm_hardware_damiao/libserial_arm_hardware_damiao.so \
-  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/hardware.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/gray.yaml
 ```
 
 ### 7.3. 使用 colcon 构建
@@ -728,7 +728,7 @@ ros2 control list_hardware_components
 使用时始终显式传入配置路径
 
 ```bash
---config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
+--config src/robot_supports/robots/dm_arm/description/config/white.yaml
 ```
 
 ### 8.2. 单一事实来源
@@ -822,8 +822,8 @@ RIGID_TRACKING
 ```bash
 ./build/serial_arm_core/serial_arm_terminal \
   --compare-config \
-  src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml \
-  src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
+  src/robot_supports/robots/dm_arm/description/config/white.yaml \
+  src/robot_supports/robots/dm_arm/description/config/gray.yaml
 ```
 
 比较模式不连接真机
@@ -865,7 +865,7 @@ if(!result) return 1;
 #include <serial_arm/hardware/hardware_loader.hpp>
 
 serial_arm::HardwareLoader loader;
-auto bus = loader.load("serial_arm_hardware_damiao", "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml");
+auto bus = loader.load("serial_arm_hardware_damiao", "src/robot_supports/robots/dm_arm/description/config/hardware.yaml");
 if(!bus) return 1;
 ```
 
@@ -951,8 +951,8 @@ JointCtrlCmd
 ```bash
 ./build/serial_arm_core/serial_arm_terminal \
   --hardware-plugin ./build/serial_arm_hardware_damiao/libserial_arm_hardware_damiao.so \
-  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/hardware.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/white.yaml
 ```
 
 真机运行必须满足
@@ -1037,7 +1037,7 @@ cd ../../..
 
 ```bash
 python src/serial_arm/core/app/serial_arm_terminal.py \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/white.yaml \
   --check-only
 ```
 
@@ -1048,9 +1048,9 @@ import serial_arm
 import numpy as np
 
 cfg = serial_arm.load_robot_cfg(
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/gray.yaml",
     "serial_arm_hardware_damiao",
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 dynamics = serial_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
@@ -1067,9 +1067,9 @@ print(dynamics.mass_matrix)
 import serial_arm
 
 session = serial_arm.RobotSession(
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/white.yaml",
     "serial_arm_hardware_damiao",
-    "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
+    "src/robot_supports/robots/dm_arm/description/config/hardware.yaml",
 )
 session.set_model_feedforward_mode(serial_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
@@ -1081,7 +1081,7 @@ session.start()
 
 ```bash
 python src/serial_arm/core/app/serial_arm_terminal.py \
-  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
+  --config src/robot_supports/robots/dm_arm/description/config/white.yaml
 ```
 
 脚本菜单 0 和菜单 3 在 `stop()` 前补充停放轨迹和实测判据
