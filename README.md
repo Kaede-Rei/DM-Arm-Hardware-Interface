@@ -4,7 +4,7 @@
 
 面向自研串联机械臂的可移植 C++17 控制、动力学与硬件抽象核心；当前以 DM-Arm 和 Damiao Backend 作为首个真机参考实现
 
-[![License](https://img.shields.io/github/license/Kaede-Rei/DM-Arm-Hardware-Interface?style=flat-square)](https://github.com/Kaede-Rei/DM-Arm-Hardware-Interface/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/Kaede-Rei/SerialArm-Core?style=flat-square)](https://github.com/Kaede-Rei/SerialArm-Core/blob/main/LICENSE)
 [![ROS 2](https://img.shields.io/badge/ROS%202-Humble-22314E?style=flat-square&logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![ros2_control](https://img.shields.io/badge/ros2__control-Humble-0A84FF?style=flat-square&logo=ros&logoColor=white)](https://control.ros.org/humble/doc/ros2_control/doc/index.html)
 [![MoveIt 2](https://img.shields.io/badge/MoveIt%202-Humble-00A896?style=flat-square)](https://moveit.picknik.ai/humble/)
@@ -28,13 +28,15 @@ flowchart TB
     CPP["C++ 应用"]
 
     CORE["serial_arm_core<br/><br/>Robot + Safety + Dynamics + Mapper"]
-    BUS["DamiaoMotorBus"]
+    LOADER["HardwareLoader"]
+    BUS["Hardware Backend<br/>serial_arm_hardware_damiao"]
 
     MOVEIT --> CORE
     PYTHON --> CORE
     CPP --> CORE
 
-    CORE --> BUS
+    CORE --> LOADER
+    LOADER --> BUS
 ```
 
 ### 1.2. 核心能力
@@ -42,10 +44,11 @@ flowchart TB
 - 五种 Joint 阻抗模式
 - 位置、位置速度、位置速度力矩三类参考命令
 - Joint 与 Actuator 双向映射
-- URDF Joint 限位读取与 Hardware Capability 解析
+- URDF Joint 限位读取与 Hardware Backend Capability 合并
 - Safety Policy 与最终限制解析
 - Robot 生命周期、FAULT 锁存和故障刚性保持
-- 达妙 MIT 串口后端
+- 通用 `MotorBus` 合同与动态 Hardware Backend 加载
+- `serial_arm_hardware_damiao` 达妙串口后端
 - Pinocchio FK、Jacobian、质量矩阵、RNEA 和 ABA
 - 重力、非线性、科氏离心和完整逆动力学前馈
 - C++ 真机终端和模型查看器
@@ -64,13 +67,33 @@ flowchart TB
 
 ### 1.4. 新增串联机械臂
 
-新增另一台串联机械臂时，通常主要新增 `serial_arm_description/robots/<robot_name>/`、`serial_arm_bringup/config/<robot_name>.yaml`、对应 Robot Profile 和必要的 MoveIt Config
+新增另一台串联机械臂时，原则上只在 `src/robot_supports/` 下新增机器人 description/config、MoveIt Config、Robot Profile 和必要的 Hardware Backend；`src/serial_arm/` 是稳定通用框架区域，通常不需要修改
+
+### 1.5. 目录边界
+
+```text
+src/
+├── serial_arm/
+│   ├── core/
+│   └── bringup/
+│       ├── ros2_control/
+│       ├── lerobot/
+│       └── isaac_sim/
+└── robot_supports/
+    ├── hardware/
+    ├── profiles/
+    └── robots/
+```
+
+`serial_arm/` 表示 Stable Framework，保存 Core、ros2_control 通用适配和预留的 LeRobot / Isaac Sim 适配目录；新增机器人、模型变体和后端时原则上不修改这里
+
+`robot_supports/` 表示 Extension Area，保存具体机器人、Hardware Backend、Robot Profile、Description、Robot-specific YAML 和 MoveIt Config；DM-Arm 是当前 reference robot；Damiao 是当前第一套 Hardware Backend
 
 ## 2. 当前实现
 
 ### 2.1. serial_arm_core
 
-`src/serial_arm_core` 是独立 C++17 核心包；包括 Config、ModelLoader、Hardware Capability、LimitResolver、JointCtrller、JointActuatorMapper、Safety、Robot、DamiaoMotorBus 和 Dynamics
+`src/serial_arm/core` 是独立 C++17 核心包；包括 Config、ModelLoader、Hardware Capability、HardwareLoader、LimitResolver、JointCtrller、JointActuatorMapper、Safety、Robot 和 Dynamics；Core 不包含具体电机协议或厂商后端
 
 Core 对外导出
 
@@ -78,29 +101,32 @@ Core 对外导出
 serial_arm::core
 serial_arm::config
 serial_arm::robot
-serial_arm::damiao
 serial_arm::dynamics
 ```
 
-### 2.2. Python Binding
+### 2.2. serial_arm_hardware_damiao
 
-`src/serial_arm_core/python` 使用 pybind11 和 scikit-build-core 构建 wheel；提供 Config、JointCtrller、JointActuatorMapper、Safety、Dynamics 和 `RobotSession`
+`src/robot_supports/hardware/damiao` 是当前真机参考 Hardware Backend；它实现 Core 的 `MotorBus` 合同，读取 `dm_arm_damiao.yaml`，并以共享库形式导出 `create_motor_bus` / `destroy_motor_bus`
+
+### 2.3. Python Binding
+
+`src/serial_arm/core/python` 使用 pybind11 和 scikit-build-core 构建 wheel；提供 Config、JointCtrller、JointActuatorMapper、Safety、Dynamics 和 `RobotSession`
 
 `RobotSession` 使用 C++ Worker 按 `runtime.ctrl_frequency_hz` 调用 `Robot::cycle()`；Python 线程只提交模式、目标和调参请求，并读取状态快照
 
-### 2.3. serial_arm_ros2_control
+### 2.4. serial_arm_ros2_control
 
-`src/adapters/serial_arm_ros2_control` 是独立 `ament_cmake` 包；实现 `hardware_interface::SystemInterface`，导出六轴 position、velocity 命令接口和 position、velocity、effort 状态接口
+`src/serial_arm/bringup/ros2_control` 是独立 `ament_cmake` 包；实现 `hardware_interface::SystemInterface`，按 Robot Description/Core Config 中的受控关节导出 position、velocity 命令接口和 position、velocity、effort 状态接口
 
-SystemInterface 内部 Worker 独占 Robot、Dynamics 和达妙串口；`read()` 与 `write()` 只交换缓存
+SystemInterface 内部 Worker 独占 Robot、Dynamics 和 Hardware Backend；`read()` 与 `write()` 只交换缓存
 
-### 2.4. MoveIt 2
+### 2.5. MoveIt 2
 
 仓库包含两套 MoveIt 2 配置
 
 ```text
-src/moveit_config/dm_arm_moveit_config/dm_arm_no_gripper
-src/moveit_config/dm_arm_moveit_config/dm_arm_with_gripper
+src/robot_supports/robots/dm_arm/moveit_config/dm_arm_no_gripper
+src/robot_supports/robots/dm_arm/moveit_config/dm_arm_with_gripper
 ```
 
 两套配置均包含 SRDF、KDL、关节限制、OMPL、RViz 和控制器映射；Setup Assistant 生成的 demo 默认使用 Mock/FakeSystem，接入真机前需要确保 MoveIt 控制器名称与 ros2_control 中实际激活的控制器一致
@@ -110,7 +136,7 @@ src/moveit_config/dm_arm_moveit_config/dm_arm_with_gripper
 ### 3.1. 真机风险
 
 > [!WARNING]
-> 本项目能够向真实机械臂发送 MIT 命令；错误的零位、方向、比例、限位、增益、质量属性、重力方向或电机型号可能导致突然运动、碰撞、过流、坠落或机构损坏
+> 本项目能够通过 Hardware Backend 向真实机械臂发送执行器命令；错误的后端配置、零位、方向、比例、限位、增益、质量属性、重力方向或执行器型号可能导致突然运动、碰撞、过流、坠落或机构损坏
 
 本项目不能替代工业安全控制器、机械硬限位、制动器、急停回路和正式风险评估
 
@@ -140,26 +166,26 @@ src/moveit_config/dm_arm_moveit_config/dm_arm_with_gripper
 ```bash
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install \
-  --packages-select serial_arm_core serial_arm_description serial_arm_ros2_control serial_arm_bringup dm_arm_no_gripper dm_arm_with_gripper
+  --packages-select serial_arm_core serial_arm_hardware_damiao serial_arm_robot_profiles dm_arm_description serial_arm_ros2_control dm_arm_no_gripper dm_arm_with_gripper
 source install/setup.bash
-ros2 launch serial_arm_bringup display.launch.py robot_profile:=gray
+ros2 launch serial_arm_ros2_control display.launch.py robot_profile:=dm_arm_gray
 ```
 
-默认使用 `robot_profile:=gray`；`gray` / `white` 到 Core YAML、URDF 变体和 MoveIt 包的映射统一写在 `src/serial_arm_bringup/config/robot_profiles.yaml`
+`robot_profile` 必须显式传入；`dm_arm_gray` / `dm_arm_white` 到 Core YAML、URDF 变体和 MoveIt 包的映射统一写在 `src/robot_supports/profiles/config/robot_profiles.yaml`
 
 ### 4.1. 构建
 
 ```bash
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install \
-  --packages-select serial_arm_core serial_arm_description serial_arm_ros2_control serial_arm_bringup dm_arm_no_gripper dm_arm_with_gripper
+  --packages-select serial_arm_core serial_arm_hardware_damiao serial_arm_robot_profiles dm_arm_description serial_arm_ros2_control dm_arm_no_gripper dm_arm_with_gripper
 source install/setup.bash
 ```
 
 ### 4.2. 离线显示模型
 
 ```bash
-ros2 launch serial_arm_bringup display.launch.py robot_profile:=gray
+ros2 launch serial_arm_ros2_control display.launch.py robot_profile:=dm_arm_gray
 ```
 
 `display.launch.py` 只用于查看模型和拖动关节
@@ -167,8 +193,8 @@ ros2 launch serial_arm_bringup display.launch.py robot_profile:=gray
 可选 profile：
 
 ```text
-gray   无夹爪
-white  有夹爪
+dm_arm_gray   无夹爪
+dm_arm_white  有夹爪
 ```
 
 ### 4.3. 启动 Terminal
@@ -177,21 +203,27 @@ Terminal 使用同一份 Core YAML；是否连接真机只由 `runtime.write_ena
 
 ```bash
 ./install/serial_arm_core/bin/serial_arm_terminal \
-  --config src/serial_arm_bringup/config/dm_arm_gray.yaml
+  --hardware-plugin serial_arm_hardware_damiao \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
 ```
 
 Python Terminal：
 
 ```bash
-python src/serial_arm_core/app/serial_arm_terminal.py \
-  --config src/serial_arm_bringup/config/dm_arm_gray.yaml
+python src/serial_arm/core/app/serial_arm_terminal.py \
+  --hardware-plugin serial_arm_hardware_damiao \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
 ```
 
 Python 配置检查不连接真机：
 
 ```bash
-python src/serial_arm_core/app/serial_arm_terminal.py \
-  --config src/serial_arm_bringup/config/dm_arm_gray.yaml \
+python src/serial_arm/core/app/serial_arm_terminal.py \
+  --hardware-plugin serial_arm_hardware_damiao \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml \
   --check-only
 ```
 
@@ -210,7 +242,7 @@ runtime:
 `tracking_impedance_mode` 可选 `RIGID_TRACKING` 或 `COMPLIANT_TRACKING`；MoveIt/JTC 轨迹仍走同一个 `joint_trajectory_controller`
 
 ```bash
-ros2 launch serial_arm_bringup hardware.launch.py robot_profile:=gray
+ros2 launch serial_arm_ros2_control hardware.launch.py robot_profile:=dm_arm_gray
 ```
 
 检查状态：
@@ -221,12 +253,12 @@ ros2 control list_controllers
 ros2 topic echo /joint_states
 ```
 
-`src/serial_arm_bringup/config/ros2_controllers.yaml` 是 controller_manager 和 JTC 的统一配置，通常不需要改；只有在关节名称/顺序、控制器名称、接口类型、update_rate、FollowJointTrajectory action 映射或 JTC 行为参数确实变化时才修改
+`src/robot_supports/robots/dm_arm/description/config/ros2_controllers.yaml` 是 controller_manager 和 JTC 的统一配置，通常不需要改；只有在关节名称/顺序、控制器名称、接口类型、update_rate、FollowJointTrajectory action 映射或 JTC 行为参数确实变化时才修改
 
 ### 4.5. 启动 MoveIt
 
 ```bash
-ros2 launch serial_arm_bringup moveit.launch.py robot_profile:=gray
+ros2 launch serial_arm_ros2_control moveit.launch.py robot_profile:=dm_arm_gray
 ```
 
 ## 5. 总体架构
@@ -235,17 +267,20 @@ ros2 launch serial_arm_bringup moveit.launch.py robot_profile:=gray
 
 ```text
 DM-Arm workspace
-├── src/serial_arm_core
+├── src/serial_arm/core
 │   ├── 独立 C++ Core
 │   ├── Python Binding
 │   └── C++/Python Terminal
-├── src/serial_arm_description
-│   └── URDF、Xacro 和 Mesh
-├── src/serial_arm_bringup
-│   └── 统一配置和 Launch
-├── src/adapters/serial_arm_ros2_control
-│   └── ros2_control SystemInterface
-└── src/moveit_config
+├── src/serial_arm/bringup/ros2_control
+│   └── ros2_control SystemInterface 和通用 Launch
+├── src/robot_supports/profiles
+│   └── Robot Profile
+├── src/robot_supports/hardware/damiao
+│   └── Damiao Hardware Backend
+├── src/robot_supports/robots/dm_arm/description
+│   ├── config
+│   └── model
+└── src/robot_supports/robots/dm_arm/moveit_config
     ├── dm_arm_no_gripper
     └── dm_arm_with_gripper
 ```
@@ -270,7 +305,8 @@ flowchart TB
 
     CONFIG["serial_arm::config"]
     ROBOT["serial_arm::robot"]
-    DAMIAO["serial_arm::damiao"]
+    LOADER["HardwareLoader"]
+    BACKEND["Hardware Backend"]
     DYNAMICS["serial_arm::dynamics"]
 
     MODEL["ModelLoader"]
@@ -280,7 +316,7 @@ flowchart TB
 
     CORE --> CONFIG
     CORE --> ROBOT
-    CORE --> DAMIAO
+    CONFIG --> LOADER
 
     CONFIG --> MODEL
     CONFIG --> LIMIT
@@ -290,7 +326,8 @@ flowchart TB
     MODEL --> APP
     LIMIT --> APP
     DYNAMICS --> APP
-    DAMIAO --> APP
+    LOADER --> BACKEND
+    BACKEND --> APP
 ```
 
 模块边界
@@ -299,7 +336,7 @@ flowchart TB
 - `JointActuatorMapper` 只处理方向、比例和零位映射
 - `Safety` 只检查状态与命令，并返回对应动作
 - `Dynamics` 只计算并缓存运动学与动力学结果
-- `DamiaoMotorBus` 只处理串口、协议和 Actuator 侧能力
+- `Hardware Backend` 只处理通信、协议和 Actuator 侧能力
 - `Robot` 统一组织生命周期和单周期闭环
 
 ### 4.3. Robot 单周期闭环
@@ -351,7 +388,7 @@ MotorBus::write()
 ### 5.1. serial_arm_core
 
 ```text
-src/serial_arm_core
+src/serial_arm/core
 ├── app
 │   ├── serial_arm_terminal.cpp
 │   ├── serial_arm_terminal.py
@@ -365,10 +402,10 @@ src/serial_arm_core
 └── package.xml
 ```
 
-### 5.2. serial_arm_description
+### 5.2. dm_arm_description
 
 ```text
-src/serial_arm_description
+src/robot_supports/robots/dm_arm/description
 ├── robots
 │   └── dm_arm
 │       ├── meshes
@@ -380,30 +417,31 @@ src/serial_arm_description
 └── package.xml
 ```
 
-### 5.3. serial_arm_bringup
+### 5.3. serial_arm_ros2_control
 
 ```text
-src/serial_arm_bringup
+src/serial_arm/bringup/ros2_control
 ├── config
 │   ├── dm_arm_gray.yaml
 │   ├── dm_arm_white.yaml
 │   └── ros2_controllers.yaml
-├── launch
-│   ├── display.launch.py
-│   ├── hardware.launch.py
-│   └── moveit.launch.py
-├── CMakeLists.txt
-└── package.xml
 ```
+
+`description/config/` 保存 Robot-specific YAML，包括 Core YAML、Hardware instance YAML、ros2_control controllers YAML 和其他机器人私有配置
+
+`description/model/` 保存具体 Robot Model Variant；每个 `model/<model_name>/` 独立包含 `urdf/` 和 `meshes/`；Model 目录不放 runtime YAML，Config 目录不放 URDF/Mesh
 
 ### 5.4. serial_arm_ros2_control
 
 ```text
-src/adapters/serial_arm_ros2_control
+src/serial_arm/bringup/ros2_control
 ├── include/serial_arm_ros2_control
-├── launch/dm_arm_control.launch.py
+├── launch/display.launch.py
+├── launch/hardware.launch.py
+├── launch/moveit.launch.py
+├── rviz/display.rviz
+├── scripts/profile_utils.py
 ├── src/serial_arm_system.cpp
-├── urdf/dm_arm.ros2_control.xacro
 ├── urdf/serial_arm_system.ros2_control.xacro
 ├── serial_arm_hardware_plugin.xml
 ├── CMakeLists.txt
@@ -413,7 +451,7 @@ src/adapters/serial_arm_ros2_control
 ### 5.5. MoveIt 2 配置包
 
 ```text
-src/moveit_config
+src/robot_supports/robots/dm_arm/moveit_config
 ├── dm_arm_no_gripper
 └── dm_arm_with_gripper
 ```
@@ -422,8 +460,36 @@ src/moveit_config
 
 | 机械臂 | 配置 | URDF |
 |---|---|---|
-| 白色带打印夹爪 | `src/serial_arm_bringup/config/dm_arm_white.yaml` | `dm_arm.urdf` |
-| 灰色无打印夹爪 | `src/serial_arm_bringup/config/dm_arm_gray.yaml` | `dm_arm_no_gripper.urdf` |
+| 白色带打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml` | `model/dm_arm_white/urdf/dm_arm.urdf` |
+| 灰色无打印夹爪 | `src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml` | `model/dm_arm_gray/urdf/dm_arm_no_gripper.urdf` |
+
+### 5.7. Adding a Robot Support
+
+新增机器人应放在 `robot_supports/robots/<robot_name>/`：
+
+```text
+robot_supports/
+└── robots/
+    └── new_arm/
+        ├── description/
+        │   ├── config/
+        │   │   ├── new_arm.yaml
+        │   │   ├── new_arm_<hardware>.yaml
+        │   │   └── ros2_controllers.yaml
+        │   └── model/
+        │       └── new_arm_default/
+        │           ├── urdf/
+        │           └── meshes/
+        └── moveit_config/
+```
+
+如果同一机械臂有多个实体 Variant，则在 `description/model/` 下增加多个 model 目录，并在 `description/config/` 中提供对应 Core YAML，再在 `robot_supports/profiles/config/robot_profiles.yaml` 注册 profile
+
+### 5.8. Adding a Hardware Backend
+
+新增后端应放在 `robot_supports/hardware/<backend_name>/`，实现 Core `MotorBus` 合同并导出 `create_motor_bus` / `destroy_motor_bus`；某台机器人使用该后端的具体电机 ID、型号、设备路径等实例配置，应放在该机器人的 `description/config/`，而不是放进后端包
+
+未来适配 Pieper 6DOF Arm + RealMan motors 时，预期新增 `robot_supports/hardware/realman/`、`robot_supports/robots/pieper_arm/description/`、对应 MoveIt Config 和 Robot Profile；不应修改 `serial_arm/core` 或 `serial_arm/bringup/ros2_control`；RealMan / HighTorque 后端当前尚未实现
 
 ## 6. 环境与依赖
 
@@ -527,10 +593,9 @@ groups
 从工作区根目录执行
 
 ```bash
-cmake -S src/serial_arm_core -B build/serial_arm_core \
+cmake -S src/serial_arm/core -B build/serial_arm_core \
   -DCMAKE_BUILD_TYPE=Debug \
   -DSERIAL_ARM_BUILD_TERMINAL=ON \
-  -DSERIAL_ARM_BUILD_DAMIAO=ON \
   -DSERIAL_ARM_ENABLE_DYNAMICS=ON \
   -DSERIAL_ARM_BUILD_PYTHON=OFF
 
@@ -542,7 +607,6 @@ CMake 选项
 | 选项 | 默认值 | 作用 |
 |---|---:|---|
 | `SERIAL_ARM_BUILD_TERMINAL` | ON | 构建 C++ 真机终端 |
-| `SERIAL_ARM_BUILD_DAMIAO` | ON | 构建达妙后端 |
 | `SERIAL_ARM_ENABLE_DYNAMICS` | ON | 构建 Pinocchio Dynamics |
 | `SERIAL_ARM_BUILD_PYTHON` | ON | 构建 pybind11 模块 |
 
@@ -556,7 +620,24 @@ export CMAKE_PREFIX_PATH="$PWD/install/serial_arm_core:$CMAKE_PREFIX_PATH"
 export LD_LIBRARY_PATH="$PWD/install/serial_arm_core/lib:$LD_LIBRARY_PATH"
 ```
 
-安装内容包括库、公开头文件、CMake package、配置、URDF 和可选终端
+安装内容包括 Core 库、公开头文件、CMake package 和可选终端；具体硬件后端由独立包构建和安装
+
+### 7.3. 构建 Damiao Hardware Backend
+
+```bash
+cmake -S src/robot_supports/hardware/damiao -B build/serial_arm_hardware_damiao \
+  -DCMAKE_PREFIX_PATH="$PWD/install/serial_arm_core:$CMAKE_PREFIX_PATH"
+cmake --build build/serial_arm_hardware_damiao -j"$(nproc)"
+```
+
+运行时可使用 profile 中的默认后端名称，也可显式传入共享库路径
+
+```bash
+./build/serial_arm_core/serial_arm_terminal \
+  --hardware-plugin ./build/serial_arm_hardware_damiao/libserial_arm_hardware_damiao.so \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
+```
 
 ### 7.3. 使用 colcon 构建
 
@@ -597,7 +678,7 @@ python -m build
 执行
 
 ```bash
-cd src/serial_arm_core/python
+cd src/serial_arm/core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/serial_arm-*.whl
 cd ../../..
@@ -647,7 +728,7 @@ ros2 control list_hardware_components
 使用时始终显式传入配置路径
 
 ```bash
---config src/serial_arm_bringup/config/dm_arm_white.yaml
+--config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
 ```
 
 ### 8.2. 单一事实来源
@@ -656,7 +737,7 @@ ros2 control list_hardware_components
 |---|---|
 | Joint 名称与类型 | URDF |
 | Joint 位置、速度和 effort 硬限制 | URDF |
-| 电机型号、ID 和协议范围 | Hardware 配置与达妙能力表 |
+| 执行器型号、ID 和协议范围 | Hardware Backend 配置 |
 | direction、比例和零位 | Calibration |
 | 控制增益 | Control |
 | 软边距、运行比例和超时 | Safety Policy |
@@ -669,7 +750,7 @@ ros2 control list_hardware_components
 
 ### 8.4. Hardware Capability
 
-`load_damiao_capabilities()` 根据 `motor_type` 读取执行器物理范围；Capability 表示协议和硬件绝对能力，不表示机械臂日常运行参数
+Hardware Backend 在 `configure(hardware_config)` 后通过 `capabilities()` 提供执行器物理范围；Capability 表示协议和硬件绝对能力，不表示机械臂日常运行参数
 
 ### 8.5. SafetyPolicyCfg 与 LimitResolver
 
@@ -677,7 +758,7 @@ ros2 control list_hardware_components
 
 ```text
 URDF Joint Limit
-+ Damiao Hardware Capability
++ Hardware Backend Capability
 + JointActuatorMapCfg
 + SafetyPolicyCfg
 → ResolvedSafetyCfg
@@ -741,8 +822,8 @@ RIGID_TRACKING
 ```bash
 ./build/serial_arm_core/serial_arm_terminal \
   --compare-config \
-  src/serial_arm_bringup/config/dm_arm_white.yaml \
-  src/serial_arm_bringup/config/dm_arm_gray.yaml
+  src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml \
+  src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml
 ```
 
 比较模式不连接真机
@@ -754,7 +835,11 @@ RIGID_TRACKING
 ```cpp
 #include <serial_arm/config/config.hpp>
 
-const auto cfg_result = serial_arm::load_robot_cfg(config_path);
+serial_arm::HardwareLoader loader;
+auto bus = loader.load("serial_arm_hardware_damiao", hardware_config_path);
+if(!bus) return 1;
+
+const auto cfg_result = serial_arm::load_robot_cfg(config_path, bus.value()->capabilities());
 if(!cfg_result) {
     std::cerr << cfg_result.error().message << '\n';
     return 1;
@@ -774,14 +859,14 @@ if(!result) return 1;
 
 每周期先 `update()`，再读取缓存 getter
 
-### 9.3. DamiaoMotorBus
+### 9.3. Hardware Backend
 
 ```cpp
-#include <serial_arm/hardware/damiao_motor_bus.hpp>
+#include <serial_arm/hardware/hardware_loader.hpp>
 
-auto bus = std::make_unique<serial_arm::DamiaoMotorBus>();
-const auto bus_result = bus->configure(cfg.damiao);
-if(!bus_result) return 1;
+serial_arm::HardwareLoader loader;
+auto bus = loader.load("serial_arm_hardware_damiao", "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml");
+if(!bus) return 1;
 ```
 
 ### 9.4. Robot 生命周期
@@ -865,14 +950,16 @@ JointCtrlCmd
 
 ```bash
 ./build/serial_arm_core/serial_arm_terminal \
-  --config src/serial_arm_bringup/config/dm_arm_white.yaml
+  --hardware-plugin ./build/serial_arm_hardware_damiao/libserial_arm_hardware_damiao.so \
+  --hardware-config src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
 ```
 
 真机运行必须满足
 
 ```text
 runtime.write_enabled=true
-SERIAL_ARM_BUILD_DAMIAO=ON
+已构建并可加载对应 Hardware Backend
 SERIAL_ARM_ENABLE_DYNAMICS=ON
 ```
 
@@ -938,19 +1025,19 @@ python -m pip install numpy pybind11 scikit-build-core build
 ### 11.3. 构建与安装
 
 ```bash
-cd src/serial_arm_core/python
+cd src/serial_arm/core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/serial_arm-*.whl
 cd ../../..
 ```
 
-当前 `pyproject.toml` 会启用 Dynamics、Damiao 和 Python，并关闭 C++ Terminal
+当前 `pyproject.toml` 会启用 Dynamics 和 Python，并关闭 C++ Terminal；真机后端由独立包提供
 
 ### 11.4. 无真机检查
 
 ```bash
-python src/serial_arm_core/app/serial_arm_terminal.py \
-  --config src/serial_arm_bringup/config/dm_arm_white.yaml \
+python src/serial_arm/core/app/serial_arm_terminal.py \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml \
   --check-only
 ```
 
@@ -960,7 +1047,11 @@ python src/serial_arm_core/app/serial_arm_terminal.py \
 import serial_arm
 import numpy as np
 
-cfg = serial_arm.load_robot_cfg("src/serial_arm_bringup/config/dm_arm_gray.yaml")
+cfg = serial_arm.load_robot_cfg(
+    "src/robot_supports/robots/dm_arm/description/config/dm_arm_gray.yaml",
+    "serial_arm_hardware_damiao",
+    "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
+)
 dynamics = serial_arm.Dynamics()
 dynamics.configure(cfg.dynamics)
 
@@ -976,7 +1067,9 @@ print(dynamics.mass_matrix)
 import serial_arm
 
 session = serial_arm.RobotSession(
-    "src/serial_arm_bringup/config/dm_arm_white.yaml"
+    "src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml",
+    "serial_arm_hardware_damiao",
+    "src/robot_supports/robots/dm_arm/description/config/dm_arm_damiao.yaml",
 )
 session.set_model_feedforward_mode(serial_arm.ModelFeedforwardMode.GRAVITY)
 session.start()
@@ -987,8 +1080,8 @@ session.start()
 ### 11.7. Python 交互终端
 
 ```bash
-python src/serial_arm_core/app/serial_arm_terminal.py \
-  --config src/serial_arm_bringup/config/dm_arm_white.yaml
+python src/serial_arm/core/app/serial_arm_terminal.py \
+  --config src/robot_supports/robots/dm_arm/description/config/dm_arm_white.yaml
 ```
 
 脚本菜单 0 和菜单 3 在 `stop()` 前补充停放轨迹和实测判据
@@ -1083,7 +1176,7 @@ StateInterface
 配置文件
 
 ```text
-src/serial_arm_bringup/config/ros2_controllers.yaml
+src/robot_supports/robots/dm_arm/description/config/ros2_controllers.yaml
 ```
 
 加载
@@ -1110,10 +1203,8 @@ open_loop_control: false
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
-ros2 launch serial_arm_ros2_control dm_arm_control.launch.py \
-  robot_profile:=white \
-  config_file:="$PWD/src/serial_arm_bringup/config/dm_arm_white.yaml" \
-  controllers_file:="$PWD/src/serial_arm_bringup/config/ros2_controllers.yaml"
+ros2 launch serial_arm_ros2_control hardware.launch.py \
+  robot_profile:=dm_arm_white
 ```
 
 检查
@@ -1358,12 +1449,11 @@ target_link_libraries(my_app PRIVATE
     serial_arm::core
     serial_arm::config
     serial_arm::robot
-    serial_arm::damiao
     serial_arm::dynamics
 )
 ```
 
-仅链接实际使用的 target；可选后端未构建时对应 target 不存在
+仅链接实际使用的 target；具体 Hardware Backend 以插件共享库加载
 
 ### 17.3. 非 ROS 项目
 
@@ -1396,7 +1486,7 @@ target_link_libraries(my_ros_adapter PRIVATE serial_arm::robot serial_arm::confi
 完整 C++ 与 Python 公共接口见
 
 ```text
-src/serial_arm_core/API.md
+src/serial_arm/core/API.md
 ```
 
 ### 18.2. 第三方依赖

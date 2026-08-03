@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:macro name="serial_arm_ros2_control_hardware" params="config_file hardware_plugin hardware_config">
+        <hardware>
+            <plugin>serial_arm_ros2_control/SerialArmSystem</plugin>
+            <param name="config_file">${config_file}</param>
+            <param name="hardware_plugin">${hardware_plugin}</param>
+            <param name="hardware_config">${hardware_config}</param>
+        </hardware>
+    </xacro:macro>
+</robot>

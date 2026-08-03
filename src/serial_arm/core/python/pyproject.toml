@@ -1,0 +1,40 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "pybind11>=2.11",
+  "numpy>=1.24",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "serial-arm"
+version = "0.1.0"
+description = "Python bindings for the SerialArm C++ control and dynamics core"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "SerialArm Maintainer" },
+]
+dependencies = [
+  "numpy>=1.24",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Robotics",
+]
+
+[tool.scikit-build]
+cmake.source-dir = ".."
+wheel.packages = ["serial_arm"]
+install.components = ["python"]
+cmake.args = [
+  "-DSERIAL_ARM_BUILD_TERMINAL=OFF",
+  "-DSERIAL_ARM_ENABLE_DYNAMICS=ON",
+  "-DSERIAL_ARM_BUILD_PYTHON=ON",
+]

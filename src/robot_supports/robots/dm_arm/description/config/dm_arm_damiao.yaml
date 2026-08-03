@@ -1,0 +1,19 @@
+# DM-Arm Damiao Hardware Config
+
+damiao:
+  serial_port: /dev/ttyACM0     # 串口设备
+  baudrate: 921600              # 波特率
+  refresh_state_in_read: false  # read() 是否主动逐轴查询
+  feedback_timeout_s: 0.05      # 单个执行器反馈超时时间
+  activation_retries: 3         # 单轴使能与模式切换重试次数
+  startup_read_cycles: 5        # 激活后状态确认读取次数
+  stop_kp: 10.0                 # 安全停止时的执行器侧 kp
+  stop_kd: 0.15                 # 安全停止时的执行器侧 kd
+  stop_cycles: 5                # 安全停止命令发送次数
+  actuators:
+    joint1: {name: actuator1, motor_id: 1, master_id: 0, motor_type: DM4340}  # 名称、ID、主控 ID、型号
+    joint2: {name: actuator2, motor_id: 2, master_id: 0, motor_type: DM4340}
+    joint3: {name: actuator3, motor_id: 3, master_id: 0, motor_type: DM4340}
+    joint4: {name: actuator4, motor_id: 4, master_id: 0, motor_type: DM4310}
+    joint5: {name: actuator5, motor_id: 5, master_id: 0, motor_type: DM4310}
+    joint6: {name: actuator6, motor_id: 6, master_id: 0, motor_type: DM4310}

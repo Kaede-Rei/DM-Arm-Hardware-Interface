@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+    <name>serial_arm_hardware_damiao</name>
+    <version>0.1.0</version>
+    <description>Damiao hardware backend for SerialArm MotorBus.</description>
+    <maintainer email="kaerei@foxmail.com">SerialArm Maintainer</maintainer>
+    <license>MIT</license>
+    <buildtool_depend>ament_cmake</buildtool_depend>
+    <depend>serial_arm_core</depend>
+    <depend>yaml-cpp</depend>
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>
