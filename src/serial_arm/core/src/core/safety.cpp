@@ -102,11 +102,13 @@ tl::expected<void, SafetyFault> Safety::check_state(
             return tl::make_unexpected(fault(SafetyErr::ACTUATOR_FAULT, i, static_cast<double>(actuator_state.err_code[i]), 0.0));
         }
 
-        if(joint_state.pos[i] < cfg_.limits.min_pos[i] - tolerance) {
-            return tl::make_unexpected(fault(SafetyErr::JOINT_POS_LIMIT, i, joint_state.pos[i], cfg_.limits.min_pos[i]));
-        }
-        if(joint_state.pos[i] > cfg_.limits.max_pos[i] + tolerance) {
-            return tl::make_unexpected(fault(SafetyErr::JOINT_POS_LIMIT, i, joint_state.pos[i], cfg_.limits.max_pos[i]));
+        if(cfg_.limits.has_position_limit[i] != 0) {
+            if(joint_state.pos[i] < cfg_.limits.min_pos[i] - tolerance) {
+                return tl::make_unexpected(fault(SafetyErr::JOINT_POS_LIMIT, i, joint_state.pos[i], cfg_.limits.min_pos[i]));
+            }
+            if(joint_state.pos[i] > cfg_.limits.max_pos[i] + tolerance) {
+                return tl::make_unexpected(fault(SafetyErr::JOINT_POS_LIMIT, i, joint_state.pos[i], cfg_.limits.max_pos[i]));
+            }
         }
         const double state_vel_fault_limit =
             cfg_.limits.max_vel[i] * cfg_.state_vel_fault_ratio;
@@ -167,12 +169,14 @@ tl::expected<JointCtrlCmd, SafetyFault> Safety::check_joint_cmd(const JointState
     JointCtrlCmd safe_cmd = cmd;
 
     for(std::size_t i = 0; i < cfg_.joints_count; ++i) {
-        const double cmd_min_pos = cfg_.limits.min_pos[i] + cfg_.limits.pos_margin[i];
-        const double cmd_max_pos = cfg_.limits.max_pos[i] - cfg_.limits.pos_margin[i];
+        if(cfg_.limits.has_position_limit[i] != 0) {
+            const double cmd_min_pos = cfg_.limits.min_pos[i] + cfg_.limits.pos_margin[i];
+            const double cmd_max_pos = cfg_.limits.max_pos[i] - cfg_.limits.pos_margin[i];
 
-        if(!clamp_small_violation(safe_cmd.pos[i], cmd_min_pos, cmd_max_pos)) {
-            const double limit = safe_cmd.pos[i] < cmd_min_pos ? cmd_min_pos : cmd_max_pos;
-            return tl::make_unexpected(fault(SafetyErr::CMD_POS_LIMIT, i, safe_cmd.pos[i], limit));
+            if(!clamp_small_violation(safe_cmd.pos[i], cmd_min_pos, cmd_max_pos)) {
+                const double limit = safe_cmd.pos[i] < cmd_min_pos ? cmd_min_pos : cmd_max_pos;
+                return tl::make_unexpected(fault(SafetyErr::CMD_POS_LIMIT, i, safe_cmd.pos[i], limit));
+            }
         }
         if(!clamp_small_violation(safe_cmd.vel[i], -cfg_.limits.max_vel[i], cfg_.limits.max_vel[i])) {
             return tl::make_unexpected(fault(SafetyErr::CMD_VEL_LIMIT, i, safe_cmd.vel[i], cfg_.limits.max_vel[i]));
@@ -321,7 +325,8 @@ tl::expected<void, SafetyFault> Safety::validate_cfg(const SafetyCfg& cfg) const
     const auto size_is_n = [&cfg](const JointVector& values) {
         return values.size() == cfg.joints_count;
         };
-    if(!size_is_n(cfg.limits.min_pos) || !size_is_n(cfg.limits.max_pos) ||
+    if(cfg.limits.has_position_limit.size() != cfg.joints_count ||
+        !size_is_n(cfg.limits.min_pos) || !size_is_n(cfg.limits.max_pos) ||
         !size_is_n(cfg.limits.max_vel) || !size_is_n(cfg.limits.max_acc) || !size_is_n(cfg.limits.max_effort) ||
         !size_is_n(cfg.limits.max_kp) || !size_is_n(cfg.limits.max_kd) || !size_is_n(cfg.limits.pos_margin)) {
         return tl::make_unexpected(fault(SafetyErr::INVALID_CFG));
@@ -365,11 +370,12 @@ tl::expected<void, SafetyFault> Safety::validate_cfg(const SafetyCfg& cfg) const
     }
 
     for(std::size_t i = 0; i < cfg.joints_count; ++i) {
-        const double range = cfg.limits.max_pos[i] - cfg.limits.min_pos[i];
-        if(cfg.limits.min_pos[i] >= cfg.limits.max_pos[i] ||
+        if(cfg.limits.has_position_limit[i] > 1 ||
             cfg.limits.max_vel[i] <= 0.0 || cfg.limits.max_acc[i] <= 0.0 || cfg.limits.max_effort[i] <= 0.0 ||
             cfg.limits.max_kp[i] < 0.0 || cfg.limits.max_kd[i] < 0.0 || cfg.limits.pos_margin[i] < 0.0 ||
-            2.0 * cfg.limits.pos_margin[i] >= range) {
+            (cfg.limits.has_position_limit[i] != 0 &&
+                (cfg.limits.min_pos[i] >= cfg.limits.max_pos[i] ||
+                    2.0 * cfg.limits.pos_margin[i] >= cfg.limits.max_pos[i] - cfg.limits.min_pos[i]))) {
             return tl::make_unexpected(fault(SafetyErr::INVALID_CFG, i));
         }
         if(recovery.kp[i] < 0.0 || recovery.kp[i] > cfg.limits.max_kp[i] ||

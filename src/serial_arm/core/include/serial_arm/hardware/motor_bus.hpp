@@ -71,7 +71,7 @@ public:
     /**
      * @brief 使 Backend 进入可写控制状态
      *
-     * Backend 可在此阶段使能执行器并切换到合同要求的控制模式
+     * Backend 可在此阶段使能执行器并切换到协议要求的控制模式
      */
     virtual tl::expected<void, MotorBusErr> activate() = 0;
 

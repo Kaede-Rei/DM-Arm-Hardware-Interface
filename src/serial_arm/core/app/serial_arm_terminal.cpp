@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -21,6 +22,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include <yaml-cpp/yaml.h>
 
 #ifndef SERIAL_ARM_DEFAULT_CONFIG_PATH
 #define SERIAL_ARM_DEFAULT_CONFIG_PATH "config/arm.yaml"
@@ -38,8 +41,16 @@ struct CliOptions {
     std::string compare_rhs_path;
     std::string hardware_plugin;
     std::string hardware_config;
+    std::string robot_profile;
+    std::string profiles_file;
     bool show_help{ false };
     bool compare_config{ false };
+};
+
+struct ResolvedProfile {
+    std::string config_path;
+    std::string hardware_plugin;
+    std::string hardware_config;
 };
 
 struct StreamState {
@@ -61,6 +72,74 @@ std::string to_string(RobotState value) {
         case RobotState::FAULT: return "FAULT";
     }
     return "UNKNOWN";
+}
+
+std::vector<std::string> split_paths(const char* value) {
+    std::vector<std::string> paths;
+    if(!value) return paths;
+    std::stringstream stream(value);
+    std::string item;
+    while(std::getline(stream, item, ':')) {
+        if(!item.empty()) paths.push_back(item);
+    }
+    return paths;
+}
+
+std::optional<std::filesystem::path> find_package_share(const std::string& package) {
+    std::vector<std::string> prefixes = split_paths(std::getenv("AMENT_PREFIX_PATH"));
+    const auto colcon_prefixes = split_paths(std::getenv("COLCON_PREFIX_PATH"));
+    prefixes.insert(prefixes.end(), colcon_prefixes.begin(), colcon_prefixes.end());
+
+    for(const auto& prefix : prefixes) {
+        const std::filesystem::path candidate = std::filesystem::path(prefix) / "share" / package;
+        if(std::filesystem::exists(candidate)) return candidate;
+    }
+    return std::nullopt;
+}
+
+tl::expected<std::string, std::string> resolve_package_path(const YAML::Node& node, const std::string& package_key, const std::string& path_key) {
+    if(!node[package_key] || !node[path_key]) return tl::make_unexpected("profile 缺少 " + package_key + " 或 " + path_key);
+    const std::string package = node[package_key].as<std::string>();
+    const std::string relative_path = node[path_key].as<std::string>();
+    const auto share = find_package_share(package);
+    if(!share) return tl::make_unexpected("无法在 AMENT_PREFIX_PATH/COLCON_PREFIX_PATH 中找到 package share: " + package);
+    return (*share / relative_path).lexically_normal().string();
+}
+
+tl::expected<ResolvedProfile, std::string> load_robot_profile(const CliOptions& options) {
+    std::filesystem::path profiles_file;
+    if(!options.profiles_file.empty()) {
+        profiles_file = options.profiles_file;
+    }
+    else {
+        const auto share = find_package_share("serial_arm_robot_profiles");
+        if(!share) return tl::make_unexpected("无法找到 serial_arm_robot_profiles；请先 source install/setup.bash，或使用 --profiles-file");
+        profiles_file = *share / "config" / "robot_profiles.yaml";
+    }
+
+    YAML::Node root;
+    try {
+        root = YAML::LoadFile(profiles_file.string());
+    }
+    catch(const std::exception& error) {
+        return tl::make_unexpected(std::string("读取 robot profiles 失败: ") + error.what());
+    }
+    if(!root["profiles"] || !root["profiles"][options.robot_profile]) {
+        return tl::make_unexpected("robot_profile 不存在: " + options.robot_profile);
+    }
+
+    const YAML::Node profile = root["profiles"][options.robot_profile];
+    if(!profile["core"] || !profile["hardware"]) return tl::make_unexpected("profile 缺少 core 或 hardware");
+
+    auto core_config = resolve_package_path(profile["core"], "package", "config");
+    if(!core_config) return tl::make_unexpected(core_config.error());
+
+    const YAML::Node hardware = profile["hardware"];
+    if(!hardware["plugin"]) return tl::make_unexpected("profile 缺少 hardware.plugin");
+    auto hardware_config = resolve_package_path(hardware, "config_package", "config");
+    if(!hardware_config) return tl::make_unexpected(hardware_config.error());
+
+    return ResolvedProfile{ *core_config, hardware["plugin"].as<std::string>(), *hardware_config };
 }
 
 std::string to_string(JointImpedanceMode value) {
@@ -312,6 +391,14 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
             if(i + 1 >= argc) return false;
             options.hardware_config = argv[++i];
         }
+        else if(arg == "--robot-profile") {
+            if(i + 1 >= argc) return false;
+            options.robot_profile = argv[++i];
+        }
+        else if(arg == "--profiles-file") {
+            if(i + 1 >= argc) return false;
+            options.profiles_file = argv[++i];
+        }
         else if(arg == "--compare-config") {
             if(i + 2 >= argc) return false;
             options.compare_config = true;
@@ -330,7 +417,8 @@ bool parse_cli(int argc, char** argv, CliOptions& options) {
 }
 
 void print_usage(const char* program) {
-    std::cout << "用法: " << program << " [--config <path>] [--hardware-plugin <name>] [--hardware-config <path>]\n";
+    std::cout << "用法: " << program << " --robot-profile <name> [--profiles-file <path>]\n";
+    std::cout << "路径: " << program << " [--config <path>] [--hardware-plugin <name>] [--hardware-config <path>]\n";
     std::cout << "比较: " << program << " --hardware-plugin <name> --hardware-config <path> --compare-config <config-a.yaml> <config-b.yaml>\n";
     std::cout << "说明: runtime.write_enabled=true 使用 Hardware Backend；false 使用离线 mock 后端\n";
 }
@@ -1433,6 +1521,26 @@ int main(int argc, char** argv) {
     if(options.show_help) {
         print_usage(argv[0]);
         return EXIT_SUCCESS;
+    }
+    if(!options.robot_profile.empty()) {
+        if(!options.config_path.empty() && options.config_path != SERIAL_ARM_DEFAULT_CONFIG_PATH) {
+            std::cerr << "--robot-profile 不能与 --config 同时使用\n";
+            print_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+        if(!options.hardware_plugin.empty() || !options.hardware_config.empty()) {
+            std::cerr << "--robot-profile 不能与 --hardware-plugin/--hardware-config 同时使用\n";
+            print_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+        const auto profile = load_robot_profile(options);
+        if(!profile) {
+            std::cerr << profile.error() << '\n';
+            return EXIT_FAILURE;
+        }
+        options.config_path = profile->config_path;
+        options.hardware_plugin = profile->hardware_plugin;
+        options.hardware_config = profile->hardware_config;
     }
     if(options.hardware_plugin.empty() || options.hardware_config.empty()) {
         std::cerr << "--hardware-plugin and --hardware-config are required\n";

@@ -75,6 +75,7 @@ enum class FaultHoldMode {
  * @brief Joint 侧软件安全限制
  */
 struct JointLimitCfg {
+    std::vector<std::uint8_t> has_position_limit; ///< 是否执行位置硬限位和命令位置软限位
     JointVector min_pos;       ///< 状态位置硬下限，rad
     JointVector max_pos;       ///< 状态位置硬上限，rad
     JointVector max_vel;       ///< 最大速度，rad/s

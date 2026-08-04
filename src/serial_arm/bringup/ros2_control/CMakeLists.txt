@@ -9,6 +9,9 @@ find_package(ament_cmake REQUIRED)
 find_package(serial_arm_core CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(pinocchio CONFIG REQUIRED)
+if(BUILD_TESTING)
+    find_package(ament_cmake_pytest REQUIRED)
+endif()
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
@@ -65,4 +68,9 @@ install(FILES serial_arm_hardware_plugin.xml
 
 ament_export_include_directories(include)
 ament_export_dependencies(hardware_interface pluginlib)
+
+if(BUILD_TESTING)
+    ament_add_pytest_test(test_profile_utils test/test_profile_utils.py)
+endif()
+
 ament_package()

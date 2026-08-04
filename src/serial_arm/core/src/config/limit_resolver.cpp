@@ -87,7 +87,7 @@ tl::expected<ResolvedSafetyCfg, LimitResolverErr> LimitResolver::resolve(const R
         resolved.max_kp = *kp;
         resolved.max_kd = *kd;
 
-        if(!resolved.has_position_limit || resolved.cmd_min_pos >= resolved.cmd_max_pos ||
+        if((resolved.has_position_limit && resolved.cmd_min_pos >= resolved.cmd_max_pos) ||
             resolved.max_cmd_vel <= 0.0 || resolved.max_state_vel <= 0.0 || resolved.max_acc <= 0.0 ||
             resolved.max_effort <= 0.0 || resolved.max_kp < 0.0 || resolved.max_kd < 0.0) {
             return tl::make_unexpected(LimitResolverErr::INVALID_INPUT);
@@ -111,8 +111,12 @@ SafetyCfg to_safety_cfg(const ResolvedSafetyCfg& resolved) {
     cfg.require_all_actuators_enabled = resolved.require_all_actuators_enabled;
     cfg.reject_motor_error = resolved.reject_motor_error;
     cfg.require_continuous_cmd = resolved.require_continuous_cmd;
+    cfg.fault_recovery.compliant_recovery.kp.assign(resolved.joints.size(), 0.0);
+    cfg.fault_recovery.compliant_recovery.kd.assign(resolved.joints.size(), 0.0);
+    cfg.fault_recovery.compliant_recovery.max_vel.reserve(resolved.joints.size());
 
     cfg.limits.min_pos.reserve(resolved.joints.size());
+    cfg.limits.has_position_limit.reserve(resolved.joints.size());
     cfg.limits.max_pos.reserve(resolved.joints.size());
     cfg.limits.max_vel.reserve(resolved.joints.size());
     cfg.limits.max_acc.reserve(resolved.joints.size());
@@ -121,6 +125,7 @@ SafetyCfg to_safety_cfg(const ResolvedSafetyCfg& resolved) {
     cfg.limits.max_kd.reserve(resolved.joints.size());
     cfg.limits.pos_margin.reserve(resolved.joints.size());
     for(const auto& joint : resolved.joints) {
+        cfg.limits.has_position_limit.push_back(joint.has_position_limit ? 1 : 0);
         cfg.limits.min_pos.push_back(joint.hard_min_pos);
         cfg.limits.max_pos.push_back(joint.hard_max_pos);
         cfg.limits.max_vel.push_back(joint.max_cmd_vel);
@@ -129,6 +134,7 @@ SafetyCfg to_safety_cfg(const ResolvedSafetyCfg& resolved) {
         cfg.limits.max_kp.push_back(joint.max_kp);
         cfg.limits.max_kd.push_back(joint.max_kd);
         cfg.limits.pos_margin.push_back(joint.cmd_min_pos - joint.hard_min_pos);
+        cfg.fault_recovery.compliant_recovery.max_vel.push_back(joint.max_cmd_vel);
     }
     return cfg;
 }
@@ -149,7 +155,7 @@ ResolvedSafetyCfg resolve_from_safety_cfg(const std::vector<std::string>& joint_
     for(std::size_t i = 0; i < joint_names.size(); ++i) {
         ResolvedJointLimitCfg joint;
         joint.joint_name = joint_names[i];
-        joint.has_position_limit = true;
+        joint.has_position_limit = cfg.limits.has_position_limit.empty() ? true : cfg.limits.has_position_limit[i] != 0;
         joint.hard_min_pos = cfg.limits.min_pos[i];
         joint.hard_max_pos = cfg.limits.max_pos[i];
         joint.cmd_min_pos = cfg.limits.min_pos[i] + cfg.limits.pos_margin[i];

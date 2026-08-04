@@ -18,6 +18,7 @@ include(CMakePackageConfigHelpers)
 # index so package://serial_arm_core URIs resolve in tools such as MoveIt Setup
 # Assistant. The library targets remain usable as a plain CMake package.
 find_package(ament_cmake QUIET)
+include(CTest)
 
 # =============================================================================
 # 构建选项
@@ -25,9 +26,6 @@ find_package(ament_cmake QUIET)
 
 # 终端主程序：用于硬件后端、动力学与完整纯 C++ API 的交互式联调
 option(SERIAL_ARM_BUILD_TERMINAL "Build terminal main application" ON)
-
-# 动力学：编译 Pinocchio 模型、运动学、重力补偿和完整动力学接口
-option(SERIAL_ARM_ENABLE_DYNAMICS "Enable Pinocchio dynamics" ON)
 
 # Python：编译 pybind11 离线 API 与 C++ RobotSession 真机接口
 option(SERIAL_ARM_BUILD_PYTHON "Build Python binding" ON)
@@ -75,7 +73,7 @@ set(SERIAL_ARM_TL_INCLUDE_DIR
 set(SERIAL_ARM_INSTALL_TARGETS)
 
 # 用于生成安装后的 package config
-set(SERIAL_ARM_CONFIG_HAS_DYNAMICS OFF)
+set(SERIAL_ARM_CONFIG_HAS_DYNAMICS ON)
 
 # =============================================================================
 # 必选模块：serial_arm_core
@@ -161,65 +159,52 @@ serial_arm_enable_warnings(serial_arm_robot)
 list(APPEND SERIAL_ARM_INSTALL_TARGETS serial_arm_robot)
 
 # =============================================================================
-# 可选模块：SERIAL_ARM_ENABLE_DYNAMICS
+# 必选模块：serial_arm_dynamics
 # =============================================================================
 
-if(SERIAL_ARM_ENABLE_DYNAMICS)
-    # Dynamics 公共接口使用 Eigen，具体模型与算法由 Pinocchio 提供
-    find_package(Eigen3 REQUIRED NO_MODULE)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/dynamics/dynamics.cpp")
-        message(FATAL_ERROR
-            "SERIAL_ARM_ENABLE_DYNAMICS=ON, but src/dynamics/dynamics.cpp does not exist. "
-            "Complete mainline B1 before enabling the dynamics target.")
-    endif()
+find_package(Eigen3 REQUIRED NO_MODULE)
 
-    add_library(serial_arm_dynamics
-        src/dynamics/dynamics.cpp
-    )
-    add_library(serial_arm::dynamics ALIAS serial_arm_dynamics)
-    set_target_properties(serial_arm_dynamics PROPERTIES EXPORT_NAME dynamics)
+add_library(serial_arm_dynamics
+    src/dynamics/dynamics.cpp
+)
+add_library(serial_arm::dynamics ALIAS serial_arm_dynamics)
+set_target_properties(serial_arm_dynamics PROPERTIES EXPORT_NAME dynamics)
 
-    target_include_directories(serial_arm_dynamics
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<BUILD_INTERFACE:${SERIAL_ARM_TL_INCLUDE_DIR}>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    )
+target_include_directories(serial_arm_dynamics
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${SERIAL_ARM_TL_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
-    target_link_libraries(serial_arm_dynamics
-        PUBLIC
-            serial_arm_core
-            Eigen3::Eigen
-    )
+target_link_libraries(serial_arm_dynamics
+    PUBLIC
+        serial_arm_core
+        Eigen3::Eigen
+)
 
-    # 优先使用现代 imported target；兼容部分旧版 Pinocchio 包
-    if(TARGET pinocchio::pinocchio)
-        target_link_libraries(serial_arm_dynamics PUBLIC pinocchio::pinocchio)
-    elseif(pinocchio_LIBRARIES)
-        target_include_directories(serial_arm_dynamics PUBLIC ${pinocchio_INCLUDE_DIRS})
-        target_link_libraries(serial_arm_dynamics PUBLIC ${pinocchio_LIBRARIES})
-    else()
-        message(FATAL_ERROR
-            "Pinocchio was found, but neither pinocchio::pinocchio nor "
-            "pinocchio_LIBRARIES is available")
-    endif()
-
-    target_compile_features(serial_arm_dynamics PUBLIC cxx_std_17)
-    serial_arm_enable_warnings(serial_arm_dynamics)
-
-    list(APPEND SERIAL_ARM_INSTALL_TARGETS serial_arm_dynamics)
-    set(SERIAL_ARM_CONFIG_HAS_DYNAMICS ON)
+# 优先使用现代 imported target；兼容部分旧版 Pinocchio 包
+if(TARGET pinocchio::pinocchio)
+    target_link_libraries(serial_arm_dynamics PUBLIC pinocchio::pinocchio)
+elseif(pinocchio_LIBRARIES)
+    target_include_directories(serial_arm_dynamics PUBLIC ${pinocchio_INCLUDE_DIRS})
+    target_link_libraries(serial_arm_dynamics PUBLIC ${pinocchio_LIBRARIES})
+else()
+    message(FATAL_ERROR
+        "Pinocchio was found, but neither pinocchio::pinocchio nor "
+        "pinocchio_LIBRARIES is available")
 endif()
+
+target_compile_features(serial_arm_dynamics PUBLIC cxx_std_17)
+serial_arm_enable_warnings(serial_arm_dynamics)
+
+list(APPEND SERIAL_ARM_INSTALL_TARGETS serial_arm_dynamics)
 
 # =============================================================================
 # 可选模块：SERIAL_ARM_BUILD_PYTHON
 # =============================================================================
 
 if(SERIAL_ARM_BUILD_PYTHON)
-    if(NOT TARGET serial_arm_dynamics)
-        message(FATAL_ERROR "SERIAL_ARM_BUILD_PYTHON=ON requires SERIAL_ARM_ENABLE_DYNAMICS=ON")
-    endif()
-
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
     find_package(Threads REQUIRED)
@@ -261,10 +246,6 @@ endif()
 # =============================================================================
 
 if(SERIAL_ARM_BUILD_TERMINAL)
-    if(NOT TARGET serial_arm_dynamics)
-        message(FATAL_ERROR "SERIAL_ARM_BUILD_TERMINAL=ON requires SERIAL_ARM_ENABLE_DYNAMICS=ON")
-    endif()
-
     find_package(Threads REQUIRED)
 
     add_executable(serial_arm_terminal
@@ -285,6 +266,33 @@ if(SERIAL_ARM_BUILD_TERMINAL)
     install(TARGETS serial_arm_terminal
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+endif()
+
+# =============================================================================
+# 测试
+# =============================================================================
+
+if(BUILD_TESTING)
+    find_package(GTest REQUIRED)
+
+    add_executable(serial_arm_core_contract_tests
+        tests/core_contract_tests.cpp
+    )
+    target_compile_definitions(serial_arm_core_contract_tests
+        PRIVATE
+            SERIAL_ARM_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+    )
+    target_link_libraries(serial_arm_core_contract_tests
+        PRIVATE
+            serial_arm_core
+            serial_arm_config
+            serial_arm_dynamics
+            GTest::gtest_main
+    )
+    target_compile_features(serial_arm_core_contract_tests PRIVATE cxx_std_17)
+    serial_arm_enable_warnings(serial_arm_core_contract_tests)
+
+    add_test(NAME serial_arm_core_contract_tests COMMAND serial_arm_core_contract_tests)
 endif()
 
 # =============================================================================
@@ -350,5 +358,5 @@ endif()
 
 message(STATUS "SerialArm-Core build configuration:")
 message(STATUS "  SERIAL_ARM_BUILD_TERMINAL = ${SERIAL_ARM_BUILD_TERMINAL}")
-message(STATUS "  SERIAL_ARM_ENABLE_DYNAMICS= ${SERIAL_ARM_ENABLE_DYNAMICS}")
+message(STATUS "  Dynamics / Pinocchio    = REQUIRED")
 message(STATUS "  SERIAL_ARM_BUILD_PYTHON   = ${SERIAL_ARM_BUILD_PYTHON}")

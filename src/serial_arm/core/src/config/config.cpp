@@ -358,6 +358,7 @@ tl::expected<RobotCfg, ConfigErrInfo> load_flat_robot_cfg(const std::string& pat
         cfg.safety.limits.max_kp = require_as<JointVector>(limits, "max_kp", "limits");
         cfg.safety.limits.max_kd = require_as<JointVector>(limits, "max_kd", "limits");
         cfg.safety.limits.pos_margin = require_as<JointVector>(limits, "pos_margin", "limits");
+        cfg.safety.limits.has_position_limit.assign(cfg.joint_names.size(), 1);
 
         const YAML::Node mapping = require_map(root, "mapping", "root");
         cfg.mapper.pos_ratio = require_as<ActuatorVector>(mapping, "pos_ratio", "mapping");

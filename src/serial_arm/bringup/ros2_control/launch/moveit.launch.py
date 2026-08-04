@@ -12,13 +12,13 @@ from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "scripts"))
-from profile_utils import load_profile
+from profile_utils import load_profile, require_moveit_package
 
 
 def resolve_profile(context):
     robot_profile = context.launch_configurations["robot_profile"]
     profile = load_profile(robot_profile)
-    moveit_package = profile["moveit_package"]
+    moveit_package = require_moveit_package(profile, robot_profile)
     return [
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(

@@ -96,7 +96,7 @@ safety_policy:
     require_operator_request: true      # 柔性恢复必须由操作员显式请求
     gravity_model_validated: true       # 重力模型经验证后才允许低增益柔性恢复
     recovery_timeout_s: 30.0            # 柔性恢复最大持续时间 s
-    compliant_recovery:
+    compliant_recovery:                 # 低增益柔性恢复参数
       kp: {joint1: 8.0, joint2: 20.0, joint3: 12.0, joint4: 5.0, joint5: 3.0, joint6: 1.0}
       kd: {joint1: 0.08, joint2: 0.20, joint3: 0.12, joint4: 0.05, joint5: 0.03, joint6: 0.01}
       max_vel: {joint1: 1.0, joint2: 1.0, joint3: 1.0, joint4: 1.0, joint5: 1.0, joint6: 1.0}

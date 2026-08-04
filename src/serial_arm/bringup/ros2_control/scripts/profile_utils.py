@@ -1,7 +1,12 @@
 from pathlib import Path
 
 import yaml
-from ament_index_python.packages import get_package_share_directory
+
+
+def get_package_share_directory(package):
+    from ament_index_python.packages import get_package_share_directory as resolve_share
+
+    return resolve_share(package)
 
 
 def load_profile(robot_profile):
@@ -20,8 +25,17 @@ def load_profile(robot_profile):
     profile["description_urdf_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["urdf"])
     profile["ros2_control_xacro_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["ros2_control_xacro"])
     profile["controllers_path"] = resolve_package_path(profile["controllers"]["package"], profile["controllers"]["config"])
-    profile["moveit_package"] = profile["moveit"]["package"]
+    moveit = profile.get("moveit")
+    if moveit and moveit.get("package"):
+        profile["moveit_package"] = moveit["package"]
     return profile
+
+
+def require_moveit_package(profile, robot_profile):
+    moveit = profile.get("moveit")
+    if not moveit or not moveit.get("package"):
+        raise RuntimeError(f"Robot profile '{robot_profile}' does not define MoveIt support")
+    return moveit["package"]
 
 
 def resolve_package_path(package, relative_path):

@@ -127,7 +127,7 @@ struct JointCtrlCmd {
  * @brief 执行器控制命令
  *
  * 该命令已经完成关节侧到执行器侧的映射；Hardware Backend 必须按
- * Core 定义的 pos / vel / tor / kp / kd 合同解释，并转换为厂商协议、
+ * Core 定义的 pos / vel / tor / kp / kd 协议解释，并转换为厂商协议、
  * 厂商单位、电流或其他底层量
  * - pos: rad
  * - vel: rad/s
