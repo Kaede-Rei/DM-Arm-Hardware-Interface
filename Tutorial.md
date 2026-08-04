@@ -4,7 +4,7 @@
 
 ## 环境与依赖
 
-SerialArm-Core 以 C++17 为核心，当前主要在 ROS 2 Humble 环境中使用；Core 依赖：
+SerialArm-Core 以 C++17 为核心，Core / Robot Profile / Robot Resources / Hardware Backend 支持 standalone CMake；ROS 2 Humble 作为可选 Adapter 环境；Core 依赖：
 
 - CMake
 - C++17 compiler
@@ -113,10 +113,10 @@ install/standalone/share/dm_arm_description/model/...
 如果不使用 profile，也可以显式传入 Core config、Backend plugin 和 hardware config：
 
 ```bash
-./build/serial_arm_core/serial_arm_terminal \
-  --config install/dm_arm_description/share/dm_arm_description/config/core/gray.yaml \
-  --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config install/dm_arm_description/share/dm_arm_description/config/hardware.yaml
+./install/standalone/bin/serial_arm_terminal \
+  --config install/standalone/share/dm_arm_description/config/core/gray.yaml \
+  --hardware-plugin install/standalone/lib/libserial_arm_hardware_damiao.so \
+  --hardware-config install/standalone/share/dm_arm_description/config/hardware.yaml
 ```
 
 ROS 2 / colcon 场景单独使用 workspace overlay：
@@ -129,10 +129,12 @@ ros2 launch serial_arm_ros2_control display.launch.py robot_profile:=dm_arm_gray
 
 ### Python
 
-Python Binding 提供 `RobotSession` 和 Python terminal；它同样不要求 ROS 2 控制链路，profile 模式复用 C++ Core resolver：
+Python Binding 提供 `RobotSession` 和 Python terminal；它同样不要求 ROS 2 控制链路，profile 模式直接复用 C++ Core resolver；Standalone 场景先设置与 C++ Terminal 相同的资源和动态库搜索路径：
 
 ```bash
-source install/setup.bash
+export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
+export LD_LIBRARY_PATH="$PWD/install/standalone/lib:/opt/openrobots/lib:${LD_LIBRARY_PATH:-}"
+
 cd src/serial_arm/core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/serial_arm-*.whl
@@ -154,10 +156,12 @@ python ../app/serial_arm_terminal.py --robot-profile dm_arm_gray
 
 ```bash
 python ../app/serial_arm_terminal.py \
-  --config ../../../install/dm_arm_description/share/dm_arm_description/config/core/gray.yaml \
-  --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config ../../../install/dm_arm_description/share/dm_arm_description/config/hardware.yaml
+  --config "$SERIAL_ARM_RESOURCE_PATH/share/dm_arm_description/config/core/gray.yaml" \
+  --hardware-plugin "$SERIAL_ARM_RESOURCE_PATH/lib/libserial_arm_hardware_damiao.so" \
+  --hardware-config "$SERIAL_ARM_RESOURCE_PATH/share/dm_arm_description/config/hardware.yaml"
 ```
+
+如果 Python 运行在 ROS 2 / colcon workspace 中，也可以先 `source install/setup.bash` 使用 workspace overlay；这只是 ROS 2 环境的便利入口，不是 Python Binding 或 Robot Profile 的依赖
 
 ## Robot Profile
 

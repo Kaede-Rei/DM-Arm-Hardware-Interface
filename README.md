@@ -46,11 +46,7 @@ flowchart TB
     Backend --> Actuator["Actuator"]
 ```
 
-关键约束：
-
-- MoveIt optional：`display.launch.py`、`hardware.launch.py`、ros2_control `SystemInterface` 和基础 Robot Profile 加载不依赖 MoveIt 配置；只有 `moveit.launch.py` 要求 profile 定义 MoveIt support
-- Dynamics mandatory：不维护 No-Dynamics 分支；没有真实惯性参数时使用合法 placeholder inertial，后续用 CAD 或实测参数替换
-- MIT Backend mandatory：Core 不根据 Backend 能力降级；如果硬件协议不原生支持 MIT，由 Backend 自己完成映射、模拟或适配
+>   注意：如果硬件协议不原生支持 MIT / impedance actuator semantics，必须由 Backend 自己完成映射、模拟或适配
 
 ## 当前能力
 
@@ -62,7 +58,7 @@ flowchart TB
 | Safety | 已实现，含 continuous joint 位置限位跳过 |
 | Joint / Actuator Mapping | 已实现 |
 | Five impedance modes | `RIGID_HOLD`、`RIGID_TRACKING`、`COMPLIANT_HOLD`、`COMPLIANT_DRAG`、`COMPLIANT_TRACKING` |
-| Damiao Backend | Reference backend |
+| Backend | Damiao 作为 Reference backend |
 | Python Binding | 已实现 |
 | ros2_control | Adapter 已实现 |
 | MoveIt 2 | Optional launch support |
@@ -117,55 +113,47 @@ target_link_libraries(my_arm_driver
 
 ### 纯 C++ 终端工具
 
-如果只想在本仓库里用终端联调 Core、Dynamics 和 Hardware Backend：
+完整 standalone 安装步骤见 [Tutorial.md](Tutorial.md)；将 Core、Hardware Backend、Robot Profiles 和 Robot Resources 安装到统一 prefix 后，可直接使用 Robot Profile：
 
 ```bash
-cmake -S src/serial_arm/core -B build/serial_arm_core \
-  -DSERIAL_ARM_BUILD_PYTHON=OFF \
-  -DSERIAL_ARM_BUILD_TERMINAL=ON
-cmake --build build/serial_arm_core --target serial_arm_terminal
+export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
+export LD_LIBRARY_PATH="$PWD/install/standalone/lib:/opt/openrobots/lib:${LD_LIBRARY_PATH:-}"
+
+./install/standalone/bin/serial_arm_terminal --robot-profile dm_arm_gray
 ```
 
-构建后可运行 `serial_arm_terminal`：
+`--robot-profile` 由 SerialArm-Core 解析，具体 profile 对应的资源和 Hardware Backend library 必须存在；例如 `dm_arm_gray` 仍需要 DM-Arm Robot Resources、`serial_arm_hardware_damiao` 和对应 config，即使 `runtime.write_enabled: false`，Core 仍会加载 Backend 获取 `HardwareCapabilities`
+
+不使用 profile 时也可显式指定：
 
 ```bash
-./build/serial_arm_core/serial_arm_terminal \
-  --config install/dm_arm_description/share/dm_arm_description/config/core/gray.yaml \
-  --hardware-plugin serial_arm_hardware_damiao \
-  --hardware-config install/dm_arm_description/share/dm_arm_description/config/hardware.yaml
+./install/standalone/bin/serial_arm_terminal \
+  --config install/standalone/share/dm_arm_description/config/core/gray.yaml \
+  --hardware-plugin install/standalone/lib/libserial_arm_hardware_damiao.so \
+  --hardware-config install/standalone/share/dm_arm_description/config/hardware.yaml
 ```
-
-也可以使用 framework-neutral Robot Profile；以 `dm_arm_gray` 为例：
-
-```bash
-./build/serial_arm_core/serial_arm_terminal --robot-profile dm_arm_gray
-```
-
-`--robot-profile` 由 SerialArm-Core 解析，使用具体 profile 需要该 profile 对应的 Robot resources 和 Hardware Backend library 可用；例如 `dm_arm_gray` 需要 SerialArm Core、DM-Arm Robot Resources、`serial_arm_hardware_damiao` shared library 和对应 config；第三方安装位置可通过 `SERIAL_ARM_RESOURCE_PATH` 或 `--profile-file` 指定资源入口
 
 ### Python
 
-Python Binding 可以作为脚本或上层应用的控制入口，也提供 Python terminal；构建 wheel 后安装：
+Python Binding 可以作为脚本或上层应用的控制入口，也提供 Python terminal；它与 C++ Terminal 共用同一套 Robot Profile 解析；Standalone 使用时先提供资源和动态库搜索路径：
 
 ```bash
+export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
+export LD_LIBRARY_PATH="$PWD/install/standalone/lib:/opt/openrobots/lib:${LD_LIBRARY_PATH:-}"
+
 cd src/serial_arm/core/python
 python -m build --wheel
 python -m pip install --force-reinstall dist/serial_arm-*.whl
 ```
 
-以 `dm_arm_gray` 做无真机检查：
+以 `dm_arm_gray` 做无真机检查或启动 terminal：
 
 ```bash
-source install/setup.bash
 python ../app/serial_arm_terminal.py --robot-profile dm_arm_gray --check-only
-```
-
-启动 Python terminal：
-
-```bash
-source install/setup.bash
 python ../app/serial_arm_terminal.py --robot-profile dm_arm_gray
 ```
+
+如果 Python 运行在 colcon workspace 中，也可以 `source install/setup.bash` 使用 workspace overlay，但这不是 Robot Profile 的必需条件
 
 ### ROS 2 / ros2_control
 
