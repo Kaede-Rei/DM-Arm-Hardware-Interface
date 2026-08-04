@@ -60,7 +60,6 @@ NumPy >= 1.24
 pybind11 >= 2.11
 scikit-build-core >= 0.10
 build
-PyYAML
 python3-dev
 CMake
 C++17 编译器
@@ -97,7 +96,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 import time
 from pathlib import Path
@@ -106,70 +104,6 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 DEFAULT_CONFIG = "config/arm.yaml"
-
-
-def split_paths(value: Optional[str]) -> list[Path]:
-    if not value:
-        return []
-    return [Path(item) for item in value.split(":") if item]
-
-
-def find_package_share(package: str) -> Optional[Path]:
-    for prefix in split_paths(os.environ.get("AMENT_PREFIX_PATH")) + split_paths(
-        os.environ.get("COLCON_PREFIX_PATH")
-    ):
-        candidate = prefix / "share" / package
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def resolve_package_path(node: dict[str, Any], package_key: str, path_key: str) -> Path:
-    package = node.get(package_key)
-    relative_path = node.get(path_key)
-    if not package or not relative_path:
-        raise ValueError(f"profile 缺少 {package_key} 或 {path_key}")
-    share = find_package_share(str(package))
-    if share is None:
-        raise ValueError(
-            f"无法在 AMENT_PREFIX_PATH/COLCON_PREFIX_PATH 中找到 package share: {package}"
-        )
-    return (share / str(relative_path)).resolve()
-
-
-def load_robot_profile(robot_profile: str, profiles_file: Optional[str]) -> tuple[Path, str, Path]:
-    try:
-        import yaml
-    except ImportError as error:
-        raise RuntimeError("使用 --robot-profile 需要安装 PyYAML") from error
-
-    if profiles_file:
-        profile_path = Path(profiles_file).expanduser().resolve()
-    else:
-        share = find_package_share("serial_arm_robot_profiles")
-        if share is None:
-            raise ValueError(
-                "无法找到 serial_arm_robot_profiles；请先 source install/setup.bash，或使用 --profiles-file"
-            )
-        profile_path = share / "config" / "robot_profiles.yaml"
-
-    with profile_path.open("r", encoding="utf-8") as stream:
-        root = yaml.safe_load(stream)
-
-    profiles = root.get("profiles", {}) if isinstance(root, dict) else {}
-    profile = profiles.get(robot_profile)
-    if not profile:
-        raise ValueError(f"robot_profile 不存在: {robot_profile}")
-    if "core" not in profile or "hardware" not in profile:
-        raise ValueError("profile 缺少 core 或 hardware")
-
-    config = resolve_package_path(profile["core"], "package", "config")
-    hardware = profile["hardware"]
-    hardware_plugin = hardware.get("plugin")
-    if not hardware_plugin:
-        raise ValueError("profile 缺少 hardware.plugin")
-    hardware_config = resolve_package_path(hardware, "config_package", "config")
-    return config, str(hardware_plugin), hardware_config
 
 
 def enum_name(value: Any) -> str:
@@ -849,44 +783,43 @@ def main() -> int:
     parser.add_argument("--hardware-plugin")
     parser.add_argument("--hardware-config")
     parser.add_argument("--robot-profile")
-    parser.add_argument("--profiles-file")
+    parser.add_argument("--profile-file", default="")
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
 
-    if args.robot_profile:
-        if args.config != DEFAULT_CONFIG or args.hardware_plugin or args.hardware_config:
-            print(
-                "--robot-profile 不能与 --config/--hardware-plugin/--hardware-config 同时使用",
-                file=sys.stderr,
-            )
-            return 2
-        try:
-            config, hardware_plugin, hardware_config = load_robot_profile(
-                args.robot_profile, args.profiles_file
-            )
-        except Exception as error:
-            print(f"profile 加载失败: {type(error).__name__}: {error}", file=sys.stderr)
-            return 2
-    else:
-        if not args.hardware_plugin or not args.hardware_config:
-            print(
-                "必须使用 --robot-profile，或同时提供 --config/--hardware-plugin/--hardware-config",
-                file=sys.stderr,
-            )
-            return 2
-        config = Path(args.config).expanduser().resolve()
-        hardware_plugin = args.hardware_plugin
-        hardware_config = Path(args.hardware_config).expanduser().resolve()
-
-    if not config.is_file():
-        print(f"配置文件不存在: {config}", file=sys.stderr)
-        return 2
-    if not hardware_config.is_file():
-        print(f"硬件配置文件不存在: {hardware_config}", file=sys.stderr)
-        return 2
-
     try:
         serial_arm_module = import_serial_arm()
+        if args.robot_profile:
+            if args.config != DEFAULT_CONFIG or args.hardware_plugin or args.hardware_config:
+                print(
+                    "--robot-profile 不能与 --config/--hardware-plugin/--hardware-config 同时使用",
+                    file=sys.stderr,
+                )
+                return 2
+            profile = serial_arm_module.load_robot_profile_core(
+                args.robot_profile, args.profile_file
+            )
+            config = Path(profile.core_config_path)
+            hardware_plugin = profile.hardware_plugin
+            hardware_config = Path(profile.hardware_config_path)
+        else:
+            if not args.hardware_plugin or not args.hardware_config:
+                print(
+                    "必须使用 --robot-profile，或同时提供 --config/--hardware-plugin/--hardware-config",
+                    file=sys.stderr,
+                )
+                return 2
+            config = Path(args.config).expanduser().resolve()
+            hardware_plugin = args.hardware_plugin
+            hardware_config = Path(args.hardware_config).expanduser().resolve()
+
+        if not config.is_file():
+            print(f"配置文件不存在: {config}", file=sys.stderr)
+            return 2
+        if not hardware_config.is_file():
+            print(f"硬件配置文件不存在: {hardware_config}", file=sys.stderr)
+            return 2
+
         if args.check_only:
             return check_only(
                 serial_arm_module, config, hardware_plugin, hardware_config

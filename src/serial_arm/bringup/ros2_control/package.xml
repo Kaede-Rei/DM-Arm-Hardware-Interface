@@ -25,8 +25,7 @@
     <exec_depend>ament_index_python</exec_depend>
     <exec_depend>joint_state_publisher_gui</exec_depend>
     <exec_depend>rviz2</exec_depend>
-    <exec_depend>moveit_ros_move_group</exec_depend>
-    <exec_depend>moveit_ros_visualization</exec_depend>
+    <test_depend>ament_cmake_pytest</test_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

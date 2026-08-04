@@ -72,9 +72,6 @@ set(SERIAL_ARM_TL_INCLUDE_DIR
 # 需要安装和导出的库 target 在各分区中追加到该列表
 set(SERIAL_ARM_INSTALL_TARGETS)
 
-# 用于生成安装后的 package config
-set(SERIAL_ARM_CONFIG_HAS_DYNAMICS ON)
-
 # =============================================================================
 # 必选模块：serial_arm_core
 # =============================================================================
@@ -105,6 +102,7 @@ list(APPEND SERIAL_ARM_INSTALL_TARGETS serial_arm_core)
 add_library(serial_arm_config
     src/config/config.cpp
     src/config/limit_resolver.cpp
+    src/config/robot_profile.cpp
     src/model/model_loader.cpp
     src/hardware/hardware_loader.cpp
 )
@@ -128,6 +126,11 @@ if(pinocchio_INCLUDE_DIRS)
     target_include_directories(serial_arm_config PUBLIC ${pinocchio_INCLUDE_DIRS})
 endif()
 target_compile_features(serial_arm_config PUBLIC cxx_std_17)
+target_compile_definitions(serial_arm_config
+    PRIVATE
+        SERIAL_ARM_SOURCE_RESOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+        SERIAL_ARM_INSTALL_RESOURCE_ROOT="${CMAKE_INSTALL_PREFIX}"
+)
 serial_arm_enable_warnings(serial_arm_config)
 
 list(APPEND SERIAL_ARM_INSTALL_TARGETS serial_arm_config)
@@ -281,6 +284,8 @@ if(BUILD_TESTING)
     target_compile_definitions(serial_arm_core_contract_tests
         PRIVATE
             SERIAL_ARM_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+            SERIAL_ARM_TEST_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+            SERIAL_ARM_TEST_TMP_DIR="${CMAKE_CURRENT_BINARY_DIR}"
     )
     target_link_libraries(serial_arm_core_contract_tests
         PRIVATE

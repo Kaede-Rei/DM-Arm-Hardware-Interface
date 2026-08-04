@@ -26,7 +26,39 @@ target_link_libraries(my_arm_driver
 - `serial_arm::robot`
 - `serial_arm::dynamics`
 
-`serial_arm::dynamics` 是必选 target，依赖 Pinocchio 和 Eigen3；`serial_arm::config` 依赖 yaml-cpp，并包含 ModelLoader、LimitResolver 和 HardwareLoader
+`serial_arm::dynamics` 是必选 target，依赖 Pinocchio 和 Eigen3；`serial_arm::config` 依赖 yaml-cpp，并包含 Config、Robot Profile、ModelLoader、LimitResolver 和 HardwareLoader
+
+## Robot Profile
+
+Robot Profile 是 SerialArm-Core 的 framework-neutral 概念，不属于 ROS 2 / ros2_control 专属 API；Core contract 只定义：
+
+- profile name
+- core config
+- hardware plugin
+- hardware config
+
+```cpp
+struct RobotProfileCore {
+    std::string name;
+    std::string profile_file;
+    std::string core_config_path;
+    std::string hardware_plugin;
+    std::string hardware_config_path;
+};
+
+tl::expected<RobotProfileCore, RobotProfileErrInfo> load_robot_profile_core(
+    const std::string& profile_name,
+    const RobotProfileLoadOptions& options = {});
+```
+
+资源搜索优先级：
+
+1. `RobotProfileLoadOptions::profile_file`
+2. `RobotProfileLoadOptions::resource_paths`
+3. `SERIAL_ARM_RESOURCE_PATH`
+4. 当前工作目录、可执行文件附近路径、编译/安装时记录的 SerialArm resource root
+
+ROS 2 Adapter 可以在同一个 profile 上额外读取 `description`、`controllers` 和 optional `moveit`
 
 ## 基础类型
 
@@ -263,14 +295,19 @@ public:
         const RobotCfg& cfg,
         std::unique_ptr<MotorBus> motor_bus,
         ModelFeedforwardFn model_feedforward = {});
-    tl::expected<void, RobotFault> connect();
     tl::expected<void, RobotFault> activate();
-    tl::expected<RobotCycleOutput, RobotFault> update(Clock::time_point now = Clock::now());
-    tl::expected<void, RobotFault> set_impedance_mode(JointImpedanceMode mode, Clock::time_point now = Clock::now());
-    tl::expected<void, RobotFault> set_command(const JointCmd& cmd, Clock::time_point now = Clock::now());
-    tl::expected<void, RobotFault> stop();
+    tl::expected<void, RobotFault> set_cmd(const JointCmd& cmd, TimePoint now = Clock::now());
+    tl::expected<void, RobotFault> set_full_cmd(const JointCtrlCmd& cmd, TimePoint now = Clock::now());
+    tl::expected<void, RobotFault> set_impedance_mode(JointImpedanceMode mode, TimePoint now = Clock::now());
+    tl::expected<void, RobotFault> set_model_feedforward_mode(ModelFeedforwardMode mode);
+    tl::expected<RobotCycleOutput, RobotFault> cycle(TimePoint now = Clock::now());
     tl::expected<void, RobotFault> deactivate();
-    tl::expected<void, RobotFault> recover();
+    tl::expected<void, RobotFault> force_deactivate();
+    tl::expected<void, RobotFault> reset_fault();
+    tl::expected<void, RobotFault> enter_fault_compliant_recovery();
+    tl::expected<void, RobotFault> return_to_fault_rigid_hold();
+    tl::expected<void, RobotFault> clear_fault();
+    tl::expected<void, RobotFault> maintain_fault_hold();
 };
 ```
 

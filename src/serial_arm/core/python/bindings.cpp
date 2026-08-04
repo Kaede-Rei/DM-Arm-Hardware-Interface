@@ -1,6 +1,7 @@
 #include "robot_session.hpp"
 
 #include "serial_arm/config/config.hpp"
+#include "serial_arm/config/robot_profile.hpp"
 #include "serial_arm/core/joint_actuator_mapper.hpp"
 #include "serial_arm/core/joints_ctrller.hpp"
 #include "serial_arm/core/safety.hpp"
@@ -392,6 +393,13 @@ void bind_enums(py::module_& module) {
         .value("INVALID_SIZE", ConfigErr::INVALID_SIZE)
         .value("DUPLICATE_NAME", ConfigErr::DUPLICATE_NAME);
 
+    py::enum_<RobotProfileErr>(module, "RobotProfileErr")
+        .value("PROFILE_FILE_NOT_FOUND", RobotProfileErr::PROFILE_FILE_NOT_FOUND)
+        .value("PROFILE_LOAD_FAILED", RobotProfileErr::PROFILE_LOAD_FAILED)
+        .value("PROFILE_NOT_FOUND", RobotProfileErr::PROFILE_NOT_FOUND)
+        .value("MISSING_FIELD", RobotProfileErr::MISSING_FIELD)
+        .value("RESOURCE_NOT_FOUND", RobotProfileErr::RESOURCE_NOT_FOUND);
+
     py::enum_<DynamicsErr>(module, "DynamicsErr")
         .value("NOT_CONFIGURED", DynamicsErr::NOT_CONFIGURED)
         .value("ALREADY_CONFIGURED", DynamicsErr::ALREADY_CONFIGURED)
@@ -499,6 +507,19 @@ void bind_config(py::module_& module) {
         .def_readwrite("code", &ConfigErrInfo::code)
         .def_readwrite("message", &ConfigErrInfo::message);
 
+    py::class_<RobotProfileErrInfo>(module, "RobotProfileErrInfo")
+        .def(py::init<>())
+        .def_readwrite("code", &RobotProfileErrInfo::code)
+        .def_readwrite("message", &RobotProfileErrInfo::message);
+
+    py::class_<RobotProfileCore>(module, "RobotProfileCore")
+        .def(py::init<>())
+        .def_readwrite("name", &RobotProfileCore::name)
+        .def_readwrite("profile_file", &RobotProfileCore::profile_file)
+        .def_readwrite("core_config_path", &RobotProfileCore::core_config_path)
+        .def_readwrite("hardware_plugin", &RobotProfileCore::hardware_plugin)
+        .def_readwrite("hardware_config_path", &RobotProfileCore::hardware_config_path);
+
     py::class_<JointImpedanceGains>(module, "JointImpedanceGains")
         .def(py::init<>())
         .def_readwrite("kp", &JointImpedanceGains::kp)
@@ -525,6 +546,7 @@ void bind_config(py::module_& module) {
 
     py::class_<JointLimitCfg>(module, "JointLimitCfg")
         .def(py::init<>())
+        .def_readwrite("has_position_limit", &JointLimitCfg::has_position_limit)
         .def_readwrite("min_pos", &JointLimitCfg::min_pos)
         .def_readwrite("max_pos", &JointLimitCfg::max_pos)
         .def_readwrite("max_vel", &JointLimitCfg::max_vel)
@@ -606,6 +628,11 @@ void bind_config(py::module_& module) {
         auto bus = unwrap_value(loader.load(hardware_plugin, hardware_config), [](HardwareLoaderErr error) { return "HardwareLoaderErr=" + std::to_string(static_cast<int>(error)); });
         return unwrap_value(load_robot_cfg(path, bus->capabilities()), [](const ConfigErrInfo& error) { return error.message; });
         });
+    module.def("load_robot_profile_core", [](const std::string& profile_name, const std::string& profile_file) {
+        RobotProfileLoadOptions options;
+        options.profile_file = profile_file;
+        return unwrap_value(serial_arm::load_robot_profile_core(profile_name, options), [](const RobotProfileErrInfo& error) { return error.message; });
+        }, py::arg("profile_name"), py::arg("profile_file") = "");
     module.def("validate_robot_core_cfg", [](const RobotCfg& cfg) {
         unwrap_void(validate_robot_core_cfg(cfg), [](const ConfigErrInfo& error) { return error.message; });
         });

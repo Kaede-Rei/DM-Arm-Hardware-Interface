@@ -377,10 +377,12 @@ void PyRobotSession::move_to(const JointVector& pos, double speed_scale) {
     }
 
     for(std::size_t i = 0; i < pos.size(); ++i) {
-        const double min_pos = cfg_.safety.limits.min_pos[i] + cfg_.safety.limits.pos_margin[i];
-        const double max_pos = cfg_.safety.limits.max_pos[i] - cfg_.safety.limits.pos_margin[i];
-        if(pos[i] < min_pos || pos[i] > max_pos) {
-            throw SerialArmPythonError("position goal exceeds Safety soft limit at joint index " + std::to_string(i));
+        if(cfg_.safety.limits.has_position_limit.empty() || cfg_.safety.limits.has_position_limit[i] != 0) {
+            const double min_pos = cfg_.safety.limits.min_pos[i] + cfg_.safety.limits.pos_margin[i];
+            const double max_pos = cfg_.safety.limits.max_pos[i] - cfg_.safety.limits.pos_margin[i];
+            if(pos[i] < min_pos || pos[i] > max_pos) {
+                throw SerialArmPythonError("position goal exceeds Safety soft limit at joint index " + std::to_string(i));
+            }
         }
     }
 

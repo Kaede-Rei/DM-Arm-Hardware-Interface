@@ -19,9 +19,10 @@ def load_profile(robot_profile):
         raise RuntimeError(f"robot_profile must be one of: {available}")
 
     profile = dict(profiles[robot_profile])
-    profile["core_config_path"] = resolve_package_path(profile["core"]["package"], profile["core"]["config"])
-    profile["hardware_plugin"] = profile["hardware"]["plugin"]
-    profile["hardware_config_path"] = resolve_package_path(profile["hardware"]["config_package"], profile["hardware"]["config"])
+    core_profile = load_core_profile(robot_profile, str(profiles_file))
+    profile["core_config_path"] = core_profile.core_config_path
+    profile["hardware_plugin"] = core_profile.hardware_plugin
+    profile["hardware_config_path"] = core_profile.hardware_config_path
     profile["description_urdf_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["urdf"])
     profile["ros2_control_xacro_path"] = resolve_package_path(profile["description"]["package"], profile["description"]["ros2_control_xacro"])
     profile["controllers_path"] = resolve_package_path(profile["controllers"]["package"], profile["controllers"]["config"])
@@ -29,6 +30,14 @@ def load_profile(robot_profile):
     if moveit and moveit.get("package"):
         profile["moveit_package"] = moveit["package"]
     return profile
+
+
+def load_core_profile(robot_profile, profiles_file):
+    try:
+        from serial_arm import load_robot_profile_core
+    except ImportError as error:
+        raise RuntimeError("serial_arm Python binding is required to resolve Core Robot Profile fields") from error
+    return load_robot_profile_core(robot_profile, profiles_file)
 
 
 def require_moveit_package(profile, robot_profile):

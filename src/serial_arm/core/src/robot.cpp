@@ -869,8 +869,10 @@ tl::expected<JointCtrlCmd, RobotFault> Robot::build_fault_joint_cmd(const JointS
             const double error = last_joint_cmd_.pos[i] - state.pos[i];
             cmd.vel[i] = std::clamp(error / std::max(dt, 1.0e-6), -cfg_.safety.fault_recovery.compliant_recovery.max_vel[i], cfg_.safety.fault_recovery.compliant_recovery.max_vel[i]);
             if(current_fault_ && current_fault_->code == RobotErr::SAFETY_FAILED && current_fault_->safety_fault.code == SafetyErr::JOINT_POS_LIMIT && current_fault_->safety_fault.index == i) {
-                if(state.pos[i] > cfg_.safety.limits.max_pos[i] && cmd.vel[i] > 0.0) return tl::make_unexpected(make_fault(RobotErr::FAULT_RECOVERY_NOT_ALLOWED));
-                if(state.pos[i] < cfg_.safety.limits.min_pos[i] && cmd.vel[i] < 0.0) return tl::make_unexpected(make_fault(RobotErr::FAULT_RECOVERY_NOT_ALLOWED));
+                if(cfg_.safety.limits.has_position_limit.empty() || cfg_.safety.limits.has_position_limit[i] != 0) {
+                    if(state.pos[i] > cfg_.safety.limits.max_pos[i] && cmd.vel[i] > 0.0) return tl::make_unexpected(make_fault(RobotErr::FAULT_RECOVERY_NOT_ALLOWED));
+                    if(state.pos[i] < cfg_.safety.limits.min_pos[i] && cmd.vel[i] < 0.0) return tl::make_unexpected(make_fault(RobotErr::FAULT_RECOVERY_NOT_ALLOWED));
+                }
             }
             cmd.pos[i] = state.pos[i] + cmd.vel[i] * dt;
         }

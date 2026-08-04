@@ -664,10 +664,12 @@ tl::expected<void, ConfigErrInfo> validate_robot_core_cfg(const RobotCfg& cfg) {
                 return fail(ConfigErr::INVALID_VALUE, "controller gain exceeds configured Safety limit at index " + std::to_string(i));
             }
         }
-        const double park_min = limits.min_pos[i] + limits.pos_margin[i];
-        const double park_max = limits.max_pos[i] - limits.pos_margin[i];
-        if(cfg.shutdown.park_pos[i] < park_min || cfg.shutdown.park_pos[i] > park_max) {
-            return fail(ConfigErr::INVALID_VALUE, "shutdown.park_pos is outside the command range at index " + std::to_string(i));
+        if(limits.has_position_limit.empty() || limits.has_position_limit[i] != 0) {
+            const double park_min = limits.min_pos[i] + limits.pos_margin[i];
+            const double park_max = limits.max_pos[i] - limits.pos_margin[i];
+            if(cfg.shutdown.park_pos[i] < park_min || cfg.shutdown.park_pos[i] > park_max) {
+                return fail(ConfigErr::INVALID_VALUE, "shutdown.park_pos is outside the command range at index " + std::to_string(i));
+            }
         }
     }
 

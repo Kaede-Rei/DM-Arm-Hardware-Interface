@@ -31,7 +31,7 @@ control:
   runtime:
     ctrl_frequency_hz: 200.0                            # Robot cycle 目标频率
     joint_acc_filter_alpha: 0.2                         # 关节加速度低通滤波系数
-    write_enabled: true                                 # 真机确认前保持 false
+    write_enabled: false                                # 真机确认前保持 false
     model_feedforward_mode: GRAVITY                     # NONE / GRAVITY / FULL_INVERSE_DYNAMICS
     tracking_impedance_mode: COMPLIANT_TRACKING         # RIGID_TRACKING / COMPLIANT_TRACKING
   controller:

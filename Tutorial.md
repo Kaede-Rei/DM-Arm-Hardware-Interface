@@ -68,25 +68,47 @@ target_link_libraries(my_arm_driver
 
 运行下游项目前，确保 `serial_arm_coreConfig.cmake` 所在路径进入 `CMAKE_PREFIX_PATH`，并且 Pinocchio、yaml-cpp、Eigen3 可被 CMake 找到
 
-### 终端工具
+### Standalone C++ 使用
 
-终端工具是纯 C++ 调试入口，不依赖 ROS 2：
+终端工具是纯 C++ 调试入口，不依赖 ROS 2 runtime；使用 `--robot-profile dm_arm_gray` 时，仍需要安装 Core、Damiao Backend、Robot Profiles 和 DM-Arm resources；即使 `runtime.write_enabled: false`，Core 也会加载 Backend library 获取 `HardwareCapabilities`
 
 ```bash
 cmake -S src/serial_arm/core -B build/serial_arm_core \
+  -DCMAKE_BUILD_TYPE=Release \
   -DSERIAL_ARM_BUILD_PYTHON=OFF \
   -DSERIAL_ARM_BUILD_TERMINAL=ON
-cmake --build build/serial_arm_core --target serial_arm_terminal
+cmake --build build/serial_arm_core -j
+cmake --install build/serial_arm_core --prefix install/standalone
+
+cmake -S src/robot_supports/hardware/damiao -B build/serial_arm_hardware_damiao \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$PWD/install/standalone"
+cmake --build build/serial_arm_hardware_damiao -j
+cmake --install build/serial_arm_hardware_damiao --prefix install/standalone
+
+cmake -S src/robot_supports/profiles -B build/serial_arm_robot_profiles
+cmake --install build/serial_arm_robot_profiles --prefix install/standalone
+
+cmake -S src/robot_supports/robots/dm_arm/description -B build/dm_arm_description
+cmake --install build/dm_arm_description --prefix install/standalone
+
+export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
+export LD_LIBRARY_PATH="$PWD/install/standalone/lib:/opt/openrobots/lib:${LD_LIBRARY_PATH:-}"
+./install/standalone/bin/serial_arm_terminal --robot-profile dm_arm_gray
 ```
 
-它适合验证 Core config、ModelLoader、Dynamics、Safety、Joint / Actuator Mapping、HardwareLoader 和 Hardware Backend lifecycle；真机模式仍需要目标 Backend shared library、硬件 YAML 和设备权限
+安装后的关键布局：
 
-以 `dm_arm_gray` 为例：
-
-```bash
-source install/setup.bash
-./build/serial_arm_core/serial_arm_terminal --robot-profile dm_arm_gray
+```text
+install/standalone/bin/serial_arm_terminal
+install/standalone/lib/libserial_arm_hardware_damiao.so
+install/standalone/share/serial_arm_robot_profiles/config/robot_profiles.yaml
+install/standalone/share/dm_arm_description/config/core/gray.yaml
+install/standalone/share/dm_arm_description/config/hardware.yaml
+install/standalone/share/dm_arm_description/model/...
 ```
+
+它适合验证 Core config、ModelLoader、Dynamics、Safety、Joint / Actuator Mapping、HardwareLoader 和 Hardware Backend lifecycle；真机模式仍需要设备权限；Standalone 流程不需要 `source /opt/ros/...` 或 `source install/setup.bash`
 
 如果不使用 profile，也可以显式传入 Core config、Backend plugin 和 hardware config：
 
@@ -97,9 +119,17 @@ source install/setup.bash
   --hardware-config install/dm_arm_description/share/dm_arm_description/config/hardware.yaml
 ```
 
+ROS 2 / colcon 场景单独使用 workspace overlay：
+
+```bash
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch serial_arm_ros2_control display.launch.py robot_profile:=dm_arm_gray
+```
+
 ### Python
 
-Python Binding 提供 `RobotSession` 和 Python terminal；它同样不要求 ROS 2 控制链路，但 profile 模式需要先 source workspace 以解析 package share：
+Python Binding 提供 `RobotSession` 和 Python terminal；它同样不要求 ROS 2 控制链路，profile 模式复用 C++ Core resolver：
 
 ```bash
 source install/setup.bash
@@ -132,6 +162,30 @@ python ../app/serial_arm_terminal.py \
 ## Robot Profile
 
 Robot Profile 把 Core config、Hardware config、Description、Controllers 和可选 MoveIt config 聚合为一个可启动实例
+
+## Robot Profile 与 ROS 2 的关系
+
+Robot Profile 属于 SerialArm-Core，不是 ROS 2 Profile、ros2_control Profile 或 MoveIt Profile；Native C++、Python 和 ROS 2 Adapter 共享同一份 Core / Hardware profile contract：
+
+- `core.package + core.config`
+- `hardware.plugin`
+- `hardware.config_package + hardware.config`
+
+ROS 2 Adapter 只是在同一个 profile 上额外读取：
+
+- `description`
+- `controllers`
+- optional `moveit`
+
+因此 `serial_arm_terminal --robot-profile dm_arm_gray` 和 Python terminal 的 `--robot-profile dm_arm_gray` 不要求 ROS 2 runtime；不需要 `rclcpp`、`controller_manager`、ros2_control、MoveIt 或 ament index；但具体 profile 仍需要对应 Robot resources 和 Hardware Backend library 可用；例如 `dm_arm_gray` 需要 SerialArm Core、DM-Arm Robot Resources、`serial_arm_hardware_damiao` shared library 和对应 config；即使 `runtime.write_enabled: false` 不连接、不使能、不向真实执行器写入，Core 仍需要 Backend 提供 `HardwareCapabilities`
+
+Core resolver 的搜索入口包括显式 `--profile-file`、`SERIAL_ARM_RESOURCE_PATH`、当前工作目录、可执行文件附近路径以及编译/安装时记录的 resource root；Linux 下 `SERIAL_ARM_RESOURCE_PATH` 使用 `:` 分隔多个 resource root：
+
+```bash
+export SERIAL_ARM_RESOURCE_PATH=/path/to/resource_a:/path/to/resource_b
+```
+
+多个 resource root 可以各自提供 `robot_profiles.yaml`；SerialArm 会按搜索顺序查找请求的 profile；第一份存在但不包含目标 profile 的文件不会阻止后续 resource root 继续搜索；显式 `--profile-file <path>` 只使用该文件，不会 fallback 到其他资源目录
 
 最小 profile：
 
@@ -329,7 +383,9 @@ Python Binding 暴露 Core 的离线计算和真机 session 封装；典型用�
 
 ## Troubleshooting
 
-`profile loader` 找不到 profile：检查 `serial_arm_robot_profiles/config/robot_profiles.yaml` 是否安装并 source 了 workspace
+`profile loader` 找不到 profile：先检查 `--profile-file`、`SERIAL_ARM_RESOURCE_PATH`、standalone install prefix、`serial_arm_robot_profiles/config/robot_profiles.yaml` 和 Robot resource package 是否存在；如果是在 ROS 2 / colcon 环境，再检查是否 `source install/setup.bash`
+
+Core config 或 hardware config 找不到：这是 SerialArm-Core 的 resource resolution 问题，检查 `core.package + core.config`、`hardware.config_package + hardware.config` 是否能在资源根下解析到对应文件；ROS 2 package discovery 只影响 launch / adapter 层
 
 `display.launch.py` 失败：检查 `description.package`、`description.urdf` 和 URDF 本身
 

@@ -135,12 +135,13 @@ cmake --build build/serial_arm_core --target serial_arm_terminal
   --hardware-config install/dm_arm_description/share/dm_arm_description/config/hardware.yaml
 ```
 
-当用 ament/colcon 的 package-share 目录体系进行编译时，可以使用 robog-profile 来指定；以 `dm_arm_gray` 为例，先 source workspace，让终端能从 `serial_arm_robot_profiles` 找到 profile，并让 `HardwareLoader` 找到 Damiao Backend：
+也可以使用 framework-neutral Robot Profile；以 `dm_arm_gray` 为例：
 
 ```bash
-source install/setup.bash
 ./build/serial_arm_core/serial_arm_terminal --robot-profile dm_arm_gray
 ```
+
+`--robot-profile` 由 SerialArm-Core 解析，使用具体 profile 需要该 profile 对应的 Robot resources 和 Hardware Backend library 可用；例如 `dm_arm_gray` 需要 SerialArm Core、DM-Arm Robot Resources、`serial_arm_hardware_damiao` shared library 和对应 config；第三方安装位置可通过 `SERIAL_ARM_RESOURCE_PATH` 或 `--profile-file` 指定资源入口
 
 ### Python
 
@@ -206,6 +207,8 @@ ros2 launch serial_arm_ros2_control moveit.launch.py robot_profile:=dm_arm_gray
 ```text
 src/robot_supports/robots/<robot_name>/
 ├── description/
+│   ├── CMakeLists.txt
+│   ├── package.xml
 │   ├── model/
 │   └── config/
 │       ├── core/<variant>.yaml
@@ -213,6 +216,18 @@ src/robot_supports/robots/<robot_name>/
 │       └── ros2_controllers.yaml
 └── moveit_config/            # 可选
 ```
+
+扩展规则：
+
+| 场景 | 修改位置 | Core |
+| --- | --- | --- |
+| 新 Robot Variant | Robot Support + Profile | 不改 |
+| 新机械臂 + 已有 Backend | Robot Support + Profile | 不改 |
+| 已有机械臂 + 新 Backend | Backend + Config | 不改 |
+| 新机械臂 + 新 Backend | Robot Support + Backend + Profile | 不改 |
+| 添加 MoveIt | MoveIt config | 不改 |
+| ROS 2 接入 | 复用 ros2_control Adapter | 不改 |
+| 修改 Control / Safety / Dynamics 语义 | `src/serial_arm/core` | 修改 |
 
 最小 profile 可以没有 MoveIt：
 
