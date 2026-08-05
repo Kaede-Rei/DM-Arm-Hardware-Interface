@@ -49,16 +49,26 @@ def test_profile_without_moveit_loads_base_fields(monkeypatch, tmp_path):
         return str(tmp_path / package)
 
     monkeypatch.setattr(profile_utils, "get_package_share_directory", fake_share)
-    monkeypatch.setattr(profile_utils, "load_core_profile", lambda robot_profile, profiles_file: CoreProfile())
+    monkeypatch.setattr(
+        profile_utils,
+        "load_core_profile",
+        lambda robot_profile, profiles_file: CoreProfile(),
+    )
 
     profile = profile_utils.load_profile("minimal_arm")
     assert profile["core_config_path"] == "/resolved/core.yaml"
     assert profile["hardware_plugin"] == "serial_arm_hardware_fake"
     assert profile["hardware_config_path"] == "/resolved/hardware.yaml"
     assert profile["description_urdf_path"].endswith("robot_pkg/model/robot.urdf")
-    assert profile["ros2_control_xacro_path"].endswith("robot_pkg/model/robot.ros2_control.xacro")
-    assert profile["controllers_path"].endswith("robot_pkg/config/ros2_controllers.yaml")
+    assert profile["ros2_control_xacro_path"].endswith(
+        "robot_pkg/model/robot.ros2_control.xacro"
+    )
+    assert profile["controllers_path"].endswith(
+        "robot_pkg/config/ros2_controllers.yaml"
+    )
     assert "moveit_package" not in profile
 
-    with pytest.raises(RuntimeError, match="Robot profile 'minimal_arm' does not define MoveIt support"):
+    with pytest.raises(
+        RuntimeError, match="Robot profile 'minimal_arm' does not define MoveIt support"
+    ):
         profile_utils.require_moveit_package(profile, "minimal_arm")
