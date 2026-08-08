@@ -48,6 +48,28 @@ flowchart TB
 
 >   注意：如果硬件协议不原生支持 MIT / impedance actuator semantics，必须由 Backend 自己完成映射、模拟或适配
 
+v0.2.0 后 Damiao backend 的 CAN 通信链路为：
+
+```text
+Robot
+  ↓
+MotorBus
+  ↓
+DamiaoMotorBus
+  ↓
+CanChannel
+  ↓
+CanBus
+  ↓
+DamiaoUsbCanBus
+  ↓
+SerialPort
+```
+
+SerialArm-Core 提供通用 CAN Transport API；robot_supports 当前提供的具体实现是 `DamiaoUsbCanBus`，仅支持达妙官方 USB2CAN 模块的私有串口通信协议；末端执行器 EEF、夹爪或吸盘等业务层不属于当前 Core API
+
+分层边界保持为：Core 提供通用 Transport；Protocol 适配通信设备私有协议；Hardware 负责执行器设备协议与 `MotorBus`
+
 ## 当前能力
 
 | 能力 | 状态 |
@@ -73,6 +95,7 @@ src/
 │   ├── core/                 # C++ Core、Dynamics、Safety、ModelLoader、Python Binding
 │   └── bringup/ros2_control/ # ROS 2 / ros2_control Adapter 和 launch
 └── robot_supports/
+    ├── protocol/             # 通信协议适配，例如达妙官方 USB2CAN
     ├── hardware/             # Hardware Backend，例如 Damiao
     ├── robots/               # Robot Support，例如 DM-Arm
     └── profiles/             # Robot Profile 聚合配置
@@ -113,7 +136,7 @@ target_link_libraries(my_arm_driver
 
 ### 纯 C++ 终端工具
 
-完整 standalone 安装步骤见 [Tutorial.md](Tutorial.md)；将 Core、Hardware Backend、Robot Profiles 和 Robot Resources 安装到统一 prefix 后，可直接使用 Robot Profile：
+完整 standalone 安装步骤见 [Tutorial.md](Tutorial.md)；将 Core、Protocol、Hardware Backend、Robot Profiles 和 Robot Resources 安装到统一 prefix 后，可直接使用 Robot Profile：
 
 ```bash
 export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
@@ -163,6 +186,8 @@ python ../app/serial_arm_terminal.py --robot-profile dm_arm_gray
 colcon build --symlink-install
 source install/setup.bash
 ```
+
+`serial_arm_ros2_control` 的 `robot_profile` launch 当前通过 `serial_arm` Python binding 调用 Core Profile resolver；因此 `serial_arm_core` 必须以 `SERIAL_ARM_BUILD_PYTHON=ON` 构建；默认值已经是 `ON`，普通 `colcon build` 不需要额外参数；如果显式设置 `-DSERIAL_ARM_BUILD_PYTHON=OFF`，C++ Core 仍可用，但当前 `robot_profile` ROS 2 launch 不可用
 
 只查看模型：
 

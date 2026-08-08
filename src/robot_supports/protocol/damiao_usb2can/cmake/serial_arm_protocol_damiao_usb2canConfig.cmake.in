@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(serial_arm_core REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/serial_arm_protocol_damiao_usb2can_targets.cmake")
+check_required_components(serial_arm_protocol_damiao_usb2can)

@@ -1,3 +1,4 @@
+.pytest_cache/
 __pycache__/
 build/
 install/
@@ -12,3 +13,4 @@ dist/
 .venv/
 
 .codex
+*.pyc

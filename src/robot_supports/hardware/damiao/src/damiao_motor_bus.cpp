@@ -1,6 +1,6 @@
 #include "serial_arm_hardware_damiao/damiao_motor_bus.hpp"
 
-#include "dm_hw/serial_port.hpp"
+#include "serial_arm_protocol_damiao_usb2can/bus.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -22,24 +22,6 @@ namespace serial_arm {
 // ! ========================= 私 有 量 / 工 具 函 数 实 现 ========================= ! //
 
 namespace {
-
-/**
- * @brief 波特率转换为 speed_t 类型
- * @param baudrate 波特率
- * @return speed_t 对应的 speed_t 类型值，如果不支持则返回 0
- */
-speed_t to_speed_t(int baudrate) {
-    switch(baudrate) {
-        case 115200: return B115200;
-#ifdef B460800
-        case 460800: return B460800;
-#endif
-#ifdef B921600
-        case 921600: return B921600;
-#endif
-        default: return 0;
-    }
-}
 
 /**
  * @brief 检查向量中的所有值是否为有限值
@@ -80,6 +62,8 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::configure(const std::string& con
         if(!damiao || !damiao.IsMap()) return tl::make_unexpected(MotorBusErr::INVALID_CFG);
 
         DamiaoBusCfg cfg;
+        auto bus = damiao["bus"] ? tl::expected<std::string, MotorBusErr>{ damiao["bus"].as<std::string>() } :
+            tl::expected<std::string, MotorBusErr>{ cfg.bus };
         auto serial_port = require_as<std::string>(damiao, "serial_port");
         auto baudrate = require_as<int>(damiao, "baudrate");
         auto refresh_state_in_read = require_as<bool>(damiao, "refresh_state_in_read");
@@ -89,10 +73,11 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::configure(const std::string& con
         auto stop_kp = require_as<double>(damiao, "stop_kp");
         auto stop_kd = require_as<double>(damiao, "stop_kd");
         auto stop_cycles = require_as<std::size_t>(damiao, "stop_cycles");
-        if(!serial_port || !baudrate || !refresh_state_in_read || !feedback_timeout_s ||
+        if(!bus || !serial_port || !baudrate || !refresh_state_in_read || !feedback_timeout_s ||
             !activation_retries || !startup_read_cycles || !stop_kp || !stop_kd || !stop_cycles) {
             return tl::make_unexpected(MotorBusErr::INVALID_CFG);
         }
+        cfg.bus = *bus;
         cfg.serial_port = *serial_port;
         cfg.baudrate = *baudrate;
         cfg.refresh_state_in_read = *refresh_state_in_read;
@@ -180,11 +165,25 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
     if(connected_) return {};
 
     try {
-        const speed_t speed = to_speed_t(cfg_.baudrate);
-        if(speed == 0) return tl::make_unexpected(MotorBusErr::OPEN_FAILED);
-
-        serial_ = std::make_shared<SerialPort>(cfg_.serial_port, speed);
-        motor_ctrl_ = std::make_shared<damiao::MotorControl>(serial_);
+        protocol::damiao_usb2can::Config usb2can_cfg;
+        usb2can_cfg.serial_port = cfg_.serial_port;
+        usb2can_cfg.baudrate = cfg_.baudrate;
+        std::vector<transport::CanFilter> filters;
+        filters.reserve(cfg_.actuators.size() * 2);
+        for(const auto& actuator : cfg_.actuators) {
+            filters.push_back(transport::CanFilter{ actuator.motor_id, 0x7FF });
+            filters.push_back(transport::CanFilter{ actuator.master_id, 0x7FF });
+        }
+        auto channel = protocol::damiao_usb2can::acquire_channel(cfg_.bus, usb2can_cfg, std::move(filters));
+        if(!channel) {
+            if(channel.error() == protocol::damiao_usb2can::Err::CONFIG_CONFLICT ||
+                channel.error() == protocol::damiao_usb2can::Err::TYPE_MISMATCH) {
+                return tl::make_unexpected(MotorBusErr::INVALID_CFG);
+            }
+            return tl::make_unexpected(MotorBusErr::OPEN_FAILED);
+        }
+        can_channel_ = *channel;
+        motor_ctrl_ = std::make_shared<damiao::MotorControl>(can_channel_);
         motors_.clear();
         motors_.reserve(cfg_.actuators.size());
 
@@ -193,7 +192,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
             if(!type) {
                 motors_.clear();
                 motor_ctrl_.reset();
-                serial_.reset();
+                can_channel_.reset();
                 connected_ = false;
                 return tl::make_unexpected(type.error());
             }
@@ -219,7 +218,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::connect() {
     catch(...) {
         motors_.clear();
         motor_ctrl_.reset();
-        serial_.reset();
+        can_channel_.reset();
         online_.clear();
         enabled_.clear();
         has_feedback_.clear();
@@ -295,13 +294,13 @@ tl::expected<ActuatorState, MotorBusErr> DamiaoMotorBus::read() {
  * @return 如果激活成功，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::activate() {
-    if(!connected_ || !motor_ctrl_ || !serial_) {
+    if(!connected_ || !motor_ctrl_ || !can_channel_) {
         return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
     }
     if(active_) return {};
 
     try {
-        serial_->flush_input();
+        if(can_channel_) can_channel_->flush();
         std::fill(enabled_.begin(), enabled_.end(), 0);
 
         for(std::size_t i = 0; i < motors_.size(); ++i) {
@@ -433,7 +432,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::deactivate() {
             }
             if(i < enabled_.size()) enabled_[i] = 0;
         }
-        if(serial_) serial_->flush_input();
+        if(can_channel_) can_channel_->flush();
     }
     catch(...) {
         disable_failed = true;
@@ -475,7 +474,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::recover() {
             }
             enabled_[i] = 0;
         }
-        if(serial_) serial_->flush_input();
+        if(can_channel_) can_channel_->flush();
         active_ = false;
         last_state_.enabled = enabled_;
         return {};
@@ -525,12 +524,12 @@ const HardwareCapabilities& DamiaoMotorBus::capabilities() const noexcept {
  * @return 如果准备成功，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::activate_motor(std::size_t index) {
-    if(index >= motors_.size() || !motor_ctrl_ || !serial_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
+    if(index >= motors_.size() || !motor_ctrl_ || !can_channel_) return tl::make_unexpected(MotorBusErr::NOT_CONNECTED);
 
     bool disable_sent = false;
     bool enable_sent = false;
     for(std::size_t attempt = 0; attempt < cfg_.activation_retries; ++attempt) {
-        serial_->flush_input();
+        if(can_channel_) can_channel_->flush();
         disable_sent = motor_ctrl_->disable(*motors_[index]);
         enabled_[index] = 0;
         if(!disable_sent) {
@@ -563,7 +562,7 @@ tl::expected<void, MotorBusErr> DamiaoMotorBus::activate_motor(std::size_t index
  * @return 如果配置参数有效，则返回空的 tl::expected，否则返回错误码
  */
 tl::expected<void, MotorBusErr> DamiaoMotorBus::validate_cfg(const DamiaoBusCfg& cfg) const {
-    if(cfg.serial_port.empty() || to_speed_t(cfg.baudrate) == 0 || cfg.actuators.empty() ||
+    if(cfg.bus.empty() || cfg.serial_port.empty() || cfg.baudrate <= 0 || cfg.actuators.empty() ||
         cfg.activation_retries == 0 || cfg.startup_read_cycles == 0 || cfg.stop_cycles == 0 ||
         !std::isfinite(cfg.feedback_timeout_s) || cfg.feedback_timeout_s <= 0.0 ||
         !std::isfinite(cfg.stop_kp) || !std::isfinite(cfg.stop_kd) ||
@@ -650,7 +649,7 @@ void DamiaoMotorBus::disable_enabled_noexcept() noexcept {
             (void)motor_ctrl_->disable(*motors_[i]);
             if(i < enabled_.size()) enabled_[i] = 0;
         }
-        if(serial_) serial_->flush_input();
+        if(can_channel_) can_channel_->flush();
     }
     catch(...) {
     }
@@ -665,7 +664,7 @@ void DamiaoMotorBus::release_connection_noexcept(bool keep_config) noexcept {
     disable_enabled_noexcept();
     motors_.clear();
     motor_ctrl_.reset();
-    serial_.reset();
+    can_channel_.reset();
     online_.clear();
     enabled_.clear();
     has_feedback_.clear();

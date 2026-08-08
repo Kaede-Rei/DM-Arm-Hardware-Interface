@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(serial_arm_hardware_damiao VERSION 0.1.0 LANGUAGES CXX)
+project(serial_arm_hardware_damiao VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,6 +10,7 @@ include(GNUInstallDirs)
 
 find_package(ament_cmake QUIET)
 find_package(serial_arm_core CONFIG REQUIRED)
+find_package(serial_arm_protocol_damiao_usb2can CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 if(TARGET yaml-cpp::yaml-cpp)
@@ -34,6 +35,7 @@ target_include_directories(serial_arm_hardware_damiao
 target_link_libraries(serial_arm_hardware_damiao
     PUBLIC
         serial_arm::core
+        serial_arm_protocol_damiao_usb2can
         ${SERIAL_ARM_DAMIAO_YAML_CPP_TARGET}
 )
 
@@ -58,6 +60,6 @@ install(FILES package.xml
 if(ament_cmake_FOUND)
     ament_export_include_directories(include)
     ament_export_libraries(serial_arm_hardware_damiao)
-    ament_export_dependencies(serial_arm_core yaml-cpp)
+    ament_export_dependencies(serial_arm_core serial_arm_protocol_damiao_usb2can yaml-cpp)
     ament_package()
 endif()

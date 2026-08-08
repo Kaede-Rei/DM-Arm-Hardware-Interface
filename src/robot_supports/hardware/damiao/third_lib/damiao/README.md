@@ -1,6 +1,6 @@
 # dm_hw
 
-`dm_hw` 是一个基于串口（USB 转 CAN）与达妙电机通信的轻量 C++ 库/ROS2 包，提供：
+`dm_hw` 是一个基于 CAN channel 与达妙电机通信的轻量 C++ 库，提供：
 
 - 电机对象建模（型号、ID、状态、参数缓存）
 - 电机使能/失能/回零
@@ -19,12 +19,7 @@
 
 - 头文件
   - `include/dm_hw/damiao.hpp`
-  - `include/dm_hw/serial_port.hpp`
-- 示例程序
-  - `src/test_damiao.cpp`
-- 构建配置
-  - `CMakeLists.txt`
-  - `package.xml`
+- 达妙官方 USB2CAN 模块协议适配位于 `serial_arm_protocol_damiao_usb2can/bus.hpp`
 
 ## 快速开始
 
@@ -40,9 +35,9 @@ source install/setup.bash
 
 ### 2) 连接硬件
 
-默认串口设备为 `/dev/ttyACM0`，默认波特率为 `B921600`
+默认串口设备为 `/dev/ttyACM0`，默认波特率为 `921600`
 
-如果你使用其他设备节点，请在代码里创建 `SerialPort` 时替换为实际路径
+如果你使用其他设备节点，请在 `DamiaoBusCfg::serial_port` 或 YAML 配置中替换为实际路径
 
 ### 3) 运行示例
 
@@ -52,14 +47,14 @@ ros2 run dm_hw test_damiao
 
 示例程序会演示：
 
-- 创建串口与控制器
+- 创建共享 CAN bus/channel 与控制器
 - 添加电机到控制器
 - 切换控制模式
 - 控制/刷新电机状态并打印位置、速度、电流（扭矩）
 
 ## 核心 API
 
-以下 API 均来自 `include/dm_hw/damiao.hpp` 和 `include/dm_hw/serial_port.hpp`
+以下电机协议 API 来自 `include/dm_hw/damiao.hpp`
 
 ### 1) 类型与枚举
 
@@ -108,7 +103,7 @@ ros2 run dm_hw test_damiao
 常用接口：
 
 - 初始化
-  - `MotorControl(SerialPort::SharedPtr serial = nullptr)`
+  - `MotorControl(std::shared_ptr<serial_arm::transport::CanChannel> channel)`
   - `void add_motor(Motor* motor)`
 - 设备控制
   - `void enable(const Motor& motor)`
@@ -130,27 +125,26 @@ ros2 run dm_hw test_damiao
   - `bool change_motor_param(Motor& motor, uint8_t reg_id, float data)`
   - `void save_motor_param(Motor& motor)`
 
-### 4) `SerialPort`
+### 4) CAN Transport
 
-`SerialPort` 在 `include/dm_hw/serial_port.hpp` 中定义
-
-常用接口：
-
-- `SerialPort(std::string port, speed_t baudrate, int timeout_ms = 2)`
-- `ssize_t send(const uint8_t* data, size_t len)`
-- `ssize_t recv(uint8_t* data, size_t len)`
-- `bool recv_frame(uint8_t* data, uint8_t head, ssize_t len)`
-- `void set_timeout(int timeout_ms)`
+达妙电机协议层只通过 `serial_arm::transport::CanChannel` 收发经典 CAN frame
+物理串口和达妙官方 USB2CAN 模块私有串口协议由
+`serial_arm::protocol::damiao_usb2can::DamiaoUsbCanBus` 处理
 
 ## 最小示例
 
 ```cpp
 #include "dm_hw/damiao.hpp"
+#include "serial_arm_protocol_damiao_usb2can/bus.hpp"
 #include <memory>
 
 int main() {
-    auto serial = std::make_shared<SerialPort>("/dev/ttyACM0", B921600);
-    MotorControl control(serial);
+    serial_arm::protocol::damiao_usb2can::Config config;
+    config.serial_port = "/dev/ttyACM0";
+    config.baudrate = 921600;
+    auto channel = serial_arm::protocol::damiao_usb2can::acquire_channel("main_can", config, {});
+    if(!channel) return 1;
+    MotorControl control(*channel);
 
     Motor motor(DMH3510, 0x01, 0x00);
     control.add_motor(&motor);
@@ -169,6 +163,6 @@ int main() {
 ## 注意事项
 
 - 控制前必须先 `add_motor`，否则会触发 “id not found” 异常
-- 默认串口是 `/dev/ttyACM0`；设备路径变化时需要同步修改
+- 默认串口是 `/dev/ttyACM0`；设备路径变化时需要同步配置
 - `Motor` 的速度/位置/扭矩反馈解码依赖对应型号的限幅参数
 - 若反馈异常，优先检查：电源、总线接线、ID 冲突、串口权限

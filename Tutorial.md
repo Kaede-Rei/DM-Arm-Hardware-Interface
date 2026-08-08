@@ -56,6 +56,40 @@ load_robot_cfg()                 Dynamics
 
 只有开发新 Backend、调试 Safety 或验证关节映射时，才需要直接操作底层类
 
+Damiao reference backend 的底层通信链路为：
+
+```text
+DamiaoMotorBus
+    ↓
+CanChannel
+    ↓
+CanBus
+    ↓
+DamiaoUsbCanBus
+    ↓
+SerialPort
+```
+
+如果新硬件 backend 需要共享同一条 CAN 总线，应复用同一个 `CanBus` 并创建带 filter 的 `CanChannel`；当前版本只提供同进程共享基础设施，不包含 EEF backend；`DamiaoUsbCanBus` 仅表示达妙官方 USB2CAN 模块的私有串口协议实现，不代表通用 USB2CAN
+
+未来外设或 EEF 可以通过同一个 bus name 获取独立 channel：
+
+```cpp
+serial_arm::protocol::damiao_usb2can::Config config;
+config.serial_port = "/dev/ttyACM0";
+config.baudrate = 921600;
+
+auto eef_channel =
+    serial_arm::protocol::damiao_usb2can::acquire_channel(
+        "main_can",
+        config,
+        {
+            serial_arm::transport::CanFilter{0x20, 0x7FF},
+        });
+```
+
+之后只使用 `eef_channel->send()`、`eef_channel->receive()` 和 `eef_channel->flush()`
+
 ---
 
 ## 2. 准备环境
@@ -126,7 +160,7 @@ ctest \
 
 ## 4. 第二步：构建 standalone 安装目录
 
-Standalone 模式不依赖 ROS 2 runtime，适合优先验证 Core、Robot Profile、Hardware Backend、Dynamics 和配置文件
+Standalone 模式不依赖 ROS 2 runtime，适合优先验证 Core、Damiao USB2CAN Protocol、Robot Profile、Hardware Backend、Dynamics 和配置文件
 
 ### 4.1. 构建 Core 与 Terminal
 
@@ -142,7 +176,25 @@ cmake --install build/serial_arm_core \
   --prefix install/standalone
 ```
 
-### 4.2. 构建 Damiao Backend
+### 4.2. 构建 Damiao USB2CAN Protocol
+
+```bash
+cmake \
+  -S src/robot_supports/protocol/damiao_usb2can \
+  -B build/serial_arm_protocol_damiao_usb2can \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$PWD/install/standalone"
+
+cmake --build \
+  build/serial_arm_protocol_damiao_usb2can \
+  -j
+
+cmake --install \
+  build/serial_arm_protocol_damiao_usb2can \
+  --prefix install/standalone
+```
+
+### 4.3. 构建 Damiao Backend
 
 ```bash
 cmake -S src/robot_supports/hardware/damiao \
@@ -156,7 +208,7 @@ cmake --install build/serial_arm_hardware_damiao \
   --prefix install/standalone
 ```
 
-### 4.3. 安装 Robot Profiles
+### 4.4. 安装 Robot Profiles
 
 ```bash
 cmake -S src/robot_supports/profiles \
@@ -166,7 +218,7 @@ cmake --install build/serial_arm_robot_profiles \
   --prefix install/standalone
 ```
 
-### 4.4. 安装 DM-Arm resources
+### 4.5. 安装 DM-Arm resources
 
 ```bash
 cmake -S src/robot_supports/robots/dm_arm/description \
@@ -176,7 +228,7 @@ cmake --install build/dm_arm_description \
   --prefix install/standalone
 ```
 
-### 4.5. 配置资源搜索路径
+### 4.6. 配置资源搜索路径
 
 ```bash
 export SERIAL_ARM_RESOURCE_PATH="$PWD/install/standalone"
@@ -187,6 +239,7 @@ export LD_LIBRARY_PATH="$PWD/install/standalone/lib:/opt/openrobots/lib:${LD_LIB
 
 ```text
 install/standalone/bin/serial_arm_terminal
+install/standalone/lib/libserial_arm_protocol_damiao_usb2can.so
 install/standalone/lib/libserial_arm_hardware_damiao.so
 install/standalone/share/serial_arm_robot_profiles/config/robot_profiles.yaml
 install/standalone/share/dm_arm_description/config/core/gray.yaml
@@ -1124,6 +1177,8 @@ colcon build --symlink-install
 
 source install/setup.bash
 ```
+
+`serial_arm_ros2_control` 的 `robot_profile` launch 当前通过 `serial_arm` Python binding 调用 Core Profile resolver；因此 `serial_arm_core` 必须以 `SERIAL_ARM_BUILD_PYTHON=ON` 构建；默认值已经是 `ON`，普通 `colcon build` 不需要额外参数；如果显式设置 `-DSERIAL_ARM_BUILD_PYTHON=OFF`，C++ Core 仍可用，但当前 `robot_profile` ROS 2 launch 不可用
 
 只显示模型
 

@@ -1,6 +1,8 @@
 # Robot Profile 将 Core、Hardware、Description、Controllers 和 MoveIt 组装为可启动实例
 # package + relative path 由 SerialArm resource resolver 解析
+# package 一般应位于 robot_supports/robots/<robot_name>/description 下，作为 robot_description 的资源包
 # ROS 2 环境下，同一 resource package 可以同时作为 ament package 使用
+
 profiles:
   dm_arm_gray:  # 全局唯一 Profile 名，建议采用 <robot_name>_<variant>
     core:

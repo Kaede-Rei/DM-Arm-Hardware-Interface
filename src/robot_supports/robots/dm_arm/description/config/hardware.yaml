@@ -1,6 +1,7 @@
 # DM-Arm Damiao Hardware Config
 
 damiao:
+  bus: main_can                 # 共享 CAN 总线名称
   serial_port: /dev/ttyACM0     # 串口设备
   baudrate: 921600              # 波特率
   refresh_state_in_read: false  # read() 是否主动逐轴查询

@@ -36,7 +36,10 @@ def load_core_profile(robot_profile, profiles_file):
     try:
         from serial_arm import load_robot_profile_core
     except ImportError as error:
-        raise RuntimeError("serial_arm Python binding is required to resolve Core Robot Profile fields") from error
+        raise RuntimeError(
+            "failed to import serial_arm Python binding required "
+            f"for Core Robot Profile resolution: {error}"
+        ) from error
     return load_robot_profile_core(robot_profile, profiles_file)
 
 

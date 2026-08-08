@@ -52,6 +52,9 @@ SerialArm-Core 有三种主要调用层级
 | `serial_arm/hardware/hardware_capability.hpp` | 执行器物理能力 |
 | `serial_arm/hardware/motor_bus.hpp` | Hardware Backend contract |
 | `serial_arm/hardware/hardware_loader.hpp` | Backend shared library loader |
+| `serial_arm/transport/can.hpp` | `CanFrame`、`CanFilter`、`CanErr` |
+| `serial_arm/transport/bus.hpp` | `CanBus`、`CanChannel` |
+| `serial_arm/transport/serial_port.hpp` | Linux/POSIX `SerialPort` |
 | `serial_arm/robot.hpp` | 顶层 C++ 控制闭环 |
 
 ---
@@ -96,6 +99,71 @@ target_link_libraries(my_dynamics_app
     serial_arm::config
 )
 ```
+
+## 2.1. Transport API
+
+头文件：
+
+```cpp
+#include "serial_arm/transport/can.hpp"
+#include "serial_arm/transport/bus.hpp"
+#include "serial_arm/transport/serial_port.hpp"
+```
+
+`CanFrame` 表示经典 CAN 数据帧，当前只支持 8 字节 classic CAN：
+
+```cpp
+serial_arm::transport::CanFrame frame;
+frame.id = 0x01;
+frame.size = 8;
+frame.data = {0};
+```
+
+`CanFilter` 用于 `CanChannel` 接收过滤：
+
+```cpp
+serial_arm::transport::CanFilter filter{0x01, 0x7FF};
+```
+
+`CanBus` 定义通用 CAN 总线抽象，具体 `CanBus` 实现负责持有物理通信资源；`CanChannel` 是逻辑端点；一个物理 frame 只由具体 bus 实现读取一次，然后分发到匹配 filter 的 channel pending queue；`CanChannel::flush()` 只清理本 channel pending queue，不清空物理总线
+
+正式链路：
+
+```text
+DamiaoMotorBus
+    ↓
+CanChannel
+    ↓
+CanBus interface
+    ↓
+DamiaoUsbCanBus
+    ↓
+SerialPort
+    ↓
+达妙官方 USB2CAN 模块
+```
+
+`SerialPort` 位于 `serial_arm::transport` 命名空间，提供 `Config`、独立 `read_timeout/write_timeout`、`open()`、`set_config()`、`read()`、`read_exact()`、`write()`、`flush()`、`drain()`、`available()` 和 move 语义；它只负责 Linux tty 字节传输，不解析任何设备协议
+
+当前 robot_supports 提供 `serial_arm_protocol_damiao_usb2can`，其中 `DamiaoUsbCanBus` 适配达妙官方 USB2CAN 模块的私有串口通信协议；该实现不是通用 USB2CAN 协议适配器
+
+硬件 backend 或未来外设应优先获取 `CanChannel`：
+
+```cpp
+serial_arm::protocol::damiao_usb2can::Config config;
+config.serial_port = "/dev/ttyACM0";
+config.baudrate = 921600;
+
+auto channel =
+    serial_arm::protocol::damiao_usb2can::acquire_channel(
+        "main_can",
+        config,
+        {
+            serial_arm::transport::CanFilter{0x20, 0x7FF},
+        });
+```
+
+`BusPool` 是 Core 内部共享池，用于保证同进程中同名 CAN bus 复用同一份 `CanBus` runtime；普通设备层代码不应直接操作物理 bus 的 `close()` 或 raw `receive()`
 
 ---
 

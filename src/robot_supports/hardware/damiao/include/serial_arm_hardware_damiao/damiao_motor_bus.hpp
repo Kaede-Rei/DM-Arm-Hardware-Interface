@@ -1,6 +1,7 @@
 #pragma once
 
 #include "serial_arm/hardware/motor_bus.hpp"
+#include "serial_arm/transport/bus.hpp"
 #include "dm_hw/damiao.hpp"
 
 #include <chrono>
@@ -27,16 +28,17 @@ struct DamiaoActuatorCfg {
  * @brief 达妙总线配置
  */
 struct DamiaoBusCfg {
-    std::string serial_port{ "/dev/ttyACM0" };  ///< 串口设备
-    int baudrate{ 921600 };                     ///< 波特率
-    bool refresh_state_in_read{ false };        ///< read() 是否主动逐轴查询
-    double feedback_timeout_s{ 0.05 };          ///< 单个执行器反馈超时时间
-    std::size_t activation_retries{ 3 };        ///< 单轴使能与模式切换重试次数
-    std::size_t startup_read_cycles{ 5 };       ///< 激活后用于确认状态的读取次数
-    double stop_kp{ 3.0 };                      ///< 停止保持的执行器侧 kp
-    double stop_kd{ 0.1 };                      ///< 停止保持的执行器侧 kd
-    std::size_t stop_cycles{ 5 };               ///< 停止保持命令发送次数
-    std::vector<DamiaoActuatorCfg> actuators;   ///< 执行器列表
+    std::string bus{ "main_can" };                  ///< 共享 CAN 总线名称
+    std::string serial_port{ "/dev/ttyACM0" };      ///< 串口设备
+    int baudrate{ 921600 };                         ///< 波特率
+    bool refresh_state_in_read{ false };            ///< read() 是否主动逐轴查询
+    double feedback_timeout_s{ 0.05 };              ///< 单个执行器反馈超时时间
+    std::size_t activation_retries{ 3 };            ///< 单轴使能与模式切换重试次数
+    std::size_t startup_read_cycles{ 5 };           ///< 激活后用于确认状态的读取次数
+    double stop_kp{ 3.0 };                          ///< 停止保持的执行器侧 kp
+    double stop_kd{ 0.1 };                          ///< 停止保持的执行器侧 kd
+    std::size_t stop_cycles{ 5 };                   ///< 停止保持命令发送次数
+    std::vector<DamiaoActuatorCfg> actuators;       ///< 执行器列表
 };
 
 /**
@@ -149,9 +151,9 @@ private:
      */
     tl::expected<void, MotorBusErr> validate_cmd(const ActuatorCtrlCmd& cmd) const;
     /**
-     * @brief 解析 DamiaoMotorBus 的电机类型
-     * @param value 电机类型字符串
-     * @return 如果解析成功，则返回 damiao::DmMotorType，否则返回错误码
+     * @brief 读取 DamiaoMotorBus 状态
+     * @param refresh true 时主动逐轴查询反馈，false 时只接收当前总线反馈
+     * @return 如果读取成功，则返回 ActuatorState，否则返回 MotorBusErr
      */
     tl::expected<ActuatorState, MotorBusErr> read_impl(bool refresh);
     /**
@@ -182,7 +184,7 @@ private:
 
 private:
     DamiaoBusCfg cfg_;                      ///< DamiaoMotorBus 的配置参数
-    std::shared_ptr<SerialPort> serial_;    ///< 串口对象
+    std::shared_ptr<transport::CanChannel> can_channel_;  ///< 机械臂电机 CAN 通道
 
     std::shared_ptr<damiao::MotorControl> motor_ctrl_;      ///< Damiao 电机控制对象
     std::vector<std::shared_ptr<damiao::Motor>> motors_;    ///< Damiao 电机对象列表

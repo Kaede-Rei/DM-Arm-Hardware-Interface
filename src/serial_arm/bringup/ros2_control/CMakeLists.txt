@@ -7,8 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(ament_cmake REQUIRED)
 find_package(serial_arm_core CONFIG REQUIRED)
-find_package(Eigen3 REQUIRED NO_MODULE)
-find_package(pinocchio CONFIG REQUIRED)
 if(BUILD_TESTING)
     find_package(ament_cmake_pytest REQUIRED)
 endif()

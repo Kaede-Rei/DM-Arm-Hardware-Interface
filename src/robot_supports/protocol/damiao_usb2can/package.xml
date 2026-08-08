@@ -1,14 +1,13 @@
 <?xml version="1.0"?>
 <package format="3">
-    <name>serial_arm_hardware_damiao</name>
+    <name>serial_arm_protocol_damiao_usb2can</name>
     <version>0.2.0</version>
-    <description>Damiao hardware backend for SerialArm MotorBus.</description>
+    <description>Damiao official USB2CAN module protocol adapter for SerialArm CAN transport.</description>
     <maintainer email="kaerei@foxmail.com">SerialArm Maintainer</maintainer>
     <license>MIT</license>
     <buildtool_depend>ament_cmake</buildtool_depend>
     <depend>serial_arm_core</depend>
-    <depend>serial_arm_protocol_damiao_usb2can</depend>
-    <depend>yaml-cpp</depend>
+    <test_depend>gtest</test_depend>
     <export>
         <build_type>ament_cmake</build_type>
     </export>

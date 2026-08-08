@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(serial_arm_core VERSION 0.1.0 LANGUAGES CXX)
+project(serial_arm_core VERSION 0.2.0 LANGUAGES CXX)
 
 # =============================================================================
 # 全局 C++ / CMake 配置
@@ -76,10 +76,12 @@ set(SERIAL_ARM_INSTALL_TARGETS)
 # 必选模块：serial_arm_core
 # =============================================================================
 
-add_library(serial_arm_core
+add_library(serial_arm_core SHARED
     src/core/joints_ctrller.cpp
     src/core/joint_actuator_mapper.cpp
     src/core/safety.cpp
+    src/transport/bus.cpp
+    src/transport/serial_port.cpp
 )
 add_library(serial_arm::core ALIAS serial_arm_core)
 set_target_properties(serial_arm_core PROPERTIES EXPORT_NAME core)
@@ -211,6 +213,9 @@ if(SERIAL_ARM_BUILD_PYTHON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
     find_package(Threads REQUIRED)
+    if(ament_cmake_FOUND)
+        find_package(ament_cmake_python REQUIRED)
+    endif()
 
     pybind11_add_module(_serial_arm MODULE
         python/bindings.cpp
@@ -234,14 +239,21 @@ if(SERIAL_ARM_BUILD_PYTHON)
     target_compile_features(_serial_arm PRIVATE cxx_std_17)
     serial_arm_enable_warnings(_serial_arm)
 
-    install(TARGETS _serial_arm
-        LIBRARY DESTINATION serial_arm
-        COMPONENT python
-    )
-    install(FILES python/serial_arm/__init__.py
-        DESTINATION serial_arm
-        COMPONENT python
-    )
+    if(ament_cmake_FOUND)
+        ament_python_install_package(
+            serial_arm
+            PACKAGE_DIR python/serial_arm
+        )
+        ament_get_python_install_dir(SERIAL_ARM_PYTHON_INSTALL_DIR)
+        install(TARGETS _serial_arm
+            LIBRARY DESTINATION "${SERIAL_ARM_PYTHON_INSTALL_DIR}/serial_arm"
+            COMPONENT python
+        )
+    else()
+        message(STATUS
+            "SERIAL_ARM_BUILD_PYTHON is ON, but ament_cmake was not found; "
+            "standalone Python packaging is managed by python/ wheel builds")
+    endif()
 endif()
 
 # =============================================================================
@@ -298,6 +310,32 @@ if(BUILD_TESTING)
     serial_arm_enable_warnings(serial_arm_core_contract_tests)
 
     add_test(NAME serial_arm_core_contract_tests COMMAND serial_arm_core_contract_tests)
+
+    add_executable(serial_arm_serial_port_tests
+        tests/serial_port_tests.cpp
+    )
+    target_link_libraries(serial_arm_serial_port_tests
+        PRIVATE
+            serial_arm_core
+            GTest::gtest_main
+    )
+    target_compile_features(serial_arm_serial_port_tests PRIVATE cxx_std_17)
+    serial_arm_enable_warnings(serial_arm_serial_port_tests)
+
+    add_test(NAME serial_arm_serial_port_tests COMMAND serial_arm_serial_port_tests)
+
+    add_executable(serial_arm_transport_tests
+        tests/transport_tests.cpp
+    )
+    target_link_libraries(serial_arm_transport_tests
+        PRIVATE
+            serial_arm_core
+            GTest::gtest_main
+    )
+    target_compile_features(serial_arm_transport_tests PRIVATE cxx_std_17)
+    serial_arm_enable_warnings(serial_arm_transport_tests)
+
+    add_test(NAME serial_arm_transport_tests COMMAND serial_arm_transport_tests)
 endif()
 
 # =============================================================================
@@ -353,7 +391,7 @@ install(FILES
 
 if(ament_cmake_FOUND)
     ament_export_targets(serial_arm_targets HAS_LIBRARY_TARGET)
-    ament_export_dependencies(yaml-cpp)
+    ament_export_dependencies(yaml-cpp Eigen3 pinocchio)
     ament_package()
 endif()
 

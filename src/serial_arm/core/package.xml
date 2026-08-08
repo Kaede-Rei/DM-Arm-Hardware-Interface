@@ -1,13 +1,19 @@
 <?xml version="1.0"?>
 <package format="3">
     <name>serial_arm_core</name>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <description>Standalone SerialArm core with configuration, dynamics, safety, and hardware backend interfaces.</description>
     <maintainer email="kaerei@foxmail.com">SerialArm Maintainer</maintainer>
     <license>MIT</license>
     <buildtool_depend>ament_cmake</buildtool_depend>
+    <buildtool_depend>ament_cmake_python</buildtool_depend>
     <depend>yaml-cpp</depend>
-    <test_depend>libgtest-dev</test_depend>
+    <depend>eigen</depend>
+    <depend>pinocchio</depend>
+    <build_depend>python3-dev</build_depend>
+    <build_depend>pybind11-dev</build_depend>
+    <exec_depend>python3-numpy</exec_depend>
+    <test_depend>gtest</test_depend>
     <export>
         <build_type>ament_cmake</build_type>
     </export>
